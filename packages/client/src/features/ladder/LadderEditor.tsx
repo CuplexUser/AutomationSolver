@@ -1,0 +1,151 @@
+import { useEffect, useState } from 'react';
+import type { ElementType, PuzzleDevice, RungEvalResult } from '@automationsolver/shared';
+import { useEditor } from './editorStore';
+import { RungView } from './RungView';
+
+interface InstrMeta {
+  type: ElementType;
+  label: string;
+  glyph: string;
+  needsPreset?: boolean;
+  needsDevice?: boolean;
+}
+
+const INSTRUCTIONS: InstrMeta[] = [
+  { type: 'contact-no', label: 'NO Contact', glyph: '┤ ├', needsDevice: true },
+  { type: 'contact-nc', label: 'NC Contact', glyph: '┤/├', needsDevice: true },
+  { type: 'contact-rising', label: 'Rising Edge', glyph: '┤↑├', needsDevice: true },
+  { type: 'contact-falling', label: 'Falling Edge', glyph: '┤↓├', needsDevice: true },
+  { type: 'coil-out', label: 'Output Coil', glyph: '( )', needsDevice: true },
+  { type: 'coil-set', label: 'Set', glyph: '(S)', needsDevice: true },
+  { type: 'coil-reset', label: 'Reset', glyph: '(R)', needsDevice: true },
+  { type: 'timer', label: 'Timer', glyph: 'T', needsPreset: true, needsDevice: true },
+  { type: 'counter', label: 'Counter', glyph: 'C', needsPreset: true, needsDevice: true },
+  { type: 'hwire', label: 'Wire', glyph: '──', needsDevice: false },
+];
+
+interface Props {
+  allowedInstructions: ElementType[];
+  devices: PuzzleDevice[];
+  evalResults: RungEvalResult[];
+  running: boolean;
+}
+
+export function LadderEditor({ allowedInstructions, devices, evalResults, running }: Props) {
+  const { program, selected, select, placeSelected, setCell, toggleVlink, addRung, removeRung, addRow, addCol } =
+    useEditor();
+  const [address, setAddress] = useState('X0');
+  const [preset, setPreset] = useState(10);
+
+  const allowed = new Set<ElementType>([...allowedInstructions, 'hwire']);
+  const editable = !running;
+
+  // When a filled cell is selected, load its values into the palette inputs.
+  useEffect(() => {
+    if (!selected) return;
+    const el = program.rungs[selected.rung]?.cells[selected.row]?.[selected.col];
+    if (el) {
+      if (el.device) setAddress(el.device);
+      if (el.preset != null) setPreset(el.preset);
+    }
+  }, [selected, program]);
+
+  const place = (meta: InstrMeta) => {
+    if (!selected) return;
+    if (meta.needsDevice && !/^[XYMTC]\d{1,4}$/i.test(address.trim())) return;
+    placeSelected(
+      meta.type,
+      meta.needsDevice ? address.trim().toUpperCase() : '',
+      meta.needsPreset ? preset : undefined,
+    );
+  };
+
+  return (
+    <div className="ladder-editor">
+      <div className="palette panel">
+        <div className="palette-row">
+          <span className="eyebrow">Address</span>
+          <input
+            className="field mono compact"
+            value={address}
+            onChange={(e) => setAddress(e.target.value)}
+            disabled={!editable}
+            aria-label="Device address"
+          />
+          <span className="eyebrow">Preset K</span>
+          <input
+            className="field mono compact preset"
+            type="number"
+            min={1}
+            value={preset}
+            onChange={(e) => setPreset(Math.max(1, Number(e.target.value)))}
+            disabled={!editable}
+            aria-label="Timer/counter preset"
+          />
+          <div className="dev-quick">
+            {devices.map((d) => (
+              <button
+                key={d.address}
+                className={`dev-chip dev-${d.address[0]}`}
+                onClick={() => setAddress(d.address)}
+                disabled={!editable}
+                title={d.label}
+              >
+                {d.address}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="palette-instr">
+          {INSTRUCTIONS.filter((i) => allowed.has(i.type)).map((meta) => (
+            <button
+              key={meta.type}
+              className="instr-btn"
+              disabled={!editable || !selected}
+              onClick={() => place(meta)}
+              title={meta.label}
+            >
+              <span className="instr-glyph">{meta.glyph}</span>
+              <span className="instr-label">{meta.label}</span>
+            </button>
+          ))}
+          <button
+            className="instr-btn danger"
+            disabled={!editable || !selected}
+            onClick={() => selected && setCell(selected, null)}
+            title="Clear cell"
+          >
+            <span className="instr-glyph">⌫</span>
+            <span className="instr-label">Clear</span>
+          </button>
+        </div>
+        {!selected && editable && <p className="palette-hint">Select a cell on the ladder, then choose an instruction.</p>}
+        {running && <p className="palette-hint live">Simulation running — stop to edit.</p>}
+      </div>
+
+      <div className="ladder-scroll inset">
+        {program.rungs.map((rung, i) => (
+          <RungView
+            key={rung.id}
+            rung={rung}
+            index={i}
+            running={running}
+            editable={editable}
+            evalResult={evalResults[i]}
+            selected={selected?.rung === i ? { row: selected.row, col: selected.col } : null}
+            onSelectCell={(row, col) => select({ rung: i, row, col })}
+            onToggleVlink={(row, col) => toggleVlink(i, row, col)}
+            onAddRow={() => addRow(i)}
+            onAddCol={() => addCol(i)}
+            onDelete={() => removeRung(i)}
+          />
+        ))}
+        {editable && (
+          <button className="btn btn-ghost add-rung" onClick={addRung}>
+            + Add Rung
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
