@@ -65,7 +65,7 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
-.topnav a:hover {
+.topnav a:not(.btn):hover {
   color: var(--live);
 }
 .topnav-user {
