@@ -85,6 +85,27 @@ function PlayInner({ spec, program, user, saveDraft, submit, dirty, markClean }:
               ))}
             </tbody>
           </table>
+
+          {spec.registers && spec.registers.length > 0 && (
+            <>
+              <span className="eyebrow io-subhead">Working Registers</span>
+              <table className="io-table">
+                <tbody>
+                  {spec.registers.map((r) => (
+                    <tr key={r.address}>
+                      <td>
+                        <span className={`dev-chip dev-${r.address[0]}`}>{r.address}</span>
+                      </td>
+                      <td className="io-name">
+                        {r.label}
+                        {r.note && <span className="io-note"> · {r.note}</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
         </div>
 
         <ResultsCard result={result} pending={submit.isPending} user={!!user} />
@@ -118,6 +139,7 @@ function PlayInner({ spec, program, user, saveDraft, submit, dirty, markClean }:
         <LadderEditor
           allowedInstructions={spec.allowedInstructions}
           devices={spec.devices}
+          registers={spec.registers}
           evalResults={runner.evalResults}
           running={runner.running}
         />

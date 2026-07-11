@@ -36,6 +36,7 @@ export const batchCounter: PuzzleSpec = {
     { address: 'X1', label: 'Reset', io: 'input', widget: 'momentary' },
     { address: 'Y0', label: 'Batch Full', io: 'output', widget: 'lamp', color: '#22c55e' },
   ],
+  registers: [{ address: 'C0', label: 'Batch count', note: 'preset K5, reset by X1' }],
   allowedInstructions: ['contact-no', 'contact-nc', 'counter', 'coil-out', 'coil-reset'],
   maxRungs: 3,
   processId: 'passthrough',

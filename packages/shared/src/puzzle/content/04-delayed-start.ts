@@ -24,6 +24,10 @@ export const delayedStart: PuzzleSpec = {
     { address: 'Y0', label: 'Motor', io: 'output', widget: 'motor', color: '#38bdf8' },
     { address: 'Y1', label: 'Warning Beacon', io: 'output', widget: 'lamp', color: '#f59e0b' },
   ],
+  registers: [
+    { address: 'M0', label: 'Run latch', note: 'seals in the start command' },
+    { address: 'T0', label: 'Start delay', note: 'on-delay, preset K20 = 2.0 s' },
+  ],
   allowedInstructions: ['contact-no', 'contact-nc', 'coil-out', 'timer'],
   maxRungs: 4,
   processId: 'passthrough',

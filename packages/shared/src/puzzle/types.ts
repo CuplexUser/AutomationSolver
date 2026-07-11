@@ -23,6 +23,18 @@ export interface PuzzleDevice {
   color?: string;
 }
 
+/**
+ * An internal working device (M relay, T timer, C counter) a puzzle expects the
+ * player to use. Unlike PuzzleDevice these are not wired to the HMI — they exist
+ * only inside the program — but harder puzzles still need them spelled out in a
+ * list rather than buried in the briefing prose.
+ */
+export interface PuzzleRegister {
+  address: string; // "M0", "T0", "C0"
+  label: string; // what it represents, e.g. "Run latch"
+  note?: string; // preset / usage hint, e.g. "preset K20 = 2.0 s"
+}
+
 export interface ScenarioStep {
   label: string;
   /** X inputs set at the start of this step; persist until changed by a later step. */
@@ -52,6 +64,8 @@ export interface PuzzleSpec {
   briefing: string; // full goal description (plain text, newlines allowed)
   hints?: string[];
   devices: PuzzleDevice[];
+  /** Internal working registers (M/T/C) the puzzle expects — surfaced as an IO list. */
+  registers?: PuzzleRegister[];
   allowedInstructions: ElementType[];
   maxRungs?: number;
   /** Key into the process registry. Use 'passthrough' when no dynamics are needed. */

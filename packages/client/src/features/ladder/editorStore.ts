@@ -23,6 +23,8 @@ interface EditorState {
   select: (pos: CellPos | null) => void;
   setCell: (pos: CellPos, element: LadderElement | null) => void;
   placeSelected: (type: ElementType, device: string, preset?: number) => void;
+  /** Patch the device/preset of the already-placed element in the selected cell. */
+  patchSelected: (patch: Partial<Pick<LadderElement, 'device' | 'preset'>>) => void;
   toggleVlink: (rung: number, row: number, col: number) => void;
   addRung: () => void;
   removeRung: (index: number) => void;
@@ -69,6 +71,21 @@ export const useEditor = create<EditorState>((set, get) => ({
     const element: LadderElement = { type, device, ...(preset != null ? { preset } : {}) };
     get().setCell(sel, element);
   },
+
+  patchSelected: (patch) =>
+    set((s) => {
+      const sel = s.selected;
+      if (!sel) return s;
+      const cur = s.program.rungs[sel.rung]?.cells[sel.row]?.[sel.col];
+      if (!cur) return s;
+      return {
+        program: updateRung(s.program, sel.rung, (r) => {
+          r.cells[sel.row][sel.col] = { ...r.cells[sel.row][sel.col]!, ...patch };
+          return r;
+        }),
+        dirty: true,
+      };
+    }),
 
   toggleVlink: (rung, row, col) =>
     set((s) => ({

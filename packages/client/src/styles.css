@@ -418,6 +418,14 @@
   color: var(--muted);
   font-size: 11px;
 }
+.io-subhead {
+  display: block;
+  margin-top: 16px;
+}
+.io-note {
+  color: var(--muted);
+  font-size: 12px;
+}
 
 /* Results */
 .results-card.solved {

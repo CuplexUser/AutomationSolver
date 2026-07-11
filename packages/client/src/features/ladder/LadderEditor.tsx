@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react';
-import type { ElementType, PuzzleDevice, RungEvalResult } from '@automationsolver/shared';
+import type {
+  ElementType,
+  PuzzleDevice,
+  PuzzleRegister,
+  RungEvalResult,
+} from '@automationsolver/shared';
 import { useEditor } from './editorStore';
 import { RungView } from './RungView';
+
+const ADDRESS_RE = /^[XYMTC]\d{1,4}$/i;
 
 interface InstrMeta {
   type: ElementType;
@@ -27,18 +34,36 @@ const INSTRUCTIONS: InstrMeta[] = [
 interface Props {
   allowedInstructions: ElementType[];
   devices: PuzzleDevice[];
+  registers?: PuzzleRegister[];
   evalResults: RungEvalResult[];
   running: boolean;
 }
 
-export function LadderEditor({ allowedInstructions, devices, evalResults, running }: Props) {
-  const { program, selected, select, placeSelected, setCell, toggleVlink, addRung, removeRung, addRow, addCol } =
+const DEVICE_TYPES = new Set(INSTRUCTIONS.filter((i) => i.needsDevice).map((i) => i.type));
+const PRESET_TYPES = new Set(INSTRUCTIONS.filter((i) => i.needsPreset).map((i) => i.type));
+
+export function LadderEditor({
+  allowedInstructions,
+  devices,
+  registers = [],
+  evalResults,
+  running,
+}: Props) {
+  const { program, selected, select, placeSelected, patchSelected, setCell, toggleVlink, addRung, removeRung, addRow, addCol } =
     useEditor();
   const [address, setAddress] = useState('X0');
   const [preset, setPreset] = useState(10);
 
   const allowed = new Set<ElementType>([...allowedInstructions, 'hwire']);
   const editable = !running;
+
+  const selectedEl = selected
+    ? program.rungs[selected.rung]?.cells[selected.row]?.[selected.col] ?? null
+    : null;
+  // Editing an already-placed device-bearing element? Then the Address/Preset
+  // fields retype that element in place instead of only priming the next placement.
+  const retypeDevice = editable && !!selectedEl && DEVICE_TYPES.has(selectedEl.type);
+  const retypePreset = editable && !!selectedEl && PRESET_TYPES.has(selectedEl.type);
 
   // When a filled cell is selected, load its values into the palette inputs.
   useEffect(() => {
@@ -50,9 +75,26 @@ export function LadderEditor({ allowedInstructions, devices, evalResults, runnin
     }
   }, [selected, program]);
 
+  const changeAddress = (v: string) => {
+    setAddress(v);
+    if (retypeDevice && ADDRESS_RE.test(v.trim())) {
+      patchSelected({ device: v.trim().toUpperCase() });
+    }
+  };
+
+  const changePreset = (v: number) => {
+    setPreset(v);
+    if (retypePreset) patchSelected({ preset: v });
+  };
+
+  const useAddress = (addr: string) => {
+    setAddress(addr);
+    if (retypeDevice) patchSelected({ device: addr });
+  };
+
   const place = (meta: InstrMeta) => {
     if (!selected) return;
-    if (meta.needsDevice && !/^[XYMTC]\d{1,4}$/i.test(address.trim())) return;
+    if (meta.needsDevice && !ADDRESS_RE.test(address.trim())) return;
     placeSelected(
       meta.type,
       meta.needsDevice ? address.trim().toUpperCase() : '',
@@ -68,7 +110,7 @@ export function LadderEditor({ allowedInstructions, devices, evalResults, runnin
           <input
             className="field mono compact"
             value={address}
-            onChange={(e) => setAddress(e.target.value)}
+            onChange={(e) => changeAddress(e.target.value)}
             disabled={!editable}
             aria-label="Device address"
           />
@@ -78,16 +120,16 @@ export function LadderEditor({ allowedInstructions, devices, evalResults, runnin
             type="number"
             min={1}
             value={preset}
-            onChange={(e) => setPreset(Math.max(1, Number(e.target.value)))}
+            onChange={(e) => changePreset(Math.max(1, Number(e.target.value)))}
             disabled={!editable}
             aria-label="Timer/counter preset"
           />
           <div className="dev-quick">
-            {devices.map((d) => (
+            {[...devices.map((d) => ({ address: d.address, label: d.label })), ...registers].map((d) => (
               <button
                 key={d.address}
                 className={`dev-chip dev-${d.address[0]}`}
-                onClick={() => setAddress(d.address)}
+                onClick={() => useAddress(d.address)}
                 disabled={!editable}
                 title={d.label}
               >
@@ -120,6 +162,12 @@ export function LadderEditor({ allowedInstructions, devices, evalResults, runnin
           </button>
         </div>
         {!selected && editable && <p className="palette-hint">Select a cell on the ladder, then choose an instruction.</p>}
+        {retypeDevice && (
+          <p className="palette-hint">
+            Editing <span className="mono">{selectedEl!.device || '—'}</span> — change the Address to
+            retype this element in place, or pick another instruction to replace it.
+          </p>
+        )}
         {running && <p className="palette-hint live">Simulation running — stop to edit.</p>}
       </div>
 
