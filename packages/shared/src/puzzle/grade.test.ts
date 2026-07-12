@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LadderElement, LadderProgram, Rung, VLink } from '../ladder/types.js';
 import { getPuzzle } from './content/index.js';
-import { gradeProgram } from './grade.js';
+import { gradeProgram, traceScenario } from './grade.js';
 import { validateProgram } from './validate.js';
 
 // --- tiny ladder builders -------------------------------------------------
@@ -179,6 +179,48 @@ describe('gradeProgram — wrong programs do not solve', () => {
     const spec = getPuzzle('direct-control')!;
     const empty: LadderProgram = { rungs: [R('r1', 1, 2, {})] };
     expect(gradeProgram(spec, empty).solved).toBe(false);
+  });
+});
+
+describe('traceScenario', () => {
+  it('matches gradeProgram pass/fail and samples every scan for a solved puzzle', () => {
+    const spec = getPuzzle('seal-in')!;
+    const program = solutions['seal-in'];
+    const grade = gradeProgram(spec, program);
+    for (const scenario of spec.scenarios) {
+      const trace = traceScenario(spec, program, scenario.name)!;
+      expect(trace).toBeDefined();
+      const expectedSamples = scenario.steps.reduce(
+        (n, s) => n + Math.max(1, Math.ceil(s.holdMs / trace.dt)),
+        0,
+      );
+      expect(trace.samples.length).toBe(expectedSamples);
+      expect(trace.samples.at(-1)!.tMs).toBe(expectedSamples * trace.dt);
+
+      const scenarioResult = grade.scenarios.find((s) => s.name === scenario.name)!;
+      expect(trace.steps.map((s) => s.passed)).toEqual(scenarioResult.steps.map((s) => s.passed));
+      expect(trace.steps.every((s) => s.passed)).toBe(scenarioResult.passed);
+
+      // startSample indexes line up with cumulative iteration counts.
+      let cursor = 0;
+      trace.steps.forEach((s, i) => {
+        expect(s.startSample).toBe(cursor);
+        cursor += Math.max(1, Math.ceil(scenario.steps[i].holdMs / trace.dt));
+      });
+    }
+  });
+
+  it('marks the failing step for a wrong program', () => {
+    const spec = getPuzzle('seal-in')!;
+    const bad: LadderProgram = { rungs: [R('r1', 1, 2, { '0,0': no('X0'), '0,1': out('Y0') })] };
+    const scenario = spec.scenarios[0];
+    const trace = traceScenario(spec, bad, scenario.name)!;
+    expect(trace.steps.some((s) => !s.passed)).toBe(true);
+  });
+
+  it('returns undefined for an unknown scenario name', () => {
+    const spec = getPuzzle('direct-control')!;
+    expect(traceScenario(spec, solutions['direct-control'], 'nope')).toBeUndefined();
   });
 });
 

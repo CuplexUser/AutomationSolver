@@ -38,18 +38,24 @@ screen, without reaching for the mouse.
 
 ---
 
-## Phase 2 — Learning curve and feedback *(next)*
+## Phase 2 — Learning curve and feedback ✅ *shipped*
 
-The engine is trustworthy; the weakest link is now the moment a player is stuck and doesn't know why.
+The engine is trustworthy; the weakest link was the moment a player got stuck and didn't know why.
 
-1. **Per-scenario replay.** When a submission fails, replay the failing scenario in the client
-   with the rung highlighting live, scrubbing the exact timeline the grader used. The trace is
-   already deterministic — this is presentation, not new simulation.
-2. **A timing/trace view.** A simple logic-analyzer strip under the ladder showing X/Y/M/T bits
-   over the last few seconds of scans. This is the single highest-value debugging aid for
-   sequence puzzles.
-3. **Progressive hints.** Hints exist but are all-or-nothing; reveal them one at a time.
-4. **Puzzle-map progression.** Gate later puzzles behind earlier ones and show the path.
+1. **Per-scenario replay.** `traceScenario()` (`shared/src/puzzle/grade.ts`) re-runs one scenario
+   capturing a scan-by-scan trace; the client calls it directly (no server round trip — the
+   engine is deterministic) and a scrubbable `ReplayBar` drives the same `LadderEditor`/`HmiPanel`
+   views the live sim uses, via a read-only `SimRunner` adapter.
+2. **A timing/trace view.** `TraceStrip` — a logic-analyzer strip under the ladder showing X/Y/M/T
+   bits over time — reads a rolling history from the live sim or the full replay trace through
+   that same `SimRunner.history` field.
+3. **Progressive hints.** Hints reveal one at a time, remembered per puzzle in `localStorage`.
+4. **Puzzle-map progression.** The server gates each puzzle behind the previous one being solved
+   (`lockInfo()` in `routes/puzzles.ts`, enforced on submit too, not just the UI) and the puzzle
+   list shows locked cards with what unlocks them.
+5. **Multiple save slots per puzzle** (added mid-phase, beyond the original scope): the single
+   per-puzzle draft became a `solution_slots` table — players can save, load, rename, and delete
+   several named attempts per puzzle, with the last-used slot remembered per user.
 
 **Done means:** a player who fails a hard puzzle can see *when* their program diverged, not just
 *that* it did.

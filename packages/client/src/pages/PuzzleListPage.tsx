@@ -32,22 +32,48 @@ export function PuzzleListPage() {
 function PuzzleCard({ puzzle }: { puzzle: PuzzleListItem }) {
   const solved = puzzle.status === 'solved';
   const inProgress = puzzle.status === 'in_progress';
-  return (
-    <Link to={`/puzzles/${puzzle.slug}`} className="puzzle-card panel">
+  const accent = solved ? 'solved' : puzzle.locked ? 'locked' : 'open';
+
+  const body = (
+    <>
       <div className="pc-top">
         <span className="pc-num">#{String(puzzle.order).padStart(2, '0')}</span>
-        <span
-          className={`status-lamp${solved ? ' solved' : inProgress ? ' progress' : ''}`}
-          title={puzzle.status}
-        />
+        {puzzle.locked ? (
+          <span className="status-lamp locked" title="Locked">
+            🔒
+          </span>
+        ) : (
+          <span
+            className={`status-lamp${solved ? ' solved' : inProgress ? ' progress' : ''}`}
+            title={puzzle.status}
+          />
+        )}
       </div>
       <h3 className="pc-title">{puzzle.title}</h3>
-      <p className="pc-summary">{puzzle.summary}</p>
+      <p className="pc-summary">{puzzle.locked ? 'Locked' : puzzle.summary}</p>
       <div className="pc-foot">
         <span className={`tag tag-${puzzle.difficulty}`}>{puzzle.difficulty}</span>
         {solved && <span className="pc-solved">SOLVED · {puzzle.bestScore}%</span>}
-        {inProgress && <span className="pc-progress">IN PROGRESS</span>}
+        {!solved && inProgress && !puzzle.locked && <span className="pc-progress">IN PROGRESS</span>}
       </div>
+    </>
+  );
+
+  if (puzzle.locked) {
+    return (
+      <div
+        className={`puzzle-card panel locked accent-${accent}`}
+        title={puzzle.requiresTitle ? `Solve "${puzzle.requiresTitle}" first` : 'Locked'}
+        aria-disabled="true"
+      >
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Link to={`/puzzles/${puzzle.slug}`} className={`puzzle-card panel accent-${accent}`}>
+      {body}
     </Link>
   );
 }

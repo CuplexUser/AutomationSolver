@@ -23,6 +23,16 @@ export interface SolutionRow {
   updated_at: number;
 }
 
+export interface SolutionSlotRow {
+  id: number;
+  puzzle_slug: string;
+  name: string;
+  program_json: string;
+  is_submitted: number;
+  created_at: number;
+  updated_at: number;
+}
+
 const now = () => Date.now();
 
 // --- users ----------------------------------------------------------------
@@ -103,7 +113,9 @@ export function upsertProgress(input: {
   ).run(input.userId, input.slug, input.status, input.score, solvedAt, now());
 }
 
-// --- solutions ------------------------------------------------------------
+// --- solutions (legacy single-draft table, read-only now) -----------------
+// Kept only so listSlots() can lazily migrate a pre-slots draft into "Slot 1"
+// the first time a returning player opens a puzzle; nothing writes here anymore.
 export function getSolution(userId: number, slug: string): SolutionRow | undefined {
   return getDb()
     .prepare(
@@ -112,22 +124,87 @@ export function getSolution(userId: number, slug: string): SolutionRow | undefin
     .get(userId, slug) as SolutionRow | undefined;
 }
 
-export function upsertSolution(input: {
+// --- solution slots ---------------------------------------------------------
+function getSlotById(id: number): SolutionSlotRow | undefined {
+  return getDb().prepare('SELECT * FROM solution_slots WHERE id = ?').get(id) as SolutionSlotRow | undefined;
+}
+
+export function getSlot(userId: number, slug: string, id: number): SolutionSlotRow | undefined {
+  return getDb()
+    .prepare('SELECT * FROM solution_slots WHERE id = ? AND user_id = ? AND puzzle_slug = ?')
+    .get(id, userId, slug) as SolutionSlotRow | undefined;
+}
+
+export function createSlot(input: {
   userId: number;
   slug: string;
+  name: string;
   programJson: string;
-  isSubmitted: boolean;
-}): void {
+  isSubmitted?: boolean;
+}): SolutionSlotRow {
+  const db = getDb();
+  const ts = now();
+  const res = db
+    .prepare(
+      `INSERT INTO solution_slots (user_id, puzzle_slug, name, program_json, is_submitted, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(input.userId, input.slug, input.name, input.programJson, input.isSubmitted ? 1 : 0, ts, ts);
+  return getSlotById(Number(res.lastInsertRowid))!;
+}
+
+/** All slots for a puzzle, newest-first. Lazily migrates a legacy single draft into "Slot 1". */
+export function listSlots(userId: number, slug: string): SolutionSlotRow[] {
+  const rows = getDb()
+    .prepare('SELECT * FROM solution_slots WHERE user_id = ? AND puzzle_slug = ? ORDER BY updated_at DESC')
+    .all(userId, slug) as unknown as SolutionSlotRow[];
+  if (rows.length > 0) return rows;
+
+  const legacy = getSolution(userId, slug);
+  if (!legacy) return [];
+  return [
+    createSlot({
+      userId,
+      slug,
+      name: 'Slot 1',
+      programJson: legacy.program_json,
+      isSubmitted: legacy.is_submitted === 1,
+    }),
+  ];
+}
+
+export function updateSlot(input: {
+  userId: number;
+  slug: string;
+  id: number;
+  name?: string;
+  programJson?: string;
+  isSubmitted?: boolean;
+}): SolutionSlotRow | undefined {
+  const existing = getSlot(input.userId, input.slug, input.id);
+  if (!existing) return undefined;
   getDb()
     .prepare(
-      `INSERT INTO solutions (user_id, puzzle_slug, program_json, is_submitted, updated_at)
-       VALUES (?, ?, ?, ?, ?)
-       ON CONFLICT(user_id, puzzle_slug) DO UPDATE SET
-         program_json = excluded.program_json,
-         is_submitted = MAX(solutions.is_submitted, excluded.is_submitted),
-         updated_at = excluded.updated_at`,
+      `UPDATE solution_slots SET name = ?, program_json = ?, is_submitted = ?, updated_at = ?
+       WHERE id = ? AND user_id = ? AND puzzle_slug = ?`,
     )
-    .run(input.userId, input.slug, input.programJson, input.isSubmitted ? 1 : 0, now());
+    .run(
+      input.name ?? existing.name,
+      input.programJson ?? existing.program_json,
+      input.isSubmitted != null ? (input.isSubmitted ? 1 : 0) : existing.is_submitted,
+      now(),
+      input.id,
+      input.userId,
+      input.slug,
+    );
+  return getSlotById(input.id);
+}
+
+export function deleteSlot(userId: number, slug: string, id: number): boolean {
+  const res = getDb()
+    .prepare('DELETE FROM solution_slots WHERE id = ? AND user_id = ? AND puzzle_slug = ?')
+    .run(id, userId, slug);
+  return Number(res.changes) > 0;
 }
 
 // --- settings -------------------------------------------------------------

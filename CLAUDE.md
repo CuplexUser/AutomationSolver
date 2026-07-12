@@ -75,6 +75,6 @@ Add a `PuzzleSpec` under `packages/shared/src/puzzle/content/`, register it in `
 
 ## Data flow notes
 
-- The DB stores puzzle references by `slug` only; puzzle content is never duplicated into the database. `progress`, `solutions`, and `user_settings` key off `(user_id, puzzle_slug)`.
+- The DB stores puzzle references by `slug` only; puzzle content is never duplicated into the database. `progress` and `solution_slots` key off `(user_id, puzzle_slug)`; a player can have several named `solution_slots` rows per puzzle (see FEATURE-MAP.md). The old single-draft `solutions` table is kept only for a one-time lazy migration into a first slot — nothing writes to it anymore.
 - Auth uses httpOnly session cookies; OAuth providers with blank credentials are hidden on the sign-in page (see `packages/server/.env.example`).
 - Server tests set `DB_PATH=:memory:`.

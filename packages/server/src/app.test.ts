@@ -21,6 +21,10 @@ function grid(
   );
 }
 
+const directControlSolution: LadderProgram = {
+  rungs: [{ id: 'r1', rows: 1, cols: 2, cells: grid(1, 2, { '0,0': no('X0'), '0,1': out('Y0') }), vlinks: [] }],
+};
+
 const sealInSolution: LadderProgram = {
   rungs: [
     {
@@ -61,10 +65,10 @@ describe('health & puzzles (public)', () => {
   });
 
   it('returns full puzzle detail', async () => {
-    const res = await request(app).get('/api/puzzles/seal-in');
+    const res = await request(app).get('/api/puzzles/direct-control');
     expect(res.status).toBe(200);
-    expect(res.body.puzzle.slug).toBe('seal-in');
-    expect(res.body.puzzle.devices.length).toBe(3);
+    expect(res.body.puzzle.slug).toBe('direct-control');
+    expect(res.body.puzzle.devices.length).toBeGreaterThan(0);
   });
 });
 
@@ -119,22 +123,10 @@ describe('auth flow', () => {
 });
 
 describe('solutions & grading', () => {
-  it('saves a draft and returns it on reload', async () => {
-    const agent = request.agent(app);
-    await agent.post('/api/auth/register').send({ email: 'draft@example.com', password: 'password123' });
-
-    const save = await agent.put('/api/puzzles/seal-in/solution').send({ program: sealInSolution });
-    expect(save.status).toBe(200);
-    expect(save.body.saved).toBe(true);
-
-    const detail = await agent.get('/api/puzzles/seal-in');
-    expect(detail.body.savedProgram).not.toBeNull();
-    expect(detail.body.savedProgram.rungs.length).toBe(1);
-  });
-
   it('grades a correct submission as solved and records progress', async () => {
     const agent = request.agent(app);
     await agent.post('/api/auth/register').send({ email: 'solver@example.com', password: 'password123' });
+    await agent.post('/api/puzzles/direct-control/submit').send({ program: directControlSolution });
 
     const submit = await agent.post('/api/puzzles/seal-in/submit').send({ program: sealInSolution });
     expect(submit.status).toBe(200);
@@ -150,6 +142,7 @@ describe('solutions & grading', () => {
   it('grades a wrong submission as not solved', async () => {
     const agent = request.agent(app);
     await agent.post('/api/auth/register').send({ email: 'wrong@example.com', password: 'password123' });
+    await agent.post('/api/puzzles/direct-control/submit').send({ program: directControlSolution });
     const submit = await agent.post('/api/puzzles/seal-in/submit').send({ program: wrongSolution });
     expect(submit.status).toBe(200);
     expect(submit.body.grade.solved).toBe(false);
@@ -157,6 +150,109 @@ describe('solutions & grading', () => {
 
   it('requires auth to submit', async () => {
     const res = await request(app).post('/api/puzzles/seal-in/submit').send({ program: sealInSolution });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe('puzzle-map locking', () => {
+  it('locks every puzzle but the first for a fresh user', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/auth/register').send({ email: 'newbie@example.com', password: 'password123' });
+
+    const list = await agent.get('/api/puzzles');
+    const bySlug = new Map(list.body.puzzles.map((p: { slug: string; locked: boolean }) => [p.slug, p.locked]));
+    expect(bySlug.get('direct-control')).toBe(false);
+    expect(bySlug.get('seal-in')).toBe(true);
+
+    const detail = await agent.get('/api/puzzles/seal-in');
+    expect(detail.status).toBe(403);
+    expect(detail.body.error).toBe('locked');
+    expect(detail.body.requiresSlug).toBe('direct-control');
+
+    const submit = await agent.post('/api/puzzles/seal-in/submit').send({ program: sealInSolution });
+    expect(submit.status).toBe(403);
+    expect(submit.body.error).toBe('locked');
+  });
+
+  it('unlocks the next puzzle once the previous one is solved', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/auth/register').send({ email: 'progressor@example.com', password: 'password123' });
+    await agent.post('/api/puzzles/direct-control/submit').send({ program: directControlSolution }).expect(200);
+
+    const list = await agent.get('/api/puzzles');
+    const bySlug = new Map(list.body.puzzles.map((p: { slug: string; locked: boolean }) => [p.slug, p.locked]));
+    expect(bySlug.get('seal-in')).toBe(false);
+
+    const detail = await agent.get('/api/puzzles/seal-in');
+    expect(detail.status).toBe(200);
+  });
+
+  it('anonymous visitors only see the first puzzle unlocked', async () => {
+    const res = await request(app).get('/api/puzzles');
+    const bySlug = new Map(res.body.puzzles.map((p: { slug: string; locked: boolean }) => [p.slug, p.locked]));
+    expect(bySlug.get('direct-control')).toBe(false);
+    expect(bySlug.get('seal-in')).toBe(true);
+
+    const detail = await request(app).get('/api/puzzles/seal-in');
+    expect(detail.status).toBe(403);
+  });
+});
+
+describe('save slots', () => {
+  it('creates, lists, loads, renames and deletes slots', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/auth/register').send({ email: 'slots@example.com', password: 'password123' });
+
+    const create = await agent
+      .post('/api/puzzles/direct-control/slots')
+      .send({ program: directControlSolution, name: 'My first try' });
+    expect(create.status).toBe(201);
+    expect(create.body.name).toBe('My first try');
+
+    const create2 = await agent.post('/api/puzzles/direct-control/slots').send({ program: directControlSolution });
+    expect(create2.status).toBe(201);
+    expect(create2.body.name).toBe('Slot 2');
+
+    const list = await agent.get('/api/puzzles/direct-control/slots');
+    expect(list.status).toBe(200);
+    expect(list.body.slots.length).toBe(2);
+
+    const detail = await agent.get('/api/puzzles/direct-control');
+    expect(detail.body.slots.length).toBe(2);
+
+    const loaded = await agent.get(`/api/puzzles/direct-control/slots/${create.body.id}`);
+    expect(loaded.status).toBe(200);
+    expect(loaded.body.program.rungs.length).toBe(1);
+
+    const renamed = await agent
+      .put(`/api/puzzles/direct-control/slots/${create.body.id}`)
+      .send({ name: 'Renamed' });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.name).toBe('Renamed');
+
+    const del = await agent.delete(`/api/puzzles/direct-control/slots/${create2.body.id}`);
+    expect(del.status).toBe(204);
+
+    const listAfter = await agent.get('/api/puzzles/direct-control/slots');
+    expect(listAfter.body.slots.length).toBe(1);
+  });
+
+  it('submit saves the program into the active slot without creating duplicates', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/auth/register').send({ email: 'autosave@example.com', password: 'password123' });
+
+    await agent.post('/api/puzzles/direct-control/submit').send({ program: directControlSolution }).expect(200);
+    await agent.post('/api/puzzles/direct-control/submit').send({ program: directControlSolution }).expect(200);
+
+    const list = await agent.get('/api/puzzles/direct-control/slots');
+    expect(list.body.slots.length).toBe(1);
+    expect(list.body.slots[0].isSubmitted).toBe(true);
+  });
+
+  it('requires auth for slot routes', async () => {
+    const res = await request(app)
+      .post('/api/puzzles/direct-control/slots')
+      .send({ program: directControlSolution });
     expect(res.status).toBe(401);
   });
 });

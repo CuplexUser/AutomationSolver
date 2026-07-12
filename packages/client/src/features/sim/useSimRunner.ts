@@ -10,6 +10,12 @@ import {
 } from '@automationsolver/shared';
 
 const DT = 60; // scan interval / dt in ms
+const HISTORY_LIMIT = 400; // ~24s of scans at DT=60ms, for the trace strip
+
+export interface TraceHistorySample {
+  tMs: number;
+  bits: Record<string, boolean>;
+}
 
 export interface SimRunner {
   running: boolean;
@@ -17,6 +23,8 @@ export interface SimRunner {
   bits: Record<string, boolean>;
   machine: MachineState;
   evalResults: RungEvalResult[];
+  /** Rolling scan history for the trace strip, oldest first. */
+  history: TraceHistorySample[];
   start: () => void;
   stop: () => void;
   step: () => void;
@@ -30,12 +38,15 @@ export function useSimRunner(program: LadderProgram, spec: PuzzleSpec): SimRunne
   const machineRef = useRef<MachineState>({});
   const derivedRef = useRef<Record<string, boolean>>({});
   const inputsRef = useRef<Record<string, boolean>>(defaultInputs(spec.devices));
+  const historyRef = useRef<TraceHistorySample[]>([]);
+  const tMsRef = useRef(0);
 
   const [running, setRunning] = useState(false);
   const [inputs, setInputsState] = useState<Record<string, boolean>>(() => defaultInputs(spec.devices));
   const [bits, setBits] = useState<Record<string, boolean>>({});
   const [machine, setMachine] = useState<MachineState>({});
   const [evalResults, setEvalResults] = useState<RungEvalResult[]>([]);
+  const [history, setHistory] = useState<TraceHistorySample[]>([]);
 
   const resetInternal = useCallback(
     (nextProgram: LadderProgram) => {
@@ -44,10 +55,13 @@ export function useSimRunner(program: LadderProgram, spec: PuzzleSpec): SimRunne
       machineRef.current = processRef.current.init(spec.devices);
       derivedRef.current = {};
       inputsRef.current = defaultInputs(spec.devices);
+      historyRef.current = [];
+      tMsRef.current = 0;
       setInputsState(inputsRef.current);
       setBits({});
       setMachine(machineRef.current);
       setEvalResults([]);
+      setHistory([]);
     },
     [spec.processId, spec.devices],
   );
@@ -77,9 +91,16 @@ export function useSimRunner(program: LadderProgram, spec: PuzzleSpec): SimRunne
     });
     machineRef.current = res.machine;
     derivedRef.current = res.derivedInputs ?? {};
+    const snapshotBits = engine.snapshot().bits;
+    tMsRef.current += DT;
+    historyRef.current = [...historyRef.current, { tMs: tMsRef.current, bits: snapshotBits }];
+    if (historyRef.current.length > HISTORY_LIMIT) {
+      historyRef.current = historyRef.current.slice(historyRef.current.length - HISTORY_LIMIT);
+    }
     setEvalResults(engine.lastRungResults.slice());
-    setBits(engine.snapshot().bits);
+    setBits(snapshotBits);
     setMachine({ ...machineRef.current });
+    setHistory(historyRef.current);
   }, [spec.devices]);
 
   useEffect(() => {
@@ -99,6 +120,7 @@ export function useSimRunner(program: LadderProgram, spec: PuzzleSpec): SimRunne
     bits,
     machine,
     evalResults,
+    history,
     start: () => setRunning(true),
     stop: () => setRunning(false),
     step: () => stepOnce(),

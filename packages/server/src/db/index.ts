@@ -48,6 +48,19 @@ CREATE TABLE IF NOT EXISTS solutions (
   UNIQUE(user_id, puzzle_slug)
 );
 
+CREATE TABLE IF NOT EXISTS solution_slots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  puzzle_slug TEXT NOT NULL,
+  name TEXT NOT NULL,
+  program_json TEXT NOT NULL,
+  is_submitted INTEGER NOT NULL DEFAULT 0,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_solution_slots_user_puzzle ON solution_slots(user_id, puzzle_slug);
+
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   settings_json TEXT NOT NULL

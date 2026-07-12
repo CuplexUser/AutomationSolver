@@ -9,6 +9,7 @@ export function SettingsPage() {
   const save = useSaveSettings();
   const [displayNameHint] = useState(user?.displayName ?? '');
   const [confirmSubmit, setConfirmSubmit] = useState(true);
+  const [devUnlockAll, setDevUnlockAll] = useState(false);
   const [saved, setSaved] = useState(false);
 
   // Hydrate the form once the saved settings arrive from the server.
@@ -16,6 +17,7 @@ export function SettingsPage() {
     if (data?.settings) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setConfirmSubmit(data.settings.confirmSubmit !== false);
+      setDevUnlockAll(data.settings.devUnlockAll === true);
     }
   }, [data]);
 
@@ -56,12 +58,25 @@ export function SettingsPage() {
             onChange={(e) => setConfirmSubmit(e.target.checked)}
           />
         </label>
+        {import.meta.env.DEV && (
+          <label className="setting-row toggle-row">
+            <div>
+              <strong>Developer mode: unlock all puzzles</strong>
+              <p className="muted sm">Bypasses progression gating. Only works in dev — no effect in production.</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={devUnlockAll}
+              onChange={(e) => setDevUnlockAll(e.target.checked)}
+            />
+          </label>
+        )}
         <button
           className="btn btn-primary"
           disabled={save.isPending}
           onClick={() =>
             save.mutate(
-              { confirmSubmit },
+              { confirmSubmit, devUnlockAll },
               { onSuccess: () => setSaved(true) },
             )
           }

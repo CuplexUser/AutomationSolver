@@ -56,6 +56,11 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   the process model and checks the `expect` assertions. `grade.test.ts` holds a canonical
   solution for **every shipped puzzle** — that test is the guardrail against authoring an
   impossible puzzle.
+  - `traceScenario()` re-runs one named scenario capturing a scan-by-scan `ScenarioTrace`
+    (bits, rung eval results, machine state per scan, plus per-step pass/fail with a
+    `startSample` index). It shares its scan loop with `gradeProgram()` (`simulateScenario()`,
+    capture on/off) so the two can never disagree. Deterministic and side-effect-free like
+    `gradeProgram`, so the **client calls it directly** — no server round trip — to power replay.
 
 ### 4. Puzzle content — `shared/src/puzzle/content/`
 
@@ -83,6 +88,21 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     scales down). The zoom is remembered per puzzle, so the density suits the exercise.
 - **Sim runner + HMI** (`features/sim/`) — run / step / reset; live rung highlighting; an
   interactive operator panel of push buttons, toggles, e-stops, lamps and motors bound to X/Y.
+  - **`SimRunner` is the shared contract** (`{running, inputs, bits, machine, evalResults,
+    history, start/stop/step/reset/setInput}`) that `LadderEditor`, `HmiPanel` and `MachineView`
+    all render from — they don't know or care whether it's backed by a live `useSimRunner` engine
+    or a scripted replay, since `editable = !running` already makes `running: true` a read-only
+    signal for free.
+  - **Replay** (`useReplay.ts`, `ReplayBar.tsx`) — calls `traceScenario()` on the program that was
+    just submitted and exposes the trace through a read-only `SimRunner` adapter, scrubbed by
+    scan index; play/pause, jump-to-first-failure, and a close button that hands control back to
+    the live runner. Wired from a "▶ Replay" button on each failing scenario in the results card.
+  - **Trace strip** (`TraceStrip.tsx`) — a logic-analyzer view (one row per device/register,
+    filled where the bit is high) reading `SimRunner.history`; the live runner keeps a rolling
+    ~24s window, replay supplies the full (already-bounded) scenario trace with a scrubbable
+    cursor synced to the `ReplayBar`.
+  - **Progressive hints** — `PuzzlePlayPage`'s `HintsPanel` reveals `spec.hints` one at a time;
+    the reveal count is remembered per puzzle in `localStorage`.
 - **Machine views** (`features/sim/MachineView.tsx`) — puzzle-specific scenes chosen by
   `processId`. The drill station gets a 3D scene, the elevator a 2D shaft view; puzzles without a
   bespoke scene render none. The view is a diagnostic instrument, not decoration: it never
@@ -102,14 +122,30 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   `localStorage`, arrow keys when the divider is focused, double-click to collapse) and
   collapsible from the toolbar, and each column scrolls independently so a long program never
   pushes the palette off screen.
+- **Save slots** (`features/slots/`) — `useActiveSlot` resolves which of a puzzle's several named
+  save slots is "active" (remembered per user in `user_settings.activeSlot`, falling back to the
+  most-recently-updated slot) and loads its program; `SlotsPanel` lists/creates/renames/deletes
+  slots. The editor waits for slot resolution before rendering interactively, so a fast typist
+  can't have their first edits clobbered by the async slot load.
 - **Server state** via TanStack Query; auth context wraps the app.
 
 ### 6. Server — `packages/server/src/`
 - **Auth** (`auth/`) — Passport local + Google + GitHub OAuth, `node:crypto` scrypt hashing,
   httpOnly session cookies backed by a custom `SqliteStore`.
-- **Routes** (`routes/`) — puzzle list/detail, draft save, submit, progress, settings.
+- **Routes** (`routes/`) — puzzle list/detail, save slots, submit, progress, settings.
 - **Submit flow** (`routes/puzzles.ts`) is two-phase: `validateProgram()` then `gradeProgram()`,
   both from `shared`. The server is the source of truth for scoring.
+- **Puzzle-map locking** (`routes/puzzles.ts`) — `lockInfo()` walks `PUZZLES` in order; a puzzle
+  is locked unless the previous one is solved (or the puzzle itself already is, so a historical
+  solve is never un-solved by a neighbor). Enforced on `GET /puzzles/:slug` and
+  `POST /puzzles/:slug/submit` (403), not just hidden in the UI — the puzzle list just annotates
+  each item with `locked`/`requiresTitle` for display.
+- **Save slots** — `solution_slots` (`db/index.ts`) replaces the old one-draft-per-puzzle
+  `solutions` table (kept, unused, only so a returning player's old draft lazily migrates into
+  "Slot 1" the first time `listSlots()` is called). `POST/GET/PUT/DELETE
+  /puzzles/:slug/slots[/:id]` are full CRUD; submitting also saves into whichever slot is
+  "active" per `user_settings.activeSlot`, creating a first slot if none exists yet, so a
+  submission never loses work.
 - **Persistence** — Node's builtin `node:sqlite`. Puzzles are referenced by `slug` only;
   content is never duplicated into the database.
 
