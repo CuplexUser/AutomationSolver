@@ -1,8 +1,9 @@
-import { Suspense, useMemo, useRef } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { OrbitControls, useGLTF } from '@react-three/drei';
+import { useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { MachineState } from '@automationsolver/shared';
+import { MachineCanvas } from './MachineCanvas';
 
 const MODEL_URL = '/models/drill-station.glb';
 
@@ -197,26 +198,15 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
 
 export function DrillStation3D({ machine, height = 300 }: { machine: MachineState; height?: number }) {
   return (
-    <div className="machine3d" style={{ height }}>
-      <Canvas camera={{ position: [8, 5.5, 9], fov: 35 }} shadows={false}>
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[6, 10, 4]} intensity={1.6} />
-        <directionalLight position={[-6, 4, -4]} intensity={0.4} />
-        <Suspense fallback={null}>
-          <DrillStationScene machine={machine} />
-        </Suspense>
-        <OrbitControls
-          makeDefault
-          enablePan={false}
-          minPolarAngle={0.75}
-          maxPolarAngle={0.75}
-          minDistance={7}
-          maxDistance={22}
-          target={[0, 2, 0]}
-        />
-      </Canvas>
-      <span className="machine3d-hint">drag to rotate · scroll to zoom</span>
-    </div>
+    <MachineCanvas
+      height={height}
+      cameraPosition={[8, 5.5, 9]}
+      target={[0, 2, 0]}
+      minDistance={7}
+      maxDistance={22}
+    >
+      <DrillStationScene machine={machine} />
+    </MachineCanvas>
   );
 }
 
