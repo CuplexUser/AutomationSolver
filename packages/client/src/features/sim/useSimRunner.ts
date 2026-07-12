@@ -32,7 +32,7 @@ export function useSimRunner(program: LadderProgram, spec: PuzzleSpec): SimRunne
   const inputsRef = useRef<Record<string, boolean>>(defaultInputs(spec.devices));
 
   const [running, setRunning] = useState(false);
-  const [inputs, setInputsState] = useState<Record<string, boolean>>(inputsRef.current);
+  const [inputs, setInputsState] = useState<Record<string, boolean>>(() => defaultInputs(spec.devices));
   const [bits, setBits] = useState<Record<string, boolean>>({});
   const [machine, setMachine] = useState<MachineState>({});
   const [evalResults, setEvalResults] = useState<RungEvalResult[]>([]);
@@ -53,7 +53,10 @@ export function useSimRunner(program: LadderProgram, spec: PuzzleSpec): SimRunne
   );
 
   // Rebuild whenever the program or puzzle changes (editing happens while stopped).
+  // The engine is an external system; this effect resyncs React's mirror of it, which
+  // is what the setState calls are for.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRunning(false);
     resetInternal(program);
   }, [program, resetInternal]);

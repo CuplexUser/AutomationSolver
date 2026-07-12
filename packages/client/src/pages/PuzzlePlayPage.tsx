@@ -52,8 +52,8 @@ function PlayInner({ spec, program, user, saveDraft, submit, dirty, markClean }:
   const runner = useSimRunner(program, spec);
   const result = submit.data;
 
-  const brief = usePersistedWidth('play.briefW', 330, 240, 560);
-  const hmi = usePersistedWidth('play.hmiW', 360, 280, 640);
+  const brief = usePersistedWidth('play.briefW', 330, 200, 720);
+  const hmi = usePersistedWidth('play.hmiW', 360, 240, 860);
   const [briefOpen, setBriefOpen] = useState(true);
   const [hmiOpen, setHmiOpen] = useState(true);
 
@@ -68,7 +68,12 @@ function PlayInner({ spec, program, user, saveDraft, submit, dirty, markClean }:
             pending={submit.isPending}
             user={!!user}
           />
-          <ResizeHandle onResize={brief.nudge} dir={1} />
+          <ResizeHandle
+            onResize={brief.nudge}
+            dir={1}
+            onCollapse={() => setBriefOpen(false)}
+            label="Resize the work order panel"
+          />
         </>
       )}
 
@@ -114,6 +119,7 @@ function PlayInner({ spec, program, user, saveDraft, submit, dirty, markClean }:
         </div>
 
         <LadderEditor
+          puzzleSlug={spec.slug}
           allowedInstructions={spec.allowedInstructions}
           devices={spec.devices}
           registers={spec.registers}
@@ -122,11 +128,18 @@ function PlayInner({ spec, program, user, saveDraft, submit, dirty, markClean }:
         />
       </main>
 
-      {hmiOpen && <ResizeHandle onResize={hmi.nudge} dir={-1} />}
       {hmiOpen && (
-        <aside className="play-hmi" style={{ width: hmi.width }}>
-          <HmiPanel spec={spec} runner={runner} />
-        </aside>
+        <>
+          <ResizeHandle
+            onResize={hmi.nudge}
+            dir={-1}
+            onCollapse={() => setHmiOpen(false)}
+            label="Resize the operator panel"
+          />
+          <aside className="play-hmi" style={{ width: hmi.width }}>
+            <HmiPanel spec={spec} runner={runner} />
+          </aside>
+        </>
       )}
     </div>
   );

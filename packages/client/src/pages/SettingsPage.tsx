@@ -11,8 +11,10 @@ export function SettingsPage() {
   const [confirmSubmit, setConfirmSubmit] = useState(true);
   const [saved, setSaved] = useState(false);
 
+  // Hydrate the form once the saved settings arrive from the server.
   useEffect(() => {
     if (data?.settings) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setConfirmSubmit(data.settings.confirmSubmit !== false);
     }
   }, [data]);

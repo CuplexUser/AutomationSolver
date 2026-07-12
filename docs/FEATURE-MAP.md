@@ -72,18 +72,35 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
-  vertical-link toggles, add/remove rungs, rows and columns. Supports **in-place address
-  editing**: select a placed element and retype its address or preset. Zoom control (60–140%)
-  for large programs. Editor state in Zustand.
+  vertical-link toggles, add/remove rungs, rows and columns. Editor state in Zustand.
+  - **In-place editing** — select a placed element and retype its address or preset.
+  - **Keyboard-first** — arrows move the selection (wrapping across rungs), a single letter
+    places an instruction (`C` NO, `X` NC, `P`/`N` edge, `O`/`S`/`R` coils, `T`/`K`, `W` wire),
+    `B` toggles a branch, `A` adds a rung, `Shift`+`→`/`↓` grows the rung, `Del` clears.
+    The palette shows each key; the full list is under "Shortcuts".
+  - **Density and zoom** — compact 72×52 cells, plus a 50–200% zoom (`Ctrl` +/−/0, or **Fit**,
+    which sizes the program to the window — a two-rung tutorial scales up, an eight-rung sequence
+    scales down). The zoom is remembered per puzzle, so the density suits the exercise.
 - **Sim runner + HMI** (`features/sim/`) — run / step / reset; live rung highlighting; an
   interactive operator panel of push buttons, toggles, e-stops, lamps and motors bound to X/Y.
 - **Machine views** (`features/sim/MachineView.tsx`) — puzzle-specific scenes chosen by
-  `processId`. `Machine3D.tsx` is a dependency-free SVG 3D renderer (painter's-algorithm depth
-  sort, drag-to-rotate, idle orbit while running) used by the drill station; the elevator gets a
-  2D shaft view. Puzzles without a bespoke scene render none.
+  `processId`. The drill station gets a 3D scene, the elevator a 2D shaft view; puzzles without a
+  bespoke scene render none. The view is a diagnostic instrument, not decoration: it never
+  animates on its own, and it carries a readout of the machine's actual state (clamp %, feed %,
+  spindle).
+  - `Machine3D.tsx` is a dependency-free SVG renderer for axis-aligned boxes: back-face culling
+    plus an **exact painter's ordering** — for two boxes separated along any world axis, the plane
+    between them is a separating plane and the box on the camera's side can never be occluded.
+    (Ordering by centroid depth instead is what made parts vanish as the machine rotated: the flat
+    machine bed's centroid can be nearer than a part standing on it but behind it in z.) Drag to
+    rotate, scroll to zoom.
+    - Each face's geometry **and** its outward normal are derived from an `(axis, side)` pair, so
+      they cannot disagree. Hand-written corner lists and normals can, and when they did, the
+      culler hid every +z/−z face until the machine was rotated 180°.
 - **Resizable workspace** (`features/layout/Resizable.tsx`) — the play view is a full-height
-  three-column workbench; the brief and operator panels are drag-resizable (widths persisted to
-  `localStorage`) and collapsible, and each column scrolls independently so a long program never
+  three-column workbench. The brief and operator panels are drag-resizable (widths persisted to
+  `localStorage`, arrow keys when the divider is focused, double-click to collapse) and
+  collapsible from the toolbar, and each column scrolls independently so a long program never
   pushes the palette off screen.
 - **Server state** via TanStack Query; auth context wraps the app.
 
@@ -99,4 +116,6 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 ### 7. Constraints that shape everything
 - **Zero native dependencies.** `npm install` must work with no C++ toolchain. No
   better-sqlite3, argon2, bcrypt, sqlite3. See `CLAUDE.md` for the established substitutions.
-- **Determinism.** Nothing in `shared` may read the clock, `Math.random()`, or the DOM.
+- **Determinism.** Nothing in `shared` may read the clock, `Math.random()`, or the DOM. This is
+  enforced, not just documented: `npm run lint` (ESLint 10, flat config in `eslint.config.js`)
+  bans those globals inside `packages/shared`.

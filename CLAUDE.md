@@ -18,6 +18,7 @@ npm run dev          # server on :4000 + client on :5173 (Vite proxies /api → 
 npm test             # shared engine (vitest) + server API (supertest)
 npm run test:shared  # just the simulation-engine unit tests
 npm run typecheck    # tsc --noEmit across all packages
+npm run lint         # ESLint 10 (flat config, eslint.config.js) across all packages
 npm run build        # production client build
 npm run seed         # seed the SQLite database
 ```
@@ -38,6 +39,13 @@ npx vitest run -t "rising edge" -w @automationsolver/shared             # one te
 - **Database** — Node's builtin `node:sqlite` (`DatabaseSync`), loaded via `createRequire(import.meta.url)('node:sqlite')` in `packages/server/src/db/index.ts`. Do **not** convert this to a static `import` — Vite/vitest don't recognize the builtin and fail to bundle it.
 - **Password hashing** — `node:crypto` scrypt (`packages/server/src/auth/password.ts`), format `scrypt$salt$hash`.
 - **Sessions** — a custom `SqliteStore` on `node:sqlite`, not connect-sqlite3.
+
+## Lint
+
+ESLint 10 flat config at the repo root (`eslint.config.js`), covering all three workspaces. Two things it enforces beyond the usual:
+
+- **`packages/shared` must stay deterministic** — `no-restricted-globals`/`no-restricted-properties` ban `Date`, `performance`, `Math.random`, `window` and `document` there. The engine advances only by an explicit `dt`; if it could read the clock, client and server would stop agreeing.
+- **`react-hooks` rules are on `recommended-latest`**, which includes the newer `set-state-in-effect` and `refs` rules. Where an effect genuinely syncs React with an external system (the sim engine, the session bootstrap), suppress the single reporting line with a reason rather than turning the rule off.
 
 ## Architecture
 

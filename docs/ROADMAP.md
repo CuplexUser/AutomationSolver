@@ -27,12 +27,14 @@ authored.
 - In-place address/preset editing of already-placed elements.
 - Working-register (M/T/C) IO lists on puzzles that need them, not buried in the briefing prose.
 - Full-height, resizable, collapsible three-column workspace with independently scrolling columns.
-- Ladder zoom (60–140%).
+- Keyboard-first editing (arrows to move, a letter per instruction) and compact cells + zoom.
 - Two hard puzzles with real machine dynamics (`drill-station`, `elevator-auto-return`), a
   drag-to-rotate 3D machine view for the drill, and a 2D shaft view for the elevator.
+- ESLint 10 across the monorepo, including rules that enforce the engine's determinism.
 - Favicon and app identity.
 
-**Done means:** an 8-rung program with branches is comfortable to build and read on a laptop screen.
+**Done means:** an 8-rung program with branches is comfortable to build and read on a laptop
+screen, without reaching for the mouse.
 
 ---
 

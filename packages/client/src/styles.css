@@ -577,10 +577,10 @@
   min-height: 0;
 }
 .palette {
-  padding: 14px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
   flex: 0 0 auto;
 }
 .palette-row {
@@ -607,20 +607,81 @@
 }
 .palette-instr {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
 }
 .instr-btn {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 10px;
-  min-width: 64px;
+  gap: 2px;
+  padding: 5px 8px 4px;
+  min-width: 58px;
   background: linear-gradient(180deg, var(--rail-2), var(--rail));
   border: 1px solid var(--edge);
   border-radius: var(--radius);
   color: var(--ink-dim);
+}
+.instr-key {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  padding: 0 3px;
+  line-height: 1.3;
+}
+.instr-btn:hover:not(:disabled) .instr-key {
+  color: var(--live);
+  border-color: var(--live-dim);
+}
+.palette-fold {
+  font-size: 10px;
+  padding: 2px 5px;
+}
+.palette-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.shortcuts {
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+.shortcuts summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+.shortcuts summary:hover {
+  color: var(--live);
+}
+.shortcuts dl {
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.shortcuts dl > div {
+  display: flex;
+  gap: 10px;
+}
+.shortcuts dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+  min-width: 120px;
+  text-align: right;
+}
+.shortcuts dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 .instr-btn:hover:not(:disabled) {
   border-color: var(--live);
@@ -635,12 +696,12 @@
 }
 .instr-glyph {
   font-family: var(--font-mono);
-  font-size: 16px;
+  font-size: 14px;
   color: var(--ink);
 }
 .instr-label {
   font-family: var(--font-display);
-  font-size: 10px;
+  font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -666,16 +727,16 @@
   text-align: center;
 }
 .ladder-scroll {
-  padding: 16px;
+  padding: 12px;
   overflow: auto;
   flex: 1 1 auto;
-  min-height: 200px;
+  min-height: 160px;
 }
 .ladder-canvas {
   transform-origin: top left;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
   align-items: flex-start;
 }
 .rung {
@@ -685,13 +746,13 @@
 .rung-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 22px;
+  gap: 10px;
+  height: 15px;
 }
 .rung-num {
   font-family: var(--font-mono);
   color: var(--muted);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
 }
 .rung-tools {
@@ -755,12 +816,12 @@
 }
 .cell-addr {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 700;
 }
 .cell-preset {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 9px;
   fill: var(--muted);
 }
 .vlink {
@@ -842,7 +903,50 @@
   opacity: 0.6;
   pointer-events: none;
 }
-.machine3d.running .machine3d-hint {
+.machine3d-zoom {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.machine3d:hover .machine3d-zoom,
+.machine3d:focus-within .machine3d-zoom {
+  opacity: 1;
+}
+.mv-readout {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mv-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--inset);
+}
+.mv-stat-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mv-stat-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.mv-stat.on {
+  border-color: color-mix(in srgb, var(--run) 55%, var(--edge));
+}
+.mv-stat.on .mv-stat-value {
   color: var(--run);
 }
 .hmi-head {

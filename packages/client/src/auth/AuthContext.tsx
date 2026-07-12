@@ -28,7 +28,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Bootstrap the session from the server once on mount — the setState happens after
+  // the request resolves, not synchronously during the effect.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, []);
 
