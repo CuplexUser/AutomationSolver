@@ -102,27 +102,43 @@ function shadeColor(hex: string, factor: number): string {
  *
  * Sorting by centroid depth is wrong for a scene with one big flat box (the machine
  * bed): the bed's centroid can be nearer than a small part standing on it but behind it
- * in z, so the bed paints over the part. Instead, if two boxes are separated along any
- * world axis, the plane between them is a separating plane and the box on the camera's
- * side of it can never be occluded by the other. That test is exact. Boxes that overlap
- * on every axis (they interpenetrate) fall back to centroid depth.
+ * in z, so the bed paints over the part. Instead, each box's extent projects onto the
+ * view direction as an interval (its support values, i.e. the min/max of dot(corner, g)
+ * over the 8 corners) — if two boxes' depth intervals don't overlap, one is provably
+ * entirely nearer than the other from every point, so painting far-then-near is exact
+ * regardless of screen-space overlap. (A single-world-axis separation test is *not*
+ * sufficient here: two boxes can be disjoint along one axis yet still have overlapping
+ * projected depth once their extents along the other axes are folded in, which flips
+ * the correct order at some yaw angles and reads as a box vanishing behind another.)
+ * Boxes whose depth intervals do overlap (they interpenetrate along the view direction)
+ * fall back to centroid depth.
  */
 function order(boxes: Box3[], yaw: number): number[] {
   const g = viewDir(yaw);
   const centerDepth = (b: Box3) =>
     (b.x + b.w / 2) * g[0] + (b.y + b.h / 2) * g[1] + (b.z + b.d / 2) * g[2];
 
-  /** < 0 when a must be painted before b (a is behind b). */
-  const cmp = (a: Box3, b: Box3): number => {
-    const aLo = lo(a);
-    const aHi = hi(a);
-    const bLo = lo(b);
-    const bHi = hi(b);
+  const depthRange = (b: Box3): [number, number] => {
+    const l = lo(b);
+    const h = hi(b);
+    let min = 0;
+    let max = 0;
     for (let ax = 0; ax < 3; ax++) {
-      if (g[ax] === 0) continue;
-      if (aHi[ax] <= bLo[ax]) return g[ax] > 0 ? -1 : 1;
-      if (bHi[ax] <= aLo[ax]) return g[ax] > 0 ? 1 : -1;
+      const at0 = l[ax] * g[ax];
+      const at1 = h[ax] * g[ax];
+      min += Math.min(at0, at1);
+      max += Math.max(at0, at1);
     }
+    return [min, max];
+  };
+  const ranges = boxes.map(depthRange);
+
+  /** < 0 when a must be painted before b (a is behind b). */
+  const cmp = (a: Box3, b: Box3, ai: number, bi: number): number => {
+    const [aMin, aMax] = ranges[ai];
+    const [bMin, bMax] = ranges[bi];
+    if (aMax <= bMin) return -1;
+    if (bMax <= aMin) return 1;
     return centerDepth(a) - centerDepth(b);
   };
 
@@ -132,7 +148,7 @@ function order(boxes: Box3[], yaw: number): number[] {
   for (let i = 1; i < idx.length; i++) {
     const cur = idx[i];
     let j = i - 1;
-    while (j >= 0 && cmp(boxes[idx[j]], boxes[cur]) > 0) {
+    while (j >= 0 && cmp(boxes[idx[j]], boxes[cur], idx[j], cur) > 0) {
       idx[j + 1] = idx[j];
       j--;
     }
