@@ -24,6 +24,7 @@ export function MachineView({ spec, runner }: { spec: PuzzleSpec; runner: SimRun
           <Readout label="Clamp" value={pct(numOf(m.clamp))} on={numOf(m.clamp) >= 1} />
           <Readout label="Feed" value={pct(numOf(m.drill))} on={numOf(m.drill) >= 1} />
           <Readout label="Spindle" value={boolOf(m.spinning) ? 'RUN' : 'OFF'} on={boolOf(m.spinning)} />
+          <Readout label="Eject" value={pct(numOf(m.push))} on={numOf(m.push) >= 1} />
         </div>
       </div>
     );
@@ -54,6 +55,7 @@ function Readout({ label, value, on }: { label: string; value: string; on: boole
 // --- Drill station ----------------------------------------------------------
 
 function drillTag(m: MachineState): string {
+  if (numOf(m.push) > 0 && numOf(m.push) < 1) return '⏵ ejecting';
   if (boolOf(m.done)) return '✔ cycle done';
   if (boolOf(m.spinning)) return '⚙ drilling';
   if (numOf(m.clamp) > 0) return 'clamping';

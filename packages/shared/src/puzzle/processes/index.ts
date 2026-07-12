@@ -61,36 +61,44 @@ const conveyor: ProcessModel = {
 const num = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : fallback);
 
 /**
- * Drill station — a sequential machine. Outputs drive a clamp and a drill feed;
- * the process integrates their travel and reports back position sensors:
+ * Drill station — a sequential machine. Outputs drive a clamp, a drill feed and
+ * an eject pusher; the process integrates their travel and reports back position
+ * sensors:
  *   Y0 clamp → X2 "Clamped"     (clamp fully closed)
  *   Y1 drill → X3 "At Bottom"   (drill fully advanced)
- * Machine state (clamp/drill 0..1, spinning, warning, done) drives the 3D view.
+ *   Y4 eject → X4 "Ejected"     (part pushed clear onto the roller band)
+ * Machine state (clamp/drill/push 0..1, spinning, warning, done) drives the 3D view.
  */
 const drill: ProcessModel = {
   id: 'drill',
-  init: () => ({ clamp: 0, drill: 0, spinning: false, warning: false, done: false }),
+  init: () => ({ clamp: 0, drill: 0, push: 0, spinning: false, warning: false, done: false }),
   step: ({ outputs, machine, dtMs }) => {
     const clampMs = 400;
     const releaseMs = 300;
     const drillMs = 800;
     const retractMs = 400;
+    const pushMs = 500;
+    const pushRetractMs = 300;
     const clampCmd = outputs['Y0'] === true;
     const drillCmd = outputs['Y1'] === true;
+    const pushCmd = outputs['Y4'] === true;
     let clamp = num(machine.clamp);
     let drill = num(machine.drill);
+    let push = num(machine.push);
     clamp = clampCmd ? Math.min(1, clamp + dtMs / clampMs) : Math.max(0, clamp - dtMs / releaseMs);
     // The drill can only advance once the part is clamped.
     drill = drillCmd ? Math.min(1, drill + dtMs / drillMs) : Math.max(0, drill - dtMs / retractMs);
+    push = pushCmd ? Math.min(1, push + dtMs / pushMs) : Math.max(0, push - dtMs / pushRetractMs);
     return {
       machine: {
         clamp,
         drill,
+        push,
         spinning: drillCmd,
         warning: outputs['Y2'] === true,
         done: outputs['Y3'] === true,
       },
-      derivedInputs: { X2: clamp >= 1, X3: drill >= 1 },
+      derivedInputs: { X2: clamp >= 1, X3: drill >= 1, X4: push >= 1 },
     };
   },
 };

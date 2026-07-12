@@ -118,6 +118,11 @@ const solutions: Record<string, LadderProgram> = {
       R('r4', 1, 2, { '0,0': no('Y1'), '0,1': out('Y2') }), // beacon while drilling
       R('r5', 1, 2, { '0,0': no('X3'), '0,1': set('Y3') }), // latch done at bottom
       R('r6', 1, 2, { '0,0': no('X0'), '0,1': rst('Y3') }), // clear on next start
+      // Triggering off X3 (momentary) rather than Y3 (latched) avoids a SET/RESET
+      // fight: Y3 stays true until the next start, so it would keep re-SETting Y4
+      // every scan even while r8 is trying to RESET it once X4 senses ejected.
+      R('r7', 1, 2, { '0,0': no('X3'), '0,1': set('Y4') }), // start ejecting once bottomed out
+      R('r8', 1, 2, { '0,0': no('X4'), '0,1': rst('Y4') }), // stop once clear of the platform
     ],
   },
   'elevator-auto-return': {
