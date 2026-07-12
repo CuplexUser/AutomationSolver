@@ -1,10 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import type { LadderProgram, PuzzleSpec } from '@automationsolver/shared';
 import { usePuzzle, useSaveDraft, useSubmit } from '../api/queries';
 import { useAuth } from '../auth/AuthContext';
 import { useEditor } from '../features/ladder/editorStore';
 import { LadderEditor } from '../features/ladder/LadderEditor';
+import { ResizeHandle, usePersistedWidth } from '../features/layout/Resizable';
 import { HmiPanel } from '../features/sim/HmiPanel';
 import { useSimRunner } from '../features/sim/useSimRunner';
 
@@ -51,69 +52,45 @@ function PlayInner({ spec, program, user, saveDraft, submit, dirty, markClean }:
   const runner = useSimRunner(program, spec);
   const result = submit.data;
 
+  const brief = usePersistedWidth('play.briefW', 330, 240, 560);
+  const hmi = usePersistedWidth('play.hmiW', 360, 280, 640);
+  const [briefOpen, setBriefOpen] = useState(true);
+  const [hmiOpen, setHmiOpen] = useState(true);
+
   return (
     <div className="play">
-      <aside className="play-brief">
-        <div className="brief-card panel">
-          <span className="eyebrow">Work Order · {spec.difficulty}</span>
-          <h2>{spec.title}</h2>
-          <pre className="briefing">{spec.briefing}</pre>
-          {spec.hints && spec.hints.length > 0 && (
-            <details className="hints">
-              <summary>Hints</summary>
-              <ul>
-                {spec.hints.map((h, i) => (
-                  <li key={i}>{h}</li>
-                ))}
-              </ul>
-            </details>
-          )}
-        </div>
-
-        <div className="io-card panel">
-          <span className="eyebrow">Terminal Assignment</span>
-          <table className="io-table">
-            <tbody>
-              {spec.devices.map((d) => (
-                <tr key={d.address}>
-                  <td>
-                    <span className={`dev-chip dev-${d.address[0]}`}>{d.address}</span>
-                  </td>
-                  <td className="io-name">{d.label}</td>
-                  <td className="io-kind">{d.io === 'input' ? 'IN' : 'OUT'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          {spec.registers && spec.registers.length > 0 && (
-            <>
-              <span className="eyebrow io-subhead">Working Registers</span>
-              <table className="io-table">
-                <tbody>
-                  {spec.registers.map((r) => (
-                    <tr key={r.address}>
-                      <td>
-                        <span className={`dev-chip dev-${r.address[0]}`}>{r.address}</span>
-                      </td>
-                      <td className="io-name">
-                        {r.label}
-                        {r.note && <span className="io-note"> · {r.note}</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </>
-          )}
-        </div>
-
-        <ResultsCard result={result} pending={submit.isPending} user={!!user} />
-      </aside>
+      {briefOpen && (
+        <>
+          <BriefColumn
+            spec={spec}
+            width={brief.width}
+            result={result}
+            pending={submit.isPending}
+            user={!!user}
+          />
+          <ResizeHandle onResize={brief.nudge} dir={1} />
+        </>
+      )}
 
       <main className="play-main">
         <div className="play-actions">
           <div className="pa-left">
+            <button
+              className="pane-toggle"
+              onClick={() => setBriefOpen((v) => !v)}
+              aria-pressed={briefOpen}
+              title={briefOpen ? 'Hide the work order' : 'Show the work order'}
+            >
+              {briefOpen ? '◧' : '▤'} Brief
+            </button>
+            <button
+              className="pane-toggle"
+              onClick={() => setHmiOpen((v) => !v)}
+              aria-pressed={hmiOpen}
+              title={hmiOpen ? 'Hide the operator panel' : 'Show the operator panel'}
+            >
+              {hmiOpen ? '◨' : '▤'} Panel
+            </button>
             {dirty ? <span className="dirty-dot">● unsaved</span> : <span className="muted sm">saved</span>}
           </div>
           <div className="pa-right">
@@ -145,10 +122,87 @@ function PlayInner({ spec, program, user, saveDraft, submit, dirty, markClean }:
         />
       </main>
 
-      <aside className="play-hmi">
-        <HmiPanel spec={spec} runner={runner} />
-      </aside>
+      {hmiOpen && <ResizeHandle onResize={hmi.nudge} dir={-1} />}
+      {hmiOpen && (
+        <aside className="play-hmi" style={{ width: hmi.width }}>
+          <HmiPanel spec={spec} runner={runner} />
+        </aside>
+      )}
     </div>
+  );
+}
+
+function BriefColumn({
+  spec,
+  width,
+  result,
+  pending,
+  user,
+}: {
+  spec: PuzzleSpec;
+  width: number;
+  result: ReturnType<typeof useSubmit>['data'];
+  pending: boolean;
+  user: boolean;
+}) {
+  return (
+    <aside className="play-brief" style={{ width }}>
+      <div className="brief-card panel">
+        <span className="eyebrow">Work Order · {spec.difficulty}</span>
+        <h2>{spec.title}</h2>
+        <pre className="briefing">{spec.briefing}</pre>
+        {spec.hints && spec.hints.length > 0 && (
+          <details className="hints">
+            <summary>Hints</summary>
+            <ul>
+              {spec.hints.map((h, i) => (
+                <li key={i}>{h}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </div>
+
+      <div className="io-card panel">
+        <span className="eyebrow">Terminal Assignment</span>
+        <table className="io-table">
+          <tbody>
+            {spec.devices.map((d) => (
+              <tr key={d.address}>
+                <td>
+                  <span className={`dev-chip dev-${d.address[0]}`}>{d.address}</span>
+                </td>
+                <td className="io-name">{d.label}</td>
+                <td className="io-kind">{d.io === 'input' ? 'IN' : 'OUT'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {spec.registers && spec.registers.length > 0 && (
+          <>
+            <span className="eyebrow io-subhead">Working Registers</span>
+            <table className="io-table">
+              <tbody>
+                {spec.registers.map((r) => (
+                  <tr key={r.address}>
+                    <td>
+                      <span className={`dev-chip dev-${r.address[0]}`}>{r.address}</span>
+                    </td>
+                    <td className="io-name">
+                      {r.label}
+                      {r.note && <span className="io-note"> · {r.note}</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+      </div>
+
+      <ResultsCard result={result} pending={pending} user={user} />
+    </aside>
   );
 }
 

@@ -5,6 +5,8 @@ import { eStop } from './03-estop.js';
 import { delayedStart } from './04-delayed-start.js';
 import { batchCounter } from './05-batch-counter.js';
 import { conveyorStop } from './06-conveyor-stop.js';
+import { drillStation } from './07-drill-station.js';
+import { elevatorAutoReturn } from './08-elevator.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -13,6 +15,8 @@ export const PUZZLES: PuzzleSpec[] = [
   delayedStart,
   batchCounter,
   conveyorStop,
+  drillStation,
+  elevatorAutoReturn,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

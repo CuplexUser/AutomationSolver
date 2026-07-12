@@ -11,6 +11,7 @@ const out = (d: string): LadderElement => ({ type: 'coil-out', device: d });
 const timer = (d: string, k: number): LadderElement => ({ type: 'timer', device: d, preset: k });
 const counter = (d: string, k: number): LadderElement => ({ type: 'counter', device: d, preset: k });
 const rst = (d: string): LadderElement => ({ type: 'coil-reset', device: d });
+const set = (d: string): LadderElement => ({ type: 'coil-set', device: d });
 
 function R(
   id: string,
@@ -94,6 +95,50 @@ const solutions: Record<string, LadderProgram> = {
         },
         [{ row: 0, col: 1 }],
       ),
+    ],
+  },
+  'drill-station': {
+    rungs: [
+      // Run latch: (X0 OR M0) AND X1(healthy) AND NOT X3(bottom) -> M0
+      R(
+        'r1',
+        2,
+        4,
+        {
+          '0,0': no('X0'),
+          '1,0': no('M0'),
+          '0,1': no('X1'),
+          '0,2': nc('X3'),
+          '0,3': out('M0'),
+        },
+        [{ row: 0, col: 1 }],
+      ),
+      R('r2', 1, 2, { '0,0': no('M0'), '0,1': out('Y0') }), // clamp whole cycle
+      R('r3', 1, 3, { '0,0': no('M0'), '0,1': no('X2'), '0,2': out('Y1') }), // drill once clamped
+      R('r4', 1, 2, { '0,0': no('Y1'), '0,1': out('Y2') }), // beacon while drilling
+      R('r5', 1, 2, { '0,0': no('X3'), '0,1': set('Y3') }), // latch done at bottom
+      R('r6', 1, 2, { '0,0': no('X0'), '0,1': rst('Y3') }), // clear on next start
+    ],
+  },
+  'elevator-auto-return': {
+    rungs: [
+      R('r1', 1, 3, { '0,0': no('X0'), '0,1': nc('X5'), '0,2': out('Y0') }), // up while commanded, stop at top
+      R('r2', 1, 3, { '0,0': nc('X3'), '0,1': nc('X0'), '0,2': timer('T0', 100) }), // idle timer
+      // Descent latch: (T0 OR M0) AND NOT X3 AND NOT X0 -> M0
+      R(
+        'r3',
+        2,
+        4,
+        {
+          '0,0': no('T0'),
+          '1,0': no('M0'),
+          '0,1': nc('X3'),
+          '0,2': nc('X0'),
+          '0,3': out('M0'),
+        },
+        [{ row: 0, col: 1 }],
+      ),
+      R('r4', 1, 2, { '0,0': no('M0'), '0,1': out('Y1') }), // drive down
     ],
   },
 };

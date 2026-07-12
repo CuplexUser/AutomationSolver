@@ -58,9 +58,82 @@ const conveyor: ProcessModel = {
   },
 };
 
+const num = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : fallback);
+
+/**
+ * Drill station — a sequential machine. Outputs drive a clamp and a drill feed;
+ * the process integrates their travel and reports back position sensors:
+ *   Y0 clamp → X2 "Clamped"     (clamp fully closed)
+ *   Y1 drill → X3 "At Bottom"   (drill fully advanced)
+ * Machine state (clamp/drill 0..1, spinning, warning, done) drives the 3D view.
+ */
+const drill: ProcessModel = {
+  id: 'drill',
+  init: () => ({ clamp: 0, drill: 0, spinning: false, warning: false, done: false }),
+  step: ({ outputs, machine, dtMs }) => {
+    const clampMs = 400;
+    const releaseMs = 300;
+    const drillMs = 800;
+    const retractMs = 400;
+    const clampCmd = outputs['Y0'] === true;
+    const drillCmd = outputs['Y1'] === true;
+    let clamp = num(machine.clamp);
+    let drill = num(machine.drill);
+    clamp = clampCmd ? Math.min(1, clamp + dtMs / clampMs) : Math.max(0, clamp - dtMs / releaseMs);
+    // The drill can only advance once the part is clamped.
+    drill = drillCmd ? Math.min(1, drill + dtMs / drillMs) : Math.max(0, drill - dtMs / retractMs);
+    return {
+      machine: {
+        clamp,
+        drill,
+        spinning: drillCmd,
+        warning: outputs['Y2'] === true,
+        done: outputs['Y3'] === true,
+      },
+      derivedInputs: { X2: clamp >= 1, X3: drill >= 1 },
+    };
+  },
+};
+
+/**
+ * Passenger elevator over 3 floors. Y0 drives the car up, Y1 down; the process
+ * integrates a continuous car position (1..3) and reports floor sensors:
+ *   X3 "At Floor 1", X4 "At Floor 2", X5 "At Floor 3".
+ * Machine state (pos, dir) drives the shaft animation.
+ */
+const elevator: ProcessModel = {
+  id: 'elevator',
+  init: () => ({ pos: 1, dir: 0 }),
+  step: ({ outputs, machine, dtMs }) => {
+    const floorMs = 1000; // travel time per floor
+    let pos = num(machine.pos, 1);
+    const up = outputs['Y0'] === true;
+    const down = outputs['Y1'] === true;
+    let dir = 0;
+    if (up && !down) {
+      pos = Math.min(3, pos + dtMs / floorMs);
+      dir = 1;
+    } else if (down && !up) {
+      pos = Math.max(1, pos - dtMs / floorMs);
+      dir = -1;
+    }
+    const eps = 0.03;
+    return {
+      machine: { pos, dir },
+      derivedInputs: {
+        X3: Math.abs(pos - 1) < eps,
+        X4: Math.abs(pos - 2) < eps,
+        X5: Math.abs(pos - 3) < eps,
+      },
+    };
+  },
+};
+
 const registry = new Map<string, ProcessModel>([
   [passthrough.id, passthrough],
   [conveyor.id, conveyor],
+  [drill.id, drill],
+  [elevator.id, elevator],
 ]);
 
 export function getProcess(id: string): ProcessModel {

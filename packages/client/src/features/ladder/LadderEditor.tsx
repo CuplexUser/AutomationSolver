@@ -42,6 +42,8 @@ interface Props {
 const DEVICE_TYPES = new Set(INSTRUCTIONS.filter((i) => i.needsDevice).map((i) => i.type));
 const PRESET_TYPES = new Set(INSTRUCTIONS.filter((i) => i.needsPreset).map((i) => i.type));
 
+const clampZoom = (z: number) => Math.min(1.4, Math.max(0.6, Math.round(z * 10) / 10));
+
 export function LadderEditor({
   allowedInstructions,
   devices,
@@ -53,6 +55,7 @@ export function LadderEditor({
     useEditor();
   const [address, setAddress] = useState('X0');
   const [preset, setPreset] = useState(10);
+  const [zoom, setZoom] = useState(1);
 
   const allowed = new Set<ElementType>([...allowedInstructions, 'hwire']);
   const editable = !running;
@@ -137,6 +140,15 @@ export function LadderEditor({
               </button>
             ))}
           </div>
+          <div className="zoom-ctl" role="group" aria-label="Ladder zoom">
+            <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z - 0.1))} title="Zoom out">
+              −
+            </button>
+            <span className="zoom-val">{Math.round(zoom * 100)}%</span>
+            <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z + 0.1))} title="Zoom in">
+              +
+            </button>
+          </div>
         </div>
         <div className="palette-instr">
           {INSTRUCTIONS.filter((i) => allowed.has(i.type)).map((meta) => (
@@ -172,27 +184,34 @@ export function LadderEditor({
       </div>
 
       <div className="ladder-scroll inset">
-        {program.rungs.map((rung, i) => (
-          <RungView
-            key={rung.id}
-            rung={rung}
-            index={i}
-            running={running}
-            editable={editable}
-            evalResult={evalResults[i]}
-            selected={selected?.rung === i ? { row: selected.row, col: selected.col } : null}
-            onSelectCell={(row, col) => select({ rung: i, row, col })}
-            onToggleVlink={(row, col) => toggleVlink(i, row, col)}
-            onAddRow={() => addRow(i)}
-            onAddCol={() => addCol(i)}
-            onDelete={() => removeRung(i)}
-          />
-        ))}
-        {editable && (
-          <button className="btn btn-ghost add-rung" onClick={addRung}>
-            + Add Rung
-          </button>
-        )}
+        {/* Scaling the canvas (rather than the scroller) keeps the scrollable area
+            correct at any zoom — the compensating width undoes the transform. */}
+        <div
+          className="ladder-canvas"
+          style={{ transform: `scale(${zoom})`, width: `${100 / zoom}%` }}
+        >
+          {program.rungs.map((rung, i) => (
+            <RungView
+              key={rung.id}
+              rung={rung}
+              index={i}
+              running={running}
+              editable={editable}
+              evalResult={evalResults[i]}
+              selected={selected?.rung === i ? { row: selected.row, col: selected.col } : null}
+              onSelectCell={(row, col) => select({ rung: i, row, col })}
+              onToggleVlink={(row, col) => toggleVlink(i, row, col)}
+              onAddRow={() => addRow(i)}
+              onAddCol={() => addCol(i)}
+              onDelete={() => removeRung(i)}
+            />
+          ))}
+          {editable && (
+            <button className="btn btn-ghost add-rung" onClick={addRung}>
+              + Add Rung
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,5 +1,6 @@
 import type { PuzzleDevice, PuzzleSpec } from '@automationsolver/shared';
 import type { SimRunner } from './useSimRunner';
+import { MachineView } from './MachineView';
 
 export function HmiPanel({ spec, runner }: { spec: PuzzleSpec; runner: SimRunner }) {
   const inputs = spec.devices.filter((d) => d.io === 'input');
@@ -13,6 +14,8 @@ export function HmiPanel({ spec, runner }: { spec: PuzzleSpec; runner: SimRunner
           {runner.running ? 'SCANNING' : 'HALTED'} · 60ms
         </span>
       </div>
+
+      <MachineView spec={spec} runner={runner} />
 
       <div className="hmi-controls">
         {runner.running ? (

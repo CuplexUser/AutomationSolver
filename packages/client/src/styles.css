@@ -1,12 +1,16 @@
 /* ===================== Layout shell ===================== */
+/* The shell is exactly one viewport tall and the body is the scroll container, so
+   the play view can claim all remaining height and scroll its columns internally. */
 .app-shell {
-  min-height: 100%;
+  height: 100%;
   display: flex;
   flex-direction: column;
 }
 .app-body {
   flex: 1;
+  min-height: 0;
   width: 100%;
+  overflow-y: auto;
 }
 .pad {
   padding: 32px;
@@ -350,19 +354,68 @@
 }
 
 /* ===================== Play layout ===================== */
+/* A workbench: three columns that fill the viewport, each scrolling on its own so
+   a long program never pushes the palette or the operator panel off screen. */
 .play {
-  display: grid;
-  grid-template-columns: 330px minmax(0, 1fr) 350px;
-  gap: 16px;
+  display: flex;
+  align-items: stretch;
+  height: 100%;
   padding: 16px;
-  align-items: start;
+  gap: 0;
+  overflow: hidden;
+}
+.play-brief,
+.play-hmi {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
 }
 .play-brief {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  position: sticky;
-  top: 76px;
+}
+
+/* Resizable dividers */
+.resize-handle {
+  flex: 0 0 14px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+.resize-grip {
+  width: 3px;
+  height: 42px;
+  border-radius: 2px;
+  background: var(--edge);
+  transition: background 0.15s ease;
+}
+.resize-handle:hover .resize-grip,
+.resize-handle:active .resize-grip {
+  background: var(--live);
+  box-shadow: 0 0 8px rgba(255, 176, 32, 0.6);
+}
+.pane-toggle {
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  color: var(--ink-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 9px;
+}
+.pane-toggle:hover {
+  border-color: var(--live);
+  color: var(--ink);
+}
+.pane-toggle[aria-pressed='false'] {
+  color: var(--muted);
 }
 .brief-card,
 .io-card,
@@ -490,7 +543,11 @@
 
 /* Play main / actions */
 .play-main {
+  flex: 1 1 auto;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .play-actions {
   display: flex;
@@ -498,9 +555,12 @@
   align-items: center;
   margin-bottom: 12px;
   gap: 10px;
+  flex: 0 0 auto;
 }
+.pa-left,
 .pa-right {
   display: flex;
+  align-items: center;
   gap: 10px;
 }
 .dirty-dot {
@@ -513,12 +573,15 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .palette {
   padding: 14px;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  flex: 0 0 auto;
 }
 .palette-row {
   display: flex;
@@ -590,13 +653,30 @@
   color: var(--live);
 }
 
+.zoom-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.zoom-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  width: 38px;
+  text-align: center;
+}
 .ladder-scroll {
   padding: 16px;
-  overflow-x: auto;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 200px;
+}
+.ladder-canvas {
+  transform-origin: top left;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  min-height: 260px;
+  align-items: flex-start;
 }
 .rung {
   display: flex;
@@ -721,12 +801,49 @@
 }
 
 /* ===================== HMI panel ===================== */
-.play-hmi {
-  position: sticky;
-  top: 76px;
-}
 .hmi {
   padding: 18px;
+}
+
+/* Machine visualization (3D drill / elevator shaft) */
+.machine-view {
+  padding: 12px;
+  margin-bottom: 16px;
+  background: linear-gradient(180deg, var(--inset), var(--panel-2));
+}
+.mv-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.mv-tag {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.machine3d {
+  position: relative;
+  width: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.machine3d:active {
+  cursor: grabbing;
+}
+.machine3d-hint {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.6;
+  pointer-events: none;
+}
+.machine3d.running .machine3d-hint {
+  color: var(--run);
 }
 .hmi-head {
   display: flex;
