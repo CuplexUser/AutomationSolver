@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { MachineState } from '@automationsolver/shared';
-import { MachineCanvas } from './MachineCanvas';
+import { MachineCanvas, enableShadows } from './MachineCanvas';
 
 const MODEL_URL = '/models/drill-station.glb';
 
@@ -82,6 +82,7 @@ interface DriveRefs {
 function DrillStationScene({ machine }: { machine: MachineState }) {
   const { scene } = useGLTF(MODEL_URL);
   const refs = useMemo<DriveRefs>(() => {
+    enableShadows(scene);
     const rollers: THREE.Object3D[] = [];
     for (let i = 0; i < 6; i++) {
       const roller = scene.getObjectByName(`Roller_${i}`);

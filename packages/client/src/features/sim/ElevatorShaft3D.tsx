@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { MachineState } from '@automationsolver/shared';
-import { MachineCanvas } from './MachineCanvas';
+import { MachineCanvas, enableShadows } from './MachineCanvas';
 
 const MODEL_URL = '/models/elevator-shaft.glb';
 
@@ -43,6 +43,7 @@ function ElevatorShaftScene({
   const { scene } = useGLTF(MODEL_URL);
 
   const refs = useMemo<DriveRefs>(() => {
+    enableShadows(scene);
     const arrivalLights: (THREE.Mesh | undefined)[] = [undefined];
     for (let n = 1; n <= 5; n++) {
       arrivalLights.push(scene.getObjectByName(`ArrivalLight_${n}`) as THREE.Mesh | undefined);
@@ -51,10 +52,15 @@ function ElevatorShaftScene({
     // visibility must be set both ways — hiding only the excess floors would
     // leave floors 4-5 hidden after visiting the 3-floor puzzle.
     for (let n = 1; n <= 5; n++) {
-      for (const prefix of ['FloorSlab', 'ArrivalLight', 'FrameRing', 'FloorPlaque', 'FloorDigit', 'CallButtonKnob']) {
+      for (const prefix of ['FloorSlab', 'ArrivalLight', 'FrameRing', 'FloorPlaque', 'FloorDigit', 'CallButtonKnob', 'BuildingFloor', 'ShaftBracket']) {
         const obj = scene.getObjectByName(`${prefix}_${n}`);
         if (obj) obj.visible = n <= floorCount;
       }
+    }
+    // One parapet per served-floor count caps the backdrop at the right height.
+    for (const n of [3, 5]) {
+      const parapet = scene.getObjectByName(`BuildingParapet_${n}`);
+      if (parapet) parapet.visible = n === floorCount;
     }
     return {
       car: scene.getObjectByName('Car') ?? undefined,

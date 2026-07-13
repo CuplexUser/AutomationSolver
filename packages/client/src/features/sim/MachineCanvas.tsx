@@ -1,7 +1,50 @@
-import { Suspense, type ReactNode } from 'react';
-import { Canvas } from '@react-three/fiber';
+import { Suspense, useEffect, type ReactNode } from 'react';
+import { Canvas, useThree } from '@react-three/fiber';
 import { OrbitControls, type OrbitControlsChangeEvent } from '@react-three/drei';
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+
+/**
+ * Marks every opaque mesh under `root` as a shadow caster/receiver — glTF
+ * meshes default to neither. Transparent surfaces (the shaft glass) are left
+ * out: three's shadow maps are binary, so glass would cast a solid shadow.
+ * Call once from the scene component's setup memo.
+ */
+export function enableShadows(root: THREE.Object3D) {
+  root.traverse((obj) => {
+    if (!(obj as THREE.Mesh).isMesh) return;
+    const mesh = obj as THREE.Mesh;
+    const transparent = (mesh.material as THREE.Material | undefined)?.transparent === true;
+    mesh.castShadow = !transparent;
+    mesh.receiveShadow = !transparent;
+  });
+}
+
+/**
+ * Image-based lighting from three's procedural RoomEnvironment (no HDR asset
+ * to download). Without an environment map, metallic PBR materials have
+ * nothing to reflect and render as flat dark shapes.
+ */
+function SceneEnvironment() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    /* eslint-disable react-hooks/immutability -- syncing the three.js scene with React is the standard r3f pattern */
+    scene.environment = envTex;
+    // Kept low so the shadow-casting key light dominates and surfaces shade
+    // directionally instead of being evenly washed by the environment.
+    scene.environmentIntensity = 0.45;
+    return () => {
+      scene.environment = null;
+      /* eslint-enable react-hooks/immutability */
+      envTex.dispose();
+      pmrem.dispose();
+    };
+  }, [gl, scene]);
+  return null;
+}
 
 /** Scene-space box the view center is confined to while panning. */
 export interface PanBounds {
@@ -84,12 +127,30 @@ export function MachineCanvas({
     <div className="machine3d" style={{ height }}>
       <Canvas
         camera={{ position: cameraPosition, fov }}
-        shadows={false}
+        shadows
+        // Khronos "PBR Neutral" tone mapping: compresses highlights without
+        // the saturation push ACES gives strong albedos like the terracotta.
+        gl={{ toneMapping: THREE.NeutralToneMapping }}
         onCreated={({ camera }) => camera.lookAt(...target)}
       >
-        <ambientLight intensity={0.6} />
-        <directionalLight position={[6, 10, 4]} intensity={1.6} />
-        <directionalLight position={[-6, 4, -4]} intensity={0.4} />
+        <SceneEnvironment />
+        {/* Sky/ground hemisphere instead of flat ambient, plus one shadow-casting
+            key light — the raking sun is what gives walls their nuance. */}
+        <hemisphereLight color="#dbe8ff" groundColor="#8a7a6a" intensity={0.5} />
+        <directionalLight
+          position={[10, 16, 9]}
+          intensity={2.2}
+          castShadow
+          shadow-mapSize={[2048, 2048]}
+          shadow-camera-left={-16}
+          shadow-camera-right={16}
+          shadow-camera-top={16}
+          shadow-camera-bottom={-16}
+          shadow-camera-near={0.5}
+          shadow-camera-far={60}
+          shadow-normalBias={0.04}
+        />
+        <directionalLight position={[-6, 4, -4]} intensity={0.25} />
         <Suspense fallback={null}>{children}</Suspense>
         {showControls && (
           <OrbitControls

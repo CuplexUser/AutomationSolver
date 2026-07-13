@@ -68,6 +68,7 @@ export default tseslint.config(
       '**/*.test.ts',
       '**/*.config.ts',
       '**/tests/**',
+      'scripts/**',
       'packages/server/src/db/**',
       'packages/server/src/index.ts',
     ],
