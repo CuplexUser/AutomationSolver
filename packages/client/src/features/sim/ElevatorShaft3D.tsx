@@ -18,8 +18,8 @@ const FLOOR_SPACING = 2.5;
 const CAR_HEIGHT = 1.9;
 const SHAFT_TOP_Y = 12.9; // ceiling — HoistCable's far end
 const HOIST_CABLE_BASE_LEN = 11.0; // rest-pose length (ceiling to car-top at floor 1)
-const DOOR_CLOSED_X = 0.41; // DoorLeftLeaf.x is -this, DoorRightLeaf.x is +this
-const DOOR_OPEN_SLIDE = 0.78; // additional slide distance at door = 1
+const DOOR_CLOSED_X = 0.375; // DoorLeftLeaf.x is -this, DoorRightLeaf.x is +this
+const DOOR_OPEN_SLIDE = 0.73; // additional slide distance at door = 1
 
 const floorY = (floor: number) => (floor - 1) * FLOOR_SPACING;
 
@@ -48,10 +48,10 @@ function ElevatorShaftScene({
       arrivalLights.push(scene.getObjectByName(`ArrivalLight_${n}`) as THREE.Mesh | undefined);
     }
     for (let n = floorCount + 1; n <= 5; n++) {
-      const slab = scene.getObjectByName(`FloorSlab_${n}`);
-      if (slab) slab.visible = false;
-      const light = scene.getObjectByName(`ArrivalLight_${n}`);
-      if (light) light.visible = false;
+      for (const prefix of ['FloorSlab', 'ArrivalLight', 'FrameRing', 'FloorPlaque', 'FloorDigit', 'CallButtonKnob']) {
+        const obj = scene.getObjectByName(`${prefix}_${n}`);
+        if (obj) obj.visible = false;
+      }
     }
     return {
       car: scene.getObjectByName('Car') ?? undefined,
@@ -110,14 +110,25 @@ export function ElevatorShaft3D({
   hasDoor: boolean;
   height?: number;
 }) {
-  const topY = floorY(floorCount) + CAR_HEIGHT / 2;
+  // Frame from just below the floor-1 rest position up through one floor's headroom
+  // above the top served floor (not the physical ceiling at SHAFT_TOP_Y, which sits
+  // well above floor 5 and would leave the puzzle's real content too small on screen).
+  // distance = visibleHeight * 1.15(margin) / (2*tan(17.5deg)) for the 35deg vertical FOV.
+  const topMargin = floorY(floorCount) + 3;
+  const bottomMargin = -0.5;
+  const visibleHeight = topMargin - bottomMargin;
+  const distance = visibleHeight * 1.82;
+  const targetY = (topMargin + bottomMargin) / 2;
   return (
     <MachineCanvas
       height={height}
-      cameraPosition={[7, topY * 0.6, 8]}
-      target={[0, topY * 0.5, 0]}
-      minDistance={6}
-      maxDistance={floorCount > 3 ? 26 : 18}
+      cameraPosition={[0, targetY, distance]}
+      target={[0, targetY, 0]}
+      interactive={false}
+      zoomable
+      polarAngle={Math.PI / 2}
+      minDistance={distance * 0.45}
+      maxDistance={distance * 1.4}
     >
       <ElevatorShaftScene machine={machine} floorCount={floorCount} hasDoor={hasDoor} />
     </MachineCanvas>

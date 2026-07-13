@@ -28,8 +28,9 @@ authored.
 - Working-register (M/T/C) IO lists on puzzles that need them, not buried in the briefing prose.
 - Full-height, resizable, collapsible three-column workspace with independently scrolling columns.
 - Keyboard-first editing (arrows to move, a letter per instruction) and compact cells + zoom.
-- Two hard puzzles with real machine dynamics (`drill-station`, `elevator-auto-return`), a
-  drag-to-rotate 3D machine view for the drill, and a 2D shaft view for the elevator.
+- Two hard puzzles with real machine dynamics (`drill-station`, `elevator-auto-return`), each
+  with a Blender-authored 3D machine view: drag-to-rotate for the drill, a fixed camera (scroll
+  still zooms) for the elevator shaft.
 - ESLint 10 across the monorepo, including rules that enforce the engine's determinism.
 - Favicon and app identity.
 
@@ -59,6 +60,16 @@ The engine is trustworthy; the weakest link was the moment a player got stuck an
 
 **Done means:** a player who fails a hard puzzle can see *when* their program diverged, not just
 *that* it did.
+
+## Elevator expansion ✅ *shipped* (ahead of the phased plan)
+
+A side quest ahead of Phase 3's content push: the 3-floor `elevator` process model was joined by
+`elevator5` (5 floors, per-floor call buttons, an optional door), three new hard puzzles of
+increasing difficulty (`elevator-5-dispatch` → `elevator-doors` → `elevator-full`, the last one
+"the fully functional 5-story elevator"), and a single shared Blender-authored `elevator-shaft.glb`
+— a cylindrical, one-side-open cutaway — that both the legacy 3-floor puzzle and the three new
+5-floor puzzles render (see FEATURE-MAP.md's Machine views section). All solvable with the
+already-shipped instruction set — no `MOV`/compare needed.
 
 ## Phase 3 — Content depth
 

@@ -576,6 +576,9 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* When the window is too short for palette + ladder + trace, scroll the column
+     instead of letting flexbox squeeze the editor under the trace strip. */
+  overflow-y: auto;
 }
 .play-actions {
   display: flex;
@@ -737,7 +740,9 @@
   flex-direction: column;
   gap: 14px;
   flex: 1 1 auto;
-  min-height: 0;
+  /* min-height stays auto (min-content): shrinking below the palette + the ladder
+     viewport's 160px minimum spills the rungs under the trace strip — the scaled
+     ladder canvas is a stacking context, so it paints on top of later panels. */
 }
 .palette {
   padding: 10px 12px;

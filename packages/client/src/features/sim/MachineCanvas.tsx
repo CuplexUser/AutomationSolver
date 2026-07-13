@@ -16,35 +16,51 @@ export function MachineCanvas({
   minDistance,
   maxDistance,
   polarAngle = 0.75,
+  interactive = true,
+  zoomable = false,
   children,
 }: {
   height?: number;
   cameraPosition: [number, number, number];
   fov?: number;
   target: [number, number, number];
-  minDistance: number;
-  maxDistance: number;
+  minDistance?: number;
+  maxDistance?: number;
   polarAngle?: number;
+  /** Full drag-to-rotate + scroll-to-zoom (the drill station's contract). */
+  interactive?: boolean;
+  /** Fixed camera angle, but scroll still zooms — ignored when `interactive`. */
+  zoomable?: boolean;
   children: ReactNode;
 }) {
+  const showControls = interactive || zoomable;
   return (
     <div className="machine3d" style={{ height }}>
-      <Canvas camera={{ position: cameraPosition, fov }} shadows={false}>
+      <Canvas
+        camera={{ position: cameraPosition, fov }}
+        shadows={false}
+        onCreated={({ camera }) => camera.lookAt(...target)}
+      >
         <ambientLight intensity={0.6} />
         <directionalLight position={[6, 10, 4]} intensity={1.6} />
         <directionalLight position={[-6, 4, -4]} intensity={0.4} />
         <Suspense fallback={null}>{children}</Suspense>
-        <OrbitControls
-          makeDefault
-          enablePan={false}
-          minPolarAngle={polarAngle}
-          maxPolarAngle={polarAngle}
-          minDistance={minDistance}
-          maxDistance={maxDistance}
-          target={target}
-        />
+        {showControls && (
+          <OrbitControls
+            makeDefault
+            enablePan={false}
+            enableRotate={interactive}
+            enableZoom={showControls}
+            minPolarAngle={polarAngle}
+            maxPolarAngle={polarAngle}
+            minDistance={minDistance}
+            maxDistance={maxDistance}
+            target={target}
+          />
+        )}
       </Canvas>
-      <span className="machine3d-hint">drag to rotate · scroll to zoom</span>
+      {interactive && <span className="machine3d-hint">drag to rotate · scroll to zoom</span>}
+      {!interactive && zoomable && <span className="machine3d-hint">scroll to zoom</span>}
     </div>
   );
 }

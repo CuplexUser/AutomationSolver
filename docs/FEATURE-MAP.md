@@ -50,6 +50,19 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   - `drill` — clamp travel, drill feed depth, spindle/beacon/done state; derives `X2` (clamped)
     and `X3` (at bottom).
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
+  - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
+    buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by
+    the mere presence of a `Y2` device in the puzzle's `devices`, e.g.
+    `devices.some(d => d.address === 'Y2')` — puzzles without a door omit `Y2` entirely and the
+    model just holds `door` fully open). Floor-to-floor travel is `900ms` — deliberately the
+    smallest value divisible by both the client's live scan interval (`DT=60ms`,
+    `useSimRunner.ts`) and the server's grading interval (`GRADE_DT=50ms`, `grade.ts`) — so a
+    same-scan stop lands `pos` exactly on the integer floor under both cadences, unlike the
+    legacy `elevator` model (`floorMs=1000`) which only ever needs to land on the two floors its
+    `Math.min`/`Math.max` clamp already guarantees. The door interlock (`Y0`/`Y1` are ignored
+    while the door isn't confirmed closed) is enforced **physically in the process model**, not
+    just graded — an incorrect program sees the car visibly refuse to move rather than failing a
+    hidden assertion after the fact.
 - **Validator** (`validate.ts`) — structural checks: instruction allow-list, device kind/role
   match, presets present, every rung drives an output.
 - **Grader** (`grade.ts`) — runs each scenario's scripted input timeline through `SimEngine` +
@@ -74,6 +87,9 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 | 6 | `conveyor-stop` | medium | reacting to a machine-driven sensor | conveyor |
 | 7 | `drill-station` | hard | multi-step sequence, SET/RST, beacon | drill |
 | 8 | `elevator-auto-return` | hard | timed auto-return, cancelable descent | elevator |
+| 9 | `elevator-5-dispatch` | hard | multi-floor call dispatch, up/down latch + tie-break | elevator5 |
+| 10 | `elevator-doors` | hard | rising-edge door trigger, dwell timer, physical move interlock | elevator5 |
+| 11 | `elevator-full` | hard | capstone: dispatch + doors + idle auto-return timer | elevator5 |
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -103,20 +119,32 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     cursor synced to the `ReplayBar`.
   - **Progressive hints** — `PuzzlePlayPage`'s `HintsPanel` reveals `spec.hints` one at a time;
     the reveal count is remembered per puzzle in `localStorage`.
-- **Machine views** (`features/sim/MachineView.tsx`) — puzzle-specific scenes chosen by
-  `processId`. The drill station gets a 3D scene, the elevator a 2D shaft view; puzzles without a
-  bespoke scene render none. The view is a diagnostic instrument, not decoration: it never
-  animates on its own, and it carries a readout of the machine's actual state (clamp %, feed %,
-  spindle).
-  - `Machine3D.tsx` is a dependency-free SVG renderer for axis-aligned boxes: back-face culling
-    plus an **exact painter's ordering** — for two boxes separated along any world axis, the plane
-    between them is a separating plane and the box on the camera's side can never be occluded.
-    (Ordering by centroid depth instead is what made parts vanish as the machine rotated: the flat
-    machine bed's centroid can be nearer than a part standing on it but behind it in z.) Drag to
-    rotate, scroll to zoom.
-    - Each face's geometry **and** its outward normal are derived from an `(axis, side)` pair, so
-      they cannot disagree. Hand-written corner lists and normals can, and when they did, the
-      culler hid every +z/−z face until the machine was rotated 180°.
+- **Machine views** (`features/sim/MachineView.tsx`) — puzzle-specific 3D scenes chosen by
+  `processId`, both authored in Blender and loaded as `.glb` via `useGLTF`/react-three-fiber. The
+  view is a diagnostic instrument, not decoration: it never animates on its own — every transform
+  is driven each frame straight from the deterministic `machine.*` state the process model
+  computes from `dt` — and it carries a readout of the machine's actual state (clamp %, feed %,
+  spindle; or floor/direction/door for the elevator).
+  - **`MachineCanvas.tsx`** — the shared `<Canvas>` + ambient/directional lights + optional
+    `OrbitControls` rig both scenes render into, parameterized by camera position/fov/target/
+    distance bounds/height. Three control modes: `interactive` (drag-to-rotate + scroll-to-zoom,
+    the drill station's contract), `zoomable` (fixed camera angle, scroll still zooms — the
+    elevator's contract, via `OrbitControls` with `enableRotate={false}`), or neither.
+  - **`DrillStation3D.tsx`** (`interactive`) — `drill-station.glb`; named nodes
+    (`scene.getObjectByName(...)`) looked up once and driven imperatively from `machine.clamp` /
+    `machine.drill` / `machine.spinning` / `machine.push`.
+  - **`ElevatorShaft3D.tsx`** (`zoomable`, fixed angle) — one shared `elevator-shaft.glb` (a
+    cylindrical cutaway shaft, one side open, terracotta frame rings + mullions, per-floor plaques)
+    authored for the 5-floor case; the 3-floor legacy puzzle (`processId: 'elevator'`) hides the
+    floor-4/5 slabs, arrival lights, frame rings, plaques and call-button knobs rather than
+    maintaining a second model. Drives `Car.position.y` from `machine.pos`, the door leaves' local
+    X from `machine.door` (only meaningful when the puzzle has a `Y2` device), and the hoist
+    cable's scale/position from the car's height so it always spans ceiling-to-car-top. The
+    fixed camera distance is derived from the served floor count so the whole shaft (plus one
+    floor's headroom) fills the frame regardless of `floorCount`.
+  - Both scenes share the same silent-failure risk: a node name typo in the `.glb` is a no-op, not
+    an error — `scene.getObjectByName(...)` just returns `undefined` and that part of the scene
+    stops animating.
 - **Resizable workspace** (`features/layout/Resizable.tsx`) — the play view is a full-height
   three-column workbench. The brief and operator panels are drag-resizable (widths persisted to
   `localStorage`, arrow keys when the divider is focused, double-click to collapse) and

@@ -99,7 +99,7 @@ function PlayInner({ spec, user, submit }: PlayInnerProps) {
   const hmi = usePersistedWidth('play.hmiW', 360, 240, 860);
   const [briefOpen, setBriefOpen] = useState(true);
   const [hmiOpen, setHmiOpen] = useState(true);
-  const [traceOpen, setTraceOpen] = useState(true);
+  const [traceOpen, setTraceOpen] = useState(false);
   const [slotsOpen, setSlotsOpen] = useState(false);
 
   // Don't render the (interactive) editor until the active slot has resolved —
