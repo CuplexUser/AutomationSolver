@@ -5,6 +5,13 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 
 /**
+ * Pass as the second argument of every useGLTF/useGLTF.preload call. Points
+ * drei's DRACOLoader at the decoder served by the local-draco-decoder plugin
+ * in vite.config.ts instead of its default Google-CDN URL.
+ */
+export const DRACO_DECODER_PATH = '/draco/';
+
+/**
  * Marks every opaque mesh under `root` as a shadow caster/receiver — glTF
  * meshes default to neither. Transparent surfaces (the shaft glass) are left
  * out: three's shadow maps are binary, so glass would cast a solid shadow.

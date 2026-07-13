@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { MachineState } from '@automationsolver/shared';
-import { MachineCanvas, enableShadows } from './MachineCanvas';
+import { MachineCanvas, enableShadows, DRACO_DECODER_PATH } from './MachineCanvas';
 
 const MODEL_URL = '/models/elevator-shaft.glb';
 
@@ -40,7 +40,7 @@ function ElevatorShaftScene({
   floorCount: number;
   hasDoor: boolean;
 }) {
-  const { scene } = useGLTF(MODEL_URL);
+  const { scene } = useGLTF(MODEL_URL, DRACO_DECODER_PATH);
 
   const refs = useMemo<DriveRefs>(() => {
     enableShadows(scene);
@@ -145,4 +145,4 @@ export function ElevatorShaft3D({
   );
 }
 
-useGLTF.preload(MODEL_URL);
+useGLTF.preload(MODEL_URL, DRACO_DECODER_PATH);
