@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>AutomationSolver — a ladder-logic puzzle game</title>
+<meta name="description" content="Program a Mitsubishi-style PLC in ladder logic to solve real motor-control problems. Build the rung, run the scan, watch the power flow." />
+<meta property="og:title" content="AutomationSolver" />
+<meta property="og:description" content="A puzzle game where you program a PLC in ladder logic — seal-ins, e-stops, timers, counters, and a five-story elevator." />
+<meta property="og:image" content="https://cuplexuser.github.io/AutomationSolver/preview.png" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f141b' stroke='%232b3a4b'/%3E%3Crect x='4' y='6' width='2.5' height='20' rx='1.2' fill='%23ffb020'/%3E%3Crect x='25.5' y='6' width='2.5' height='20' rx='1.2' fill='%233a4d61'/%3E%3Cpath d='M6.5 16 H12.5' stroke='%23ffb020' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M19.5 16 H25.5' stroke='%233a4d61' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M12.5 10 V22' stroke='%23ffb020' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M19.5 10 V22' stroke='%234a5f74' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --iron-950: #0a0e14;
+    --iron-900: #10161f;
+    --iron-800: #151d28;
+    --line: #2b3a4b;
+    --cold: #46586c;
+    --muted: #8aa0b5;
+    --text: #dde7f1;
+    --amber: #ffb020;
+    --amber-dim: #b97f14;
+    --stop-red: #ff5d5d;
+    --run-green: #57d993;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+    --sans: 'IBM Plex Sans', system-ui, sans-serif;
+    --display: 'Chakra Petch', var(--sans);
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--iron-950);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 17px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--amber); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  img { max-width: 100%; display: block; }
+  :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 2px; }
+
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+
+  /* ---- top bar ---- */
+  header {
+    border-bottom: 1px solid var(--line);
+    background: color-mix(in srgb, var(--iron-950) 88%, transparent);
+    position: sticky; top: 0; z-index: 10;
+    backdrop-filter: blur(6px);
+  }
+  .bar { display: flex; align-items: center; justify-content: space-between; height: 64px; }
+  .brand { display: flex; align-items: center; gap: 12px; color: var(--text); }
+  .brand:hover { text-decoration: none; }
+  .brand svg { width: 30px; height: 30px; flex: none; }
+  .wordmark { font-family: var(--display); font-weight: 700; letter-spacing: 0.14em; font-size: 15px; }
+  .wordmark em { font-style: normal; color: var(--amber); }
+  .gh-link {
+    font-family: var(--mono); font-size: 13px; letter-spacing: 0.06em;
+    border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; color: var(--text);
+  }
+  .gh-link:hover { border-color: var(--amber); color: var(--amber); text-decoration: none; }
+
+  /* ---- shared section chrome ---- */
+  section { padding: 88px 0; border-bottom: 1px solid var(--line); }
+  .panel-label {
+    font-family: var(--mono); font-size: 12px; font-weight: 500;
+    letter-spacing: 0.32em; text-transform: uppercase; color: var(--muted);
+    display: flex; align-items: center; gap: 14px; margin-bottom: 28px;
+  }
+  .panel-label::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+
+  /* ---- hero ---- */
+  .hero { padding: 72px 0 80px; }
+  .hero-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 460px); gap: 56px; align-items: center; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 12px; letter-spacing: 0.3em;
+    text-transform: uppercase; color: var(--amber); margin-bottom: 20px;
+  }
+  h1 {
+    font-family: var(--display); font-weight: 700; text-transform: uppercase;
+    font-size: clamp(2.1rem, 4.6vw, 3.3rem); line-height: 1.08; letter-spacing: 0.02em;
+    margin-bottom: 22px;
+  }
+  h1 .lit { color: var(--amber); }
+  .lede { color: var(--muted); max-width: 46ch; margin-bottom: 32px; }
+  .lede strong { color: var(--text); font-weight: 500; }
+  .cta-row { display: flex; gap: 14px; flex-wrap: wrap; }
+  .btn {
+    font-family: var(--display); font-weight: 600; font-size: 14px; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 13px 22px; border-radius: 6px; display: inline-block;
+  }
+  .btn:hover { text-decoration: none; }
+  .btn-amber { background: var(--amber); color: #1a1205; }
+  .btn-amber:hover { background: #ffc14d; }
+  .btn-ghost { border: 1px solid var(--line); color: var(--text); }
+  .btn-ghost:hover { border-color: var(--amber); color: var(--amber); }
+
+  /* ---- live rung demo ---- */
+  .demo {
+    background: var(--iron-900); border: 1px solid var(--line); border-radius: 10px;
+    padding: 22px 22px 24px;
+    background-image: radial-gradient(circle, #1c2836 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+  .demo-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .demo-head .panel-label { margin-bottom: 0; }
+  .demo-head .panel-label::after { display: none; }
+  .scan { font-family: var(--mono); font-size: 11px; letter-spacing: 0.12em; color: var(--run-green); display: flex; align-items: center; gap: 7px; }
+  .scan-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--run-green); animation: pulse 1.4s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: 0.25; } }
+
+  .ladder { width: 100%; height: auto; display: block; }
+  .ladder .wire { stroke: var(--cold); stroke-width: 3; fill: none; stroke-linecap: round; transition: stroke 120ms; }
+  .ladder .bar { stroke: var(--cold); stroke-width: 4; stroke-linecap: round; transition: stroke 120ms; }
+  .ladder .rail-left { stroke: var(--amber); stroke-width: 6; stroke-linecap: round; }
+  .ladder .rail-right { stroke: var(--cold); stroke-width: 6; stroke-linecap: round; }
+  .ladder .dot { fill: var(--cold); transition: fill 120ms; }
+  .ladder .addr { font-family: var(--mono); font-size: 14px; fill: var(--muted); text-anchor: middle; }
+  .ladder .live, .ladder .bar.live { stroke: var(--amber); }
+  .ladder .dot.live { fill: var(--amber); }
+  @media (prefers-reduced-motion: no-preference) {
+    .ladder .live { filter: drop-shadow(0 0 4px rgba(255, 176, 32, 0.55)); }
+  }
+
+  .demo-controls { display: flex; align-items: center; gap: 14px; margin-top: 18px; flex-wrap: wrap; }
+  .pushbtn {
+    font-family: var(--display); font-weight: 600; font-size: 13px; letter-spacing: 0.1em;
+    text-transform: uppercase; padding: 12px 20px; border-radius: 6px; cursor: pointer;
+    background: var(--iron-800); color: var(--text); border: 1px solid var(--line);
+    touch-action: none; user-select: none; -webkit-user-select: none;
+  }
+  .pushbtn:active, .pushbtn.held { transform: translateY(1px); }
+  .pushbtn-start.held { border-color: var(--amber); color: var(--amber); box-shadow: 0 0 0 3px rgba(255, 176, 32, 0.18); }
+  .pushbtn-stop { border-color: #5c3038; color: var(--stop-red); }
+  .pushbtn-stop.held { border-color: var(--stop-red); box-shadow: 0 0 0 3px rgba(255, 93, 93, 0.18); }
+  .lamp { margin-left: auto; display: flex; align-items: center; gap: 10px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .lamp-bulb {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--iron-800); border: 1px solid var(--line); transition: all 150ms;
+  }
+  .lamp.on .lamp-bulb { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 12px rgba(255, 176, 32, 0.7); }
+  .lamp.on .lamp-state { color: var(--amber); }
+  .demo-hint { font-size: 13.5px; color: var(--muted); margin-top: 16px; }
+  .demo-hint code { font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+
+  /* ---- screenshot ---- */
+  .bezel {
+    border: 1px solid var(--line); border-radius: 12px; overflow: hidden;
+    background: var(--iron-900); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5);
+  }
+  .bezel-strip {
+    display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--line);
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.2em; color: var(--muted); text-transform: uppercase;
+  }
+  .bezel-strip i { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+
+  /* ---- engine cards ---- */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .card { background: var(--iron-900); border: 1px solid var(--line); border-radius: 10px; padding: 26px 24px; }
+  .card .tag { font-family: var(--mono); font-size: 12px; color: var(--amber); letter-spacing: 0.1em; margin-bottom: 14px; }
+  .card h3 { font-family: var(--display); font-weight: 600; font-size: 18px; letter-spacing: 0.03em; margin-bottom: 10px; }
+  .card p { font-size: 15px; color: var(--muted); }
+  .card p code { font-family: var(--mono); font-size: 13px; color: var(--text); }
+  .engine-note { margin-top: 26px; font-size: 15px; color: var(--muted); max-width: 72ch; }
+  .engine-note strong { color: var(--text); font-weight: 500; }
+
+  /* ---- work orders ---- */
+  .orders { display: flex; flex-direction: column; }
+  .order {
+    display: grid; grid-template-columns: 52px 250px 84px 1fr; gap: 18px; align-items: baseline;
+    padding: 15px 4px; border-bottom: 1px solid var(--line);
+  }
+  .order:first-child { border-top: 1px solid var(--line); }
+  .order .num { font-family: var(--mono); font-size: 13px; color: var(--cold); }
+  .order .name { font-family: var(--display); font-weight: 600; font-size: 15.5px; letter-spacing: 0.02em; }
+  .order .diff { font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .order .diff.hard { color: var(--amber); }
+  .order .desc { font-size: 14.5px; color: var(--muted); }
+
+  /* ---- getting started ---- */
+  .terminal {
+    background: var(--iron-900); border: 1px solid var(--line); border-radius: 10px;
+    font-family: var(--mono); font-size: 14.5px; line-height: 2.1; padding: 26px 28px; overflow-x: auto;
+  }
+  .terminal .cmd { color: var(--text); white-space: pre; }
+  .terminal .cmd::before { content: '$ '; color: var(--amber); }
+  .terminal .rem { color: var(--cold); }
+  .start-note { margin-top: 22px; color: var(--muted); font-size: 15px; max-width: 70ch; }
+  .start-note code { font-family: var(--mono); font-size: 13px; color: var(--text); }
+
+  footer { padding: 44px 0 60px; }
+  .foot { display: flex; justify-content: space-between; gap: 20px; flex-wrap: wrap; font-size: 14px; color: var(--muted); }
+  .foot .wordmark { font-size: 13px; }
+
+  @media (max-width: 900px) {
+    section { padding: 64px 0; }
+    .hero-grid { grid-template-columns: 1fr; gap: 40px; }
+    .cards { grid-template-columns: 1fr; }
+    .order { grid-template-columns: 44px 1fr 84px; }
+    .order .desc { grid-column: 2 / -1; margin-top: -6px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .scan-dot { animation: none; }
+    .ladder .wire, .ladder .bar, .ladder .dot, .lamp-bulb { transition: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap bar">
+    <a class="brand" href="#" aria-label="AutomationSolver home">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#0f141b" stroke="#2b3a4b"/><rect x="4" y="6" width="2.5" height="20" rx="1.2" fill="#ffb020"/><rect x="25.5" y="6" width="2.5" height="20" rx="1.2" fill="#3a4d61"/><path d="M6.5 16 H12.5" stroke="#ffb020" stroke-width="2" stroke-linecap="round"/><path d="M19.5 16 H25.5" stroke="#3a4d61" stroke-width="2" stroke-linecap="round"/><path d="M12.5 10 V22" stroke="#ffb020" stroke-width="2.4" stroke-linecap="round"/><path d="M19.5 10 V22" stroke="#4a5f74" stroke-width="2.4" stroke-linecap="round"/></svg>
+      <span class="wordmark">AUTOMATION<em>SOLVER</em></span>
+    </a>
+    <a class="gh-link" href="https://github.com/CuplexUser/AutomationSolver">GitHub ↗</a>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <p class="eyebrow">Ladder logic · Motor control · Puzzle game</p>
+      <h1>Make the rung <span class="lit">remember</span></h1>
+      <p class="lede">
+        AutomationSolver is a puzzle game where you program a <strong>Mitsubishi-style PLC</strong>
+        in ladder logic — seal-ins, e-stops, on-delay timers, counters, a conveyor index, and a
+        five-story elevator. Build the rung on a grid, run the scan, and watch the power flow.
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-amber" href="https://github.com/CuplexUser/AutomationSolver">View on GitHub</a>
+        <a class="btn btn-ghost" href="#start">Run it locally</a>
+      </div>
+    </div>
+
+    <div class="demo">
+      <div class="demo-head">
+        <span class="panel-label">Operator panel</span>
+        <span class="scan"><i class="scan-dot"></i>SCANNING · 60 ms</span>
+      </div>
+
+      <svg class="ladder" viewBox="0 0 480 200" role="img" aria-label="Interactive seal-in ladder rung: START contact X0 in parallel with a Y0 seal-in contact, in series with normally-closed STOP contact X1, driving motor coil Y0">
+        <!-- rails -->
+        <line class="rail-left"  x1="24"  y1="24" x2="24"  y2="176" />
+        <line class="rail-right" x1="456" y1="24" x2="456" y2="176" />
+        <!-- always-live feed: rail to X0 and down to the seal branch -->
+        <path class="wire live" d="M24 70 H112" />
+        <path class="wire live" d="M64 70 V140 H112" />
+        <!-- X0 contact (NO) -->
+        <line id="x0-l" class="bar live" x1="112" y1="52" x2="112" y2="88" />
+        <line id="x0-r" class="bar" x1="136" y1="52" x2="136" y2="88" />
+        <text class="addr" x="124" y="38">X0</text>
+        <!-- seal contact Y0 (NO) on the branch row -->
+        <line class="bar live" x1="112" y1="122" x2="112" y2="158" />
+        <line id="seal-r" class="bar" x1="136" y1="122" x2="136" y2="158" />
+        <text class="addr" x="124" y="188">Y0</text>
+        <!-- X0 out + branch rejoin -->
+        <path id="seg-x0out" class="wire" d="M136 70 H208" />
+        <path id="seg-seal" class="wire" d="M136 140 H208 V70" />
+        <circle id="node" class="dot" cx="208" cy="70" r="5" />
+        <path id="seg-node" class="wire" d="M208 70 H246" />
+        <!-- X1 contact (NC) -->
+        <line id="x1-l" class="bar" x1="246" y1="52" x2="246" y2="88" />
+        <line id="x1-r" class="bar" x1="270" y1="52" x2="270" y2="88" />
+        <line id="x1-slash" class="bar" x1="244" y1="90" x2="272" y2="50" style="stroke-width:3" />
+        <text class="addr" x="258" y="38">X1</text>
+        <!-- wire to coil -->
+        <path id="seg-x1out" class="wire" d="M270 70 H344" />
+        <!-- coil Y0 -->
+        <path id="coil-l" class="bar" d="M354 52 A 26 26 0 0 0 354 88" fill="none" />
+        <path id="coil-r" class="bar" d="M370 52 A 26 26 0 0 1 370 88" fill="none" />
+        <text class="addr" x="362" y="38">Y0</text>
+        <path id="seg-out" class="wire" d="M380 70 H456" />
+      </svg>
+
+      <div class="demo-controls">
+        <button class="pushbtn pushbtn-start" id="btn-start" type="button">Start · X0</button>
+        <button class="pushbtn pushbtn-stop" id="btn-stop" type="button">Stop · X1</button>
+        <span class="lamp" id="lamp"><i class="lamp-bulb"></i>Y0 MOTOR <b class="lamp-state" id="lamp-state">OFF</b></span>
+      </div>
+      <p class="demo-hint">
+        Hold <code>START</code>, then let go — the <code>Y0</code> branch seals the rung in and the
+        motor keeps running. <code>STOP</code> breaks it. That's puzzle 02; the real editor is yours to wire.
+      </p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="panel-label">The bench</p>
+    <div class="bezel">
+      <div class="bezel-strip"><i></i><i></i><i></i><span style="margin-left:8px">work order 02 · start / stop seal-in</span></div>
+      <img src="preview.png" alt="AutomationSolver in play: a work-order brief on the left, the ladder grid editor with an energized seal-in rung glowing amber in the center, and the operator panel with START/STOP inputs and a running motor output on the right." width="2880" height="1800" loading="lazy" />
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="panel-label">One engine, both sides</p>
+    <div class="cards">
+      <div class="card">
+        <p class="tag">packages/client</p>
+        <h3>Grid ladder editor</h3>
+        <p>Contacts and coils drop onto a rung grid, just like a real MELSEC program. Series is AND,
+           parallel branches are OR, and every scan the solver floods power from the left rail so you
+           see exactly which cells are live.</p>
+      </div>
+      <div class="card">
+        <p class="tag">packages/shared</p>
+        <h3>Deterministic scan cycle</h3>
+        <p>A pure-TypeScript simulation engine with zero runtime dependencies. It advances only by an
+           explicit <code>dt</code> — never the wall clock — so the same program always produces the
+           same trace, everywhere.</p>
+      </div>
+      <div class="card">
+        <p class="tag">packages/server</p>
+        <h3>Authoritative grading</h3>
+        <p>Submit, and the server replays your program through the <em>same</em> engine against
+           scripted test scenarios — machine dynamics included. Client and server agree bit-for-bit,
+           by construction.</p>
+      </div>
+    </div>
+    <p class="engine-note">
+      That's the architectural bet of the whole project: <strong>one simulation engine, shared by
+      live play and grading.</strong> The client uses it for instant feedback while you edit; the
+      server uses it as the source of truth for scoring. There is no second implementation to drift.
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <p class="panel-label">Work orders</p>
+    <div class="orders">
+      <div class="order"><span class="num">01</span><span class="name">Direct Control</span><span class="diff">tutorial</span><span class="desc">Wire a single input contact to a single output coil.</span></div>
+      <div class="order"><span class="num">02</span><span class="name">Start / Stop Seal-In</span><span class="diff">easy</span><span class="desc">Latch a motor with momentary Start/Stop buttons using a seal-in contact.</span></div>
+      <div class="order"><span class="num">03</span><span class="name">Emergency Stop</span><span class="diff">easy</span><span class="desc">Add a normally-closed E-Stop to a seal-in motor circuit.</span></div>
+      <div class="order"><span class="num">04</span><span class="name">Delayed Start</span><span class="diff">medium</span><span class="desc">Sound a warning beacon, then start the motor after a 2-second timer.</span></div>
+      <div class="order"><span class="num">05</span><span class="name">Batch Counter</span><span class="diff">medium</span><span class="desc">Count 5 parts, latch a BATCH FULL lamp, and reset on demand.</span></div>
+      <div class="order"><span class="num">06</span><span class="name">Index to Sensor</span><span class="diff hard">hard</span><span class="desc">Run a conveyor until a part reaches the sensor, then stop automatically.</span></div>
+      <div class="order"><span class="num">07</span><span class="name">Drill Station Cycle</span><span class="diff hard">hard</span><span class="desc">Sequence a clamp, drill feed, warning beacon and eject pusher into one automatic stroke.</span></div>
+      <div class="order"><span class="num">08</span><span class="name">Elevator — Automatic Descent</span><span class="diff hard">hard</span><span class="desc">Drive a 3-floor elevator up on command and auto-return to the ground after 10 s idle.</span></div>
+      <div class="order"><span class="num">09</span><span class="name">Elevator — 5-Floor Dispatch</span><span class="diff hard">hard</span><span class="desc">Wire per-floor call buttons so a 5-floor car dispatches toward whichever floors are called.</span></div>
+      <div class="order"><span class="num">10</span><span class="name">Elevator — Doors</span><span class="diff hard">hard</span><span class="desc">Add a door that opens on arrival, dwells, and auto-closes — the car cannot move until it does.</span></div>
+      <div class="order"><span class="num">11</span><span class="name">Elevator — Fully Functional</span><span class="diff hard">hard</span><span class="desc">The complete 5-story elevator: dispatch, doors, and an automatic return to the lobby when idle.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <p class="panel-label">Getting started</p>
+    <div class="terminal" role="figure" aria-label="Terminal commands to run AutomationSolver locally">
+      <div class="cmd">git clone https://github.com/CuplexUser/AutomationSolver.git</div>
+      <div class="cmd">cd AutomationSolver</div>
+      <div class="cmd">npm install    <span class="rem"># no native modules — no C++ toolchain needed</span></div>
+      <div class="cmd">npm run dev    <span class="rem"># server on :4000, client on :5173</span></div>
+    </div>
+    <p class="start-note">
+      Open <code>http://localhost:5173</code>, create an account, and start solving. The database is
+      Node's built-in <code>node:sqlite</code> and password hashing is <code>node:crypto</code>
+      scrypt, so <code>npm install</code> works on a fresh machine with nothing but Node.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap foot">
+    <span class="wordmark">AUTOMATION<em>SOLVER</em></span>
+    <span>Power flows from the left rail. <a href="https://github.com/CuplexUser/AutomationSolver">Source on GitHub</a></span>
+  </div>
+</footer>
+
+<script>
+  (function () {
+    // One rung of the real game: Y0 = (X0 OR Y0) AND NOT X1 — the classic seal-in.
+    var x0 = false, x1 = false, y0 = false;
+
+    var el = function (id) { return document.getElementById(id); };
+    var live = function (node, on) { node.classList.toggle('live', on); };
+
+    function scan() {
+      y0 = (x0 || y0) && !x1;
+      var nodeLive = x0 || y0;
+      live(el('x0-r'), x0);
+      live(el('seg-x0out'), x0);
+      live(el('seal-r'), y0);
+      live(el('seg-seal'), y0);
+      live(el('node'), nodeLive);
+      live(el('seg-node'), nodeLive);
+      live(el('x1-l'), nodeLive);
+      live(el('x1-r'), y0);
+      live(el('x1-slash'), nodeLive && !x1);
+      live(el('seg-x1out'), y0);
+      live(el('coil-l'), y0);
+      live(el('coil-r'), y0);
+      live(el('seg-out'), y0);
+      el('lamp').classList.toggle('on', y0);
+      el('lamp-state').textContent = y0 ? 'RUN' : 'OFF';
+    }
+
+    // Momentary pushbuttons: held while the pointer (or Space/Enter) is down.
+    function momentary(btn, set) {
+      function press(on) {
+        btn.classList.toggle('held', on);
+        set(on);
+        scan();
+      }
+      btn.addEventListener('pointerdown', function (e) { e.preventDefault(); press(true); });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+        btn.addEventListener(ev, function () { press(false); });
+      });
+      btn.addEventListener('keydown', function (e) {
+        if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); press(true); }
+      });
+      btn.addEventListener('keyup', function (e) {
+        if (e.key === ' ' || e.key === 'Enter') press(false);
+      });
+      btn.addEventListener('blur', function () { press(false); });
+    }
+
+    momentary(el('btn-start'), function (on) { x0 = on; });
+    momentary(el('btn-stop'), function (on) { x1 = on; });
+    scan();
+  })();
+</script>
+
+</body>
+</html>

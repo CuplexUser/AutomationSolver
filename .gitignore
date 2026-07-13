@@ -13,6 +13,7 @@ coverage/
 playwright-report/
 test-results/
 .vite/
+_site/
 
 # SQLite database files
 packages/server/data/
