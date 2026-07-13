@@ -277,6 +277,84 @@ describe('gradeProgram — wrong programs do not solve', () => {
   });
 });
 
+describe('gradeProgram — plausible wrong elevator programs are rejected', () => {
+  // Each of these must pass validation (structurally fine) and fail grading —
+  // that is what proves the scenarios discriminate, not just that the puzzle
+  // is solvable.
+  function expectFailsGrading(slug: string, program: LadderProgram): ReturnType<typeof gradeProgram> {
+    const spec = getPuzzle(slug)!;
+    const validation = validateProgram(spec, program);
+    expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+    const result = gradeProgram(spec, program);
+    expect(result.solved).toBe(false);
+    return result;
+  }
+
+  it('a down-preferring tie-break fails exactly the "prefers up" dispatch scenario', () => {
+    // Same core, but the Up latch is gated on "nothing pending below" and the
+    // Down latch is unconditional — i.e. down wins the both-sides tie.
+    const downPref = dispatchCore().map((r) => {
+      if (r.id === 'r12') {
+        return R('r12', 4, 4, {
+          '0,0': no('X10'), '0,1': no('M13'), '0,2': wire, '0,3': set('M5'),
+          '1,0': no('X11'), '1,1': no('M12'), '1,2': nc('M0'), '1,3': set('M5'),
+          '2,0': no('X12'), '2,1': no('M11'), '2,2': nc('M15'), '2,3': set('M5'),
+          '3,0': no('X13'), '3,1': no('M4'), '3,2': nc('M16'), '3,3': set('M5'),
+        });
+      }
+      if (r.id === 'r13') {
+        return R('r13', 4, 3, {
+          '0,0': no('X11'), '0,1': no('M0'), '0,2': set('M6'),
+          '1,0': no('X12'), '1,1': no('M15'), '1,2': set('M6'),
+          '2,0': no('X13'), '2,1': no('M16'), '2,2': set('M6'),
+          '3,0': no('X14'), '3,1': no('M17'), '3,2': set('M6'),
+        });
+      }
+      return r;
+    });
+    const result = expectFailsGrading('elevator-5-dispatch', { rungs: downPref });
+    const failed = result.scenarios.filter((s) => !s.passed).map((s) => s.name);
+    expect(failed).toEqual(['Idle with calls on both sides prefers up']);
+  });
+
+  it('unlatched call buttons (OUT instead of SET) fail dispatch', () => {
+    const unlatched = dispatchCore().map((r) => {
+      const m = /^r([1-5])$/.exec(r.id);
+      if (!m) return r;
+      const floor = Number(m[1]) - 1;
+      return R(r.id, 1, 2, { '0,0': no(`X${floor}`), '0,1': out(`M${floor}`) });
+    });
+    expectFailsGrading('elevator-5-dispatch', { rungs: unlatched });
+  });
+
+  it('correct dispatch with no door logic fails the doors puzzle', () => {
+    expectFailsGrading('elevator-doors', { rungs: dispatchCore() });
+  });
+
+  it('a level contact instead of a rising edge keeps reopening the door — never auto-closes', () => {
+    const levelDoor = doorRungs().map((r) =>
+      r.id === 'r23'
+        ? R('r23', 5, 4, {
+            '0,0': no('X10'), '0,1': nc('M5'), '0,2': nc('M6'), '0,3': set('M20'),
+            '1,0': no('X11'), '1,1': nc('M5'), '1,2': nc('M6'), '1,3': set('M20'),
+            '2,0': no('X12'), '2,1': nc('M5'), '2,2': nc('M6'), '2,3': set('M20'),
+            '3,0': no('X13'), '3,1': nc('M5'), '3,2': nc('M6'), '3,3': set('M20'),
+            '4,0': no('X14'), '4,1': nc('M5'), '4,2': nc('M6'), '4,3': set('M20'),
+          })
+        : r,
+    );
+    const result = expectFailsGrading('elevator-doors', { rungs: [...dispatchCore(), ...levelDoor] });
+    const autoClose = result.scenarios.find((s) => s.name === 'Door opens on arrival, dwells, then auto-closes')!;
+    expect(autoClose.passed).toBe(false);
+  });
+
+  it('dispatch + doors without the idle timer fails the auto-return scenario', () => {
+    const result = expectFailsGrading('elevator-full', { rungs: [...dispatchCore(), ...doorRungs()] });
+    const failed = result.scenarios.filter((s) => !s.passed).map((s) => s.name);
+    expect(failed).toEqual(['Idle away from floor 1 auto-returns after 10 s']);
+  });
+});
+
 describe('traceScenario', () => {
   it('matches gradeProgram pass/fail and samples every scan for a solved puzzle', () => {
     const spec = getPuzzle('seal-in')!;
