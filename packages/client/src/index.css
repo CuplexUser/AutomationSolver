@@ -2,6 +2,8 @@
    AutomationSolver — "Control Cabinet" design system
    ============================================================ */
 :root {
+  color-scheme: dark;
+
   /* Panel / metal */
   --panel: #0f141b;
   --panel-2: #131a23;
@@ -23,6 +25,11 @@
   --ink-dim: #9fb0c2;
   --muted: #6f8093;
 
+  /* Ladder diagram */
+  --wire-idle: #3a4d61;
+  --sym-idle: #8ba0b5;
+  --lamp-off: #26333f;
+
   /* Device family accents */
   --dev-x: #4aa3ff;
   --dev-y: #ffb020;
@@ -33,10 +40,48 @@
   --radius: 4px;
   --radius-lg: 8px;
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.04), 0 8px 24px rgba(0, 0, 0, 0.4);
+  --inset-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
 
   --font-display: 'Chakra Petch', 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
   --font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* Light theme — a control cabinet in a bright workshop. Same accent hues,
+   darkened for contrast against painted light-gray metal. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --panel: #dde3ea;
+  --panel-2: #cdd6df;
+  --rail: #edf1f5;
+  --rail-2: #f8fafc;
+  --inset: #f5f7fa;
+  --edge: #b4c0cc;
+  --edge-strong: #8fa1b3;
+
+  --live: #c47f00;
+  --live-dim: #e2c17a;
+  --run: #189a52;
+  --stop: #d5333c;
+  --info: #1e6fd0;
+
+  --ink: #17222d;
+  --ink-dim: #45586a;
+  --muted: #6a7c8e;
+
+  --wire-idle: #8496a8;
+  --sym-idle: #4a5d70;
+  --lamp-off: #b9c5d0;
+
+  --dev-x: #1e6fd0;
+  --dev-y: #c47f00;
+  --dev-m: #8250df;
+  --dev-t: #189a52;
+  --dev-c: #d23f72;
+
+  --shadow: 0 1px 0 rgba(255, 255, 255, 0.7), 0 8px 24px rgba(23, 34, 45, 0.14);
+  --inset-shadow: inset 0 2px 6px rgba(23, 34, 45, 0.14);
 }
 
 * {
@@ -102,7 +147,7 @@ button {
   background: var(--inset);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
-  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
+  box-shadow: var(--inset-shadow);
 }
 
 /* Screw head accent */

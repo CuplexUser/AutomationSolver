@@ -129,6 +129,7 @@ export function ElevatorShaft3D({
       polarAngle={Math.PI / 2}
       minDistance={distance * 0.45}
       maxDistance={distance * 1.4}
+      panBounds={{ x: [-1.5, 1.5], y: [bottomMargin, topMargin] }}
     >
       <ElevatorShaftScene machine={machine} floorCount={floorCount} hasDoor={hasDoor} />
     </MachineCanvas>

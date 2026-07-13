@@ -76,6 +76,21 @@
   color: var(--ink-dim);
   text-transform: none;
 }
+.theme-toggle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 15px;
+  line-height: 1;
+}
+.theme-toggle:hover {
+  border-color: var(--live);
+  color: var(--live);
+}
 .btn.sm {
   padding: 6px 12px;
   font-size: 12px;
@@ -130,7 +145,7 @@
 }
 .hl-wire,
 .hl-sym {
-  stroke: #4a5f74;
+  stroke: var(--wire-idle);
   stroke-width: 3;
   fill: none;
 }
@@ -145,7 +160,7 @@
 @keyframes flow {
   0%,
   100% {
-    stroke: #4a5f74;
+    stroke: var(--wire-idle);
     filter: none;
   }
   45%,
@@ -333,7 +348,7 @@
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  background: #26333f;
+  background: var(--lamp-off);
   border: 1px solid var(--edge-strong);
 }
 .status-lamp.solved {
@@ -1018,7 +1033,7 @@
   background: var(--edge-strong);
 }
 .vlink.active::before {
-  background: #4a5f74;
+  background: var(--wire-idle);
 }
 .vlink.active.live::before {
   background: var(--live);
