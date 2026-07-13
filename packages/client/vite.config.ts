@@ -41,6 +41,12 @@ function localDracoDecoder(): Plugin {
 
 export default defineConfig({
   plugins: [react(), localDracoDecoder()],
+  build: {
+    // The only chunk above Rollup's 500 kB default is the three.js runtime
+    // (MachineCanvas-*.js), which is lazy-loaded via MachineView and can't be
+    // meaningfully subdivided — its pieces would always download together.
+    chunkSizeWarningLimit: 1024,
+  },
   server: {
     port: 5173,
     proxy: {

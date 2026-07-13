@@ -1,7 +1,18 @@
+import { lazy, Suspense } from 'react';
 import type { MachineState, PuzzleSpec } from '@automationsolver/shared';
-import { DrillStation3D } from './DrillStation3D';
-import { ElevatorShaft3D } from './ElevatorShaft3D';
 import type { SimRunner } from './useSimRunner';
+
+// Lazy so three.js + react-three-fiber + drei (the bulk of the bundle) stay in
+// a separate chunk that is only fetched when a puzzle actually has a 3D scene.
+const DrillStation3D = lazy(() =>
+  import('./DrillStation3D').then((m) => ({ default: m.DrillStation3D })),
+);
+const ElevatorShaft3D = lazy(() =>
+  import('./ElevatorShaft3D').then((m) => ({ default: m.ElevatorShaft3D })),
+);
+
+/** Reserves the scene's footprint while its chunk downloads (no layout shift). */
+const sceneFallback = <div className="machine3d" style={{ height: 300 }} />;
 
 const numOf = (v: unknown, f = 0): number => (typeof v === 'number' ? v : f);
 const boolOf = (v: unknown): boolean => v === true;
@@ -20,7 +31,9 @@ export function MachineView({ spec, runner }: { spec: PuzzleSpec; runner: SimRun
           <span className="eyebrow">Drill Station</span>
           <span className="mv-tag">{drillTag(m)}</span>
         </div>
-        <DrillStation3D machine={m} height={300} />
+        <Suspense fallback={sceneFallback}>
+          <DrillStation3D machine={m} height={300} />
+        </Suspense>
         <div className="mv-readout">
           <Readout label="Clamp" value={pct(numOf(m.clamp))} on={numOf(m.clamp) >= 1} />
           <Readout label="Feed" value={pct(numOf(m.drill))} on={numOf(m.drill) >= 1} />
@@ -40,7 +53,9 @@ export function MachineView({ spec, runner }: { spec: PuzzleSpec; runner: SimRun
           <span className="eyebrow">Elevator Shaft</span>
           <span className="mv-tag">{elevatorTag(m)}</span>
         </div>
-        <ElevatorShaft3D machine={m} floorCount={floorCount} hasDoor={hasDoor} height={300} />
+        <Suspense fallback={sceneFallback}>
+          <ElevatorShaft3D machine={m} floorCount={floorCount} hasDoor={hasDoor} height={300} />
+        </Suspense>
         <div className="mv-readout">
           <Readout label="Position" value={`F${Math.round(numOf(m.pos, 1))}`} on={numOf(m.dir) !== 0} />
           <Readout
