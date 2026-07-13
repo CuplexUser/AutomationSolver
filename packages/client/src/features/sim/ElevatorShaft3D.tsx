@@ -47,10 +47,13 @@ function ElevatorShaftScene({
     for (let n = 1; n <= 5; n++) {
       arrivalLights.push(scene.getObjectByName(`ArrivalLight_${n}`) as THREE.Mesh | undefined);
     }
-    for (let n = floorCount + 1; n <= 5; n++) {
+    // useGLTF caches one scene object shared by every elevator puzzle, so
+    // visibility must be set both ways — hiding only the excess floors would
+    // leave floors 4-5 hidden after visiting the 3-floor puzzle.
+    for (let n = 1; n <= 5; n++) {
       for (const prefix of ['FloorSlab', 'ArrivalLight', 'FrameRing', 'FloorPlaque', 'FloorDigit', 'CallButtonKnob']) {
         const obj = scene.getObjectByName(`${prefix}_${n}`);
-        if (obj) obj.visible = false;
+        if (obj) obj.visible = n <= floorCount;
       }
     }
     return {
