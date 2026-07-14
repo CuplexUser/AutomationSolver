@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { LadderProgram, PuzzleSpec } from '@automationsolver/shared';
-import type { SolutionSlot } from '../../api/client';
+import type { PuzzleSpec } from '@automationsolver/shared';
+import type { PuzzleProgram, SolutionSlot } from '../../api/client';
 import { useCreateSlot, useDeleteSlot, useUpdateSlot } from '../../api/queries';
 
 export function SlotsPanel({
@@ -14,7 +14,7 @@ export function SlotsPanel({
   spec: PuzzleSpec;
   slots: SolutionSlot[];
   activeId: number | null;
-  program: LadderProgram;
+  program: PuzzleProgram;
   onSelect: (id: number) => void;
   onClose: () => void;
 }) {

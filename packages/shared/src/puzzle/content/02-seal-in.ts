@@ -1,10 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
 
 export const sealIn: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'seal-in',
   title: 'Start / Stop Seal-In',
   difficulty: 'easy',
   order: 2,
+  category: 'basics',
   summary: 'Latch a motor with momentary Start/Stop buttons using a seal-in contact.',
   briefing: [
     'A motor must start on a momentary START (X0) and keep running after the button',

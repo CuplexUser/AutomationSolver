@@ -1,10 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
 
 export const directControl: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'direct-control',
   title: 'Direct Control',
   difficulty: 'tutorial',
   order: 1,
+  category: 'basics',
   summary: 'Wire a single input contact to a single output coil.',
   briefing: [
     'Welcome, technician. Your first job is the simplest control there is:',

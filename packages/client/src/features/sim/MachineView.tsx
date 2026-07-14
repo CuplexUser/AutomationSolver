@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import type { MachineState, PuzzleSpec } from '@automationsolver/shared';
+import type { LadderPuzzleSpec, MachineState } from '@automationsolver/shared';
 import type { SimRunner } from './useSimRunner';
 
 // Lazy so three.js + react-three-fiber + drei (the bulk of the bundle) stay in
@@ -22,7 +22,7 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
  * Puzzle-specific machine visualization. Falls back to nothing when a puzzle has
  * no bespoke scene (the I/O widgets alone tell the story for the simple ones).
  */
-export function MachineView({ spec, runner }: { spec: PuzzleSpec; runner: SimRunner }) {
+export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: SimRunner }) {
   if (spec.processId === 'drill') {
     const m = runner.machine;
     return (

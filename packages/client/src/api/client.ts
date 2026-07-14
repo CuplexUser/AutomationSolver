@@ -1,4 +1,14 @@
-import type { GradeResult, LadderProgram, PuzzleSpec, ValidationResult } from '@automationsolver/shared';
+import type {
+  GradeResult,
+  LadderProgram,
+  PuzzleCategory,
+  PuzzleSpec,
+  ValidationResult,
+  WiringDoc,
+} from '@automationsolver/shared';
+
+/** A saved/submitted solution document — shape depends on the puzzle kind. */
+export type PuzzleProgram = LadderProgram | WiringDoc;
 
 export class ApiError extends Error {
   status: number;
@@ -35,6 +45,7 @@ export interface PuzzleListItem {
   title: string;
   difficulty: PuzzleSpec['difficulty'];
   order: number;
+  category: PuzzleCategory;
   summary: string;
   status: 'unsolved' | 'in_progress' | 'solved';
   bestScore: number;
@@ -50,7 +61,7 @@ export interface SolutionSlot {
 }
 
 export interface SolutionSlotDetail extends SolutionSlot {
-  program: LadderProgram;
+  program: PuzzleProgram;
 }
 
 export interface PuzzleDetail {
@@ -83,7 +94,7 @@ export const authApi = {
 export const puzzleApi = {
   list: () => api<{ puzzles: PuzzleListItem[] }>('/puzzles'),
   detail: (slug: string) => api<PuzzleDetail>(`/puzzles/${slug}`),
-  submit: (slug: string, program: LadderProgram) =>
+  submit: (slug: string, program: PuzzleProgram) =>
     api<SubmitResult>(`/puzzles/${slug}/submit`, {
       method: 'POST',
       body: JSON.stringify({ program }),
@@ -93,12 +104,12 @@ export const puzzleApi = {
 export const slotApi = {
   list: (slug: string) => api<{ slots: SolutionSlot[] }>(`/puzzles/${slug}/slots`),
   get: (slug: string, id: number) => api<SolutionSlotDetail>(`/puzzles/${slug}/slots/${id}`),
-  create: (slug: string, program: LadderProgram, name?: string) =>
+  create: (slug: string, program: PuzzleProgram, name?: string) =>
     api<SolutionSlot>(`/puzzles/${slug}/slots`, {
       method: 'POST',
       body: JSON.stringify({ program, name }),
     }),
-  update: (slug: string, id: number, patch: { name?: string; program?: LadderProgram }) =>
+  update: (slug: string, id: number, patch: { name?: string; program?: PuzzleProgram }) =>
     api<SolutionSlot>(`/puzzles/${slug}/slots/${id}`, {
       method: 'PUT',
       body: JSON.stringify(patch),

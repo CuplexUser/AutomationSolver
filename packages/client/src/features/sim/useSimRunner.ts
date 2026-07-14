@@ -4,8 +4,8 @@ import {
   getProcess,
   SimEngine,
   type LadderProgram,
+  type LadderPuzzleSpec,
   type MachineState,
-  type PuzzleSpec,
   type RungEvalResult,
 } from '@automationsolver/shared';
 
@@ -17,14 +17,14 @@ export interface TraceHistorySample {
   bits: Record<string, boolean>;
 }
 
-export interface SimRunner {
+/**
+ * The narrow runner surface HmiPanel needs — both the ladder SimRunner and the
+ * cabinet sim hook implement this, so the operator panel serves both kinds.
+ */
+export interface HmiRunner {
   running: boolean;
   inputs: Record<string, boolean>;
   bits: Record<string, boolean>;
-  machine: MachineState;
-  evalResults: RungEvalResult[];
-  /** Rolling scan history for the trace strip, oldest first. */
-  history: TraceHistorySample[];
   start: () => void;
   stop: () => void;
   step: () => void;
@@ -32,7 +32,14 @@ export interface SimRunner {
   setInput: (address: string, value: boolean) => void;
 }
 
-export function useSimRunner(program: LadderProgram, spec: PuzzleSpec): SimRunner {
+export interface SimRunner extends HmiRunner {
+  machine: MachineState;
+  evalResults: RungEvalResult[];
+  /** Rolling scan history for the trace strip, oldest first. */
+  history: TraceHistorySample[];
+}
+
+export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): SimRunner {
   const engineRef = useRef<SimEngine>(new SimEngine(program));
   const processRef = useRef(getProcess(spec.processId));
   const machineRef = useRef<MachineState>({});

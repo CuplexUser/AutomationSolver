@@ -1,10 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
 
 export const conveyorStop: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'conveyor-stop',
   title: 'Index to Sensor',
   difficulty: 'hard',
   order: 6,
+  category: 'stations',
   summary: 'Run a conveyor until a part reaches the sensor, then stop automatically.',
   briefing: [
     'A conveyor indexes a part into a work cell. On START (X0) the BELT (Y0) runs and',

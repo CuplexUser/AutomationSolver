@@ -6,7 +6,7 @@ import {
   type LadderElement,
   type LadderProgram,
 } from '../ladder/types.js';
-import type { PuzzleSpec } from './types.js';
+import type { LadderPuzzleSpec } from './types.js';
 
 export interface ValidationResult {
   valid: boolean;
@@ -46,7 +46,7 @@ function checkElement(el: LadderElement, where: string, errors: string[]): void 
   }
 }
 
-export function validateProgram(spec: PuzzleSpec, program: LadderProgram): ValidationResult {
+export function validateProgram(spec: LadderPuzzleSpec, program: LadderProgram): ValidationResult {
   const errors: string[] = [];
   const allowed = new Set<ElementType>(spec.allowedInstructions);
   allowed.add('hwire'); // wires are always permitted

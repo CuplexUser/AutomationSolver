@@ -1,6 +1,26 @@
 import type { ElementType } from '../ladder/types.js';
+import type { CabinetLayout } from '../circuit/types.js';
 
 export type Difficulty = 'tutorial' | 'easy' | 'medium' | 'hard';
+
+export type PuzzleCategory = 'basics' | 'timers-counters' | 'stations' | 'elevator' | 'control-cabinet';
+
+/** Display order of category sections on the puzzle list. */
+export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
+  'basics',
+  'timers-counters',
+  'stations',
+  'elevator',
+  'control-cabinet',
+];
+
+export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
+  basics: 'Basics',
+  'timers-counters': 'Timers & Counters',
+  stations: 'Stations',
+  elevator: 'Elevator',
+  'control-cabinet': 'Control Cabinet',
+};
 
 /** How a device is drawn/driven on the HMI panel. */
 export type WidgetType =
@@ -37,11 +57,11 @@ export interface PuzzleRegister {
 
 export interface ScenarioStep {
   label: string;
-  /** X inputs set at the start of this step; persist until changed by a later step. */
+  /** Input bits set at the start of this step; persist until changed by a later step. */
   setInputs?: Record<string, boolean>;
   /** Simulated milliseconds to run before checking expectations. */
   holdMs: number;
-  /** Expected device-bit states at the end of the step (Y/M/X/T/C). */
+  /** Expected device-bit states at the end of the step (ladder addresses or cabinet component ids). */
   expect?: Record<string, boolean>;
   /** Expected machine-state props at the end of the step. */
   expectMachine?: Record<string, string | number | boolean>;
@@ -55,23 +75,40 @@ export interface Scenario {
   steps: ScenarioStep[];
 }
 
-export interface PuzzleSpec {
+interface PuzzleSpecBase {
   slug: string;
   title: string;
   difficulty: Difficulty;
   order: number;
+  /** Unlock/grouping category. The first puzzle of each category is always unlocked. */
+  category: PuzzleCategory;
   summary: string; // one-line teaser for the list
   briefing: string; // full goal description (plain text, newlines allowed)
   hints?: string[];
+  /** HMI devices — both puzzle kinds drive/observe these on the operator panel. */
   devices: PuzzleDevice[];
+  scenarios: Scenario[];
+}
+
+/** A classic PLC puzzle: the player writes a ladder program. */
+export interface LadderPuzzleSpec extends PuzzleSpecBase {
+  kind: 'ladder';
   /** Internal working registers (M/T/C) the puzzle expects — surfaced as an IO list. */
   registers?: PuzzleRegister[];
   allowedInstructions: ElementType[];
   maxRungs?: number;
   /** Key into the process registry. Use 'passthrough' when no dynamics are needed. */
   processId: string;
-  scenarios: Scenario[];
 }
+
+/** A control-cabinet puzzle: the player wires terminals of fixed components. */
+export interface CabinetPuzzleSpec extends PuzzleSpecBase {
+  kind: 'cabinet';
+  cabinet: CabinetLayout;
+  maxWires?: number;
+}
+
+export type PuzzleSpec = LadderPuzzleSpec | CabinetPuzzleSpec;
 
 /** Default rest state of every input, honoring normally-closed wiring. */
 export function defaultInputs(devices: PuzzleDevice[]): Record<string, boolean> {

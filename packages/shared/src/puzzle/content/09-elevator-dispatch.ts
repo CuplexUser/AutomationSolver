@@ -1,10 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
 
 export const elevatorDispatch: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'elevator-5-dispatch',
   title: 'Elevator — 5-Floor Dispatch',
   difficulty: 'hard',
   order: 9,
+  category: 'elevator',
   summary: 'Wire per-floor call buttons so a 5-floor car dispatches toward whichever floors are called.',
   briefing: [
     'A 5-floor passenger elevator with a call button on every floor (X0-X4, floors 1-5).',

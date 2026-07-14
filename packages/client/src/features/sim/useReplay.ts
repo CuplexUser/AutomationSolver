@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   traceScenario,
   type LadderProgram,
-  type PuzzleSpec,
+  type LadderPuzzleSpec,
   type ScenarioTrace,
 } from '@automationsolver/shared';
 import type { SimRunner } from './useSimRunner';
@@ -19,7 +19,7 @@ export interface ReplayController {
   playing: boolean;
   currentStepLabel: string | undefined;
   runner: SimRunner | null;
-  start: (spec: PuzzleSpec, program: LadderProgram, scenarioName: string) => void;
+  start: (spec: LadderPuzzleSpec, program: LadderProgram, scenarioName: string) => void;
   seek: (index: number) => void;
   play: () => void;
   pause: () => void;
@@ -33,7 +33,7 @@ export function useReplay(): ReplayController {
   const [playing, setPlaying] = useState(false);
 
   const start = useCallback(
-    (spec: PuzzleSpec, program: LadderProgram, scenarioName: string) => {
+    (spec: LadderPuzzleSpec, program: LadderProgram, scenarioName: string) => {
       const t = traceScenario(spec, program, scenarioName);
       setTrace(t ?? null);
       setIndex(0);

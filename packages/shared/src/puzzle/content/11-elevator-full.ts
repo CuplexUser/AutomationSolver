@@ -1,10 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
 
 export const elevatorFull: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'elevator-full',
   title: 'Elevator — Fully Functional',
   difficulty: 'hard',
   order: 11,
+  category: 'elevator',
   summary: 'The complete 5-story elevator: dispatch, doors, and an automatic return to the lobby when idle.',
   briefing: [
     'The complete 5-floor elevator: per-floor call dispatch, a door that opens on',

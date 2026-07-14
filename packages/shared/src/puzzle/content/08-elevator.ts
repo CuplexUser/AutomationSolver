@@ -1,10 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
 
 export const elevatorAutoReturn: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'elevator-auto-return',
   title: 'Elevator — Automatic Descent',
   difficulty: 'hard',
   order: 8,
+  category: 'elevator',
   summary: 'Drive a 3-floor elevator up on command and auto-return to the ground after 10 s idle.',
   briefing: [
     'A 3-floor passenger elevator. Hold the UP command (X0) to drive the car up (Y0);',

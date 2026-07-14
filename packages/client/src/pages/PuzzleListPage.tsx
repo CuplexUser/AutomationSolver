@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { CATEGORY_ORDER, CATEGORY_TITLES } from '@automationsolver/shared';
 import { usePuzzles } from '../api/queries';
 import { useAuth } from '../auth/AuthContext';
 import type { PuzzleListItem } from '../api/client';
@@ -20,11 +21,26 @@ export function PuzzleListPage() {
       {isLoading && <p className="muted">Loading puzzles…</p>}
       {isError && <p className="auth-error">Could not load puzzles. Is the server running?</p>}
 
-      <div className="puzzle-grid">
-        {data?.puzzles.map((p) => (
-          <PuzzleCard key={p.slug} puzzle={p} />
-        ))}
-      </div>
+      {CATEGORY_ORDER.map((cat) => {
+        const puzzles = data?.puzzles.filter((p) => p.category === cat) ?? [];
+        if (puzzles.length === 0) return null;
+        const solved = puzzles.filter((p) => p.status === 'solved').length;
+        return (
+          <section key={cat} className="puzzle-category">
+            <div className="category-head">
+              <h2 className="eyebrow">{CATEGORY_TITLES[cat]}</h2>
+              <span className="category-count">
+                {solved}/{puzzles.length} solved
+              </span>
+            </div>
+            <div className="puzzle-grid">
+              {puzzles.map((p) => (
+                <PuzzleCard key={p.slug} puzzle={p} />
+              ))}
+            </div>
+          </section>
+        );
+      })}
     </div>
   );
 }

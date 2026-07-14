@@ -1,10 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
 
 export const eStop: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'estop',
   title: 'Emergency Stop',
   difficulty: 'easy',
   order: 3,
+  category: 'basics',
   summary: 'Add a normally-closed E-Stop to a seal-in motor circuit.',
   briefing: [
     'Safety first. Extend the seal-in motor circuit with an EMERGENCY STOP (X2).',

@@ -1,10 +1,18 @@
-import type { PuzzleDevice, PuzzleSpec } from '@automationsolver/shared';
-import type { SimRunner } from './useSimRunner';
-import { MachineView } from './MachineView';
+import type { ReactNode } from 'react';
+import type { PuzzleDevice } from '@automationsolver/shared';
+import type { HmiRunner } from './useSimRunner';
 
-export function HmiPanel({ spec, runner }: { spec: PuzzleSpec; runner: SimRunner }) {
-  const inputs = spec.devices.filter((d) => d.io === 'input');
-  const outputs = spec.devices.filter((d) => d.io === 'output');
+export function HmiPanel({
+  devices,
+  runner,
+  machineSlot,
+}: {
+  devices: PuzzleDevice[];
+  runner: HmiRunner;
+  machineSlot?: ReactNode;
+}) {
+  const inputs = devices.filter((d) => d.io === 'input');
+  const outputs = devices.filter((d) => d.io === 'output');
 
   return (
     <div className="hmi panel">
@@ -15,7 +23,7 @@ export function HmiPanel({ spec, runner }: { spec: PuzzleSpec; runner: SimRunner
         </span>
       </div>
 
-      <MachineView spec={spec} runner={runner} />
+      {machineSlot}
 
       <div className="hmi-controls">
         {runner.running ? (
@@ -57,7 +65,7 @@ export function HmiPanel({ spec, runner }: { spec: PuzzleSpec; runner: SimRunner
   );
 }
 
-function InputWidget({ device, runner }: { device: PuzzleDevice; runner: SimRunner }) {
+function InputWidget({ device, runner }: { device: PuzzleDevice; runner: HmiRunner }) {
   const addr = device.address;
   if (device.widget === 'sensor') {
     const on = runner.bits[addr] === true;

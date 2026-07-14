@@ -1,10 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
 
 export const elevatorDoors: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'elevator-doors',
   title: 'Elevator — Doors',
   difficulty: 'hard',
   order: 10,
+  category: 'elevator',
   summary: 'Add a door that opens on arrival, dwells, and auto-closes — the car cannot move until it does.',
   briefing: [
     'The same 5-floor dispatch car, now with a door. The car physically cannot move',

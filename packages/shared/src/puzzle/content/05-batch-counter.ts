@@ -14,10 +14,12 @@ function pulse(n: number, expectFull: boolean): ScenarioStep[] {
 }
 
 export const batchCounter: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'batch-counter',
   title: 'Batch Counter',
   difficulty: 'medium',
   order: 5,
+  category: 'timers-counters',
   summary: 'Count 5 parts, latch a BATCH FULL lamp, and reset on demand.',
   briefing: [
     'A sensor pulses the PART DETECT input (X0) once for every part on the line.',

@@ -32,6 +32,17 @@ export const programSchema = z.object({
   rungs: z.array(rungSchema).min(1).max(24),
 });
 
+export const wireSchema = z.object({
+  id: z.string().min(1).max(64),
+  from: z.string().min(1).max(64),
+  to: z.string().min(1).max(64),
+});
+
+/** Cabinet-puzzle "program": the player's wiring document. */
+export const wiringSchema = z.object({
+  wires: z.array(wireSchema).max(80),
+});
+
 export const registerSchema = z.object({
   email: z.string().email().max(200),
   password: z.string().min(8).max(200),

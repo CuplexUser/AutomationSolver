@@ -2,7 +2,7 @@ import { SimEngine } from '../sim/scanCycle.js';
 import type { RungEvalResult } from '../sim/rungSolver.js';
 import type { LadderProgram } from '../ladder/types.js';
 import { getProcess, type MachineState } from './processes/index.js';
-import { defaultInputs, outputDevices, type PuzzleSpec, type Scenario } from './types.js';
+import { defaultInputs, outputDevices, type LadderPuzzleSpec, type Scenario } from './types.js';
 
 export interface StepResult {
   label: string;
@@ -49,7 +49,7 @@ export interface ScenarioTrace {
 }
 
 function simulateScenario(
-  spec: PuzzleSpec,
+  spec: LadderPuzzleSpec,
   program: LadderProgram,
   scenario: Scenario,
   dt: number,
@@ -115,7 +115,7 @@ function simulateScenario(
 }
 
 function runScenario(
-  spec: PuzzleSpec,
+  spec: LadderPuzzleSpec,
   program: LadderProgram,
   scenario: Scenario,
   dt: number,
@@ -129,7 +129,7 @@ function runScenario(
 }
 
 export function gradeProgram(
-  spec: PuzzleSpec,
+  spec: LadderPuzzleSpec,
   program: LadderProgram,
   opts: { dt?: number } = {},
 ): GradeResult {
@@ -147,7 +147,7 @@ export function gradeProgram(
  * the grader used (GRADE_DT by default).
  */
 export function traceScenario(
-  spec: PuzzleSpec,
+  spec: LadderPuzzleSpec,
   program: LadderProgram,
   scenarioName: string,
   opts: { dt?: number } = {},

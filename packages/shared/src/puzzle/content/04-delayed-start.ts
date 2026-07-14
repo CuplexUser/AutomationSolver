@@ -1,10 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
 
 export const delayedStart: PuzzleSpec = {
+  kind: 'ladder',
   slug: 'delayed-start',
   title: 'Delayed Start',
   difficulty: 'medium',
   order: 4,
+  category: 'timers-counters',
   summary: 'Sound a warning beacon, then start the motor after a 2-second timer.',
   briefing: [
     'A conveyor must warn nearby workers before it starts. On START (X0) the WARNING',

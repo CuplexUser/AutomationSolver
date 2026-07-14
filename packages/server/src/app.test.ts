@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { LadderElement, LadderProgram } from '@automationsolver/shared';
+import type { LadderElement, LadderProgram, WiringDoc } from '@automationsolver/shared';
 
 // Use an isolated in-memory DB for the test run.
 process.env.DB_PATH = ':memory:';
@@ -40,6 +40,15 @@ const sealInSolution: LadderProgram = {
 const wrongSolution: LadderProgram = {
   rungs: [
     { id: 'r1', rows: 1, cols: 2, cells: grid(1, 2, { '0,0': no('X0'), '0,1': out('Y0') }), vlinks: [] },
+  ],
+};
+
+// Canonical wiring for the cabinet tutorial (see gradeCabinet.test.ts in shared).
+const cabinetLampSolution: WiringDoc = {
+  wires: [
+    { id: 'w1', from: 'PS.L1', to: 'S1.13' },
+    { id: 'w2', from: 'S1.14', to: 'H1.X1' },
+    { id: 'w3', from: 'H1.X2', to: 'PS.N' },
   ],
 };
 
@@ -174,7 +183,7 @@ describe('puzzle-map locking', () => {
     expect(submit.body.error).toBe('locked');
   });
 
-  it('unlocks the next puzzle once the previous one is solved', async () => {
+  it('unlocks the next puzzle in the category once the previous one is solved', async () => {
     const agent = request.agent(app);
     await agent.post('/api/auth/register').send({ email: 'progressor@example.com', password: 'password123' });
     await agent.post('/api/puzzles/direct-control/submit').send({ program: directControlSolution }).expect(200);
@@ -182,19 +191,87 @@ describe('puzzle-map locking', () => {
     const list = await agent.get('/api/puzzles');
     const bySlug = new Map(list.body.puzzles.map((p: { slug: string; locked: boolean }) => [p.slug, p.locked]));
     expect(bySlug.get('seal-in')).toBe(false);
+    // Solving a Basics puzzle must not ripple into other categories.
+    expect(bySlug.get('batch-counter')).toBe(true);
 
     const detail = await agent.get('/api/puzzles/seal-in');
     expect(detail.status).toBe(200);
   });
 
-  it('anonymous visitors only see the first puzzle unlocked', async () => {
+  it('anonymous visitors see exactly the first puzzle of each category unlocked', async () => {
     const res = await request(app).get('/api/puzzles');
-    const bySlug = new Map(res.body.puzzles.map((p: { slug: string; locked: boolean }) => [p.slug, p.locked]));
-    expect(bySlug.get('direct-control')).toBe(false);
-    expect(bySlug.get('seal-in')).toBe(true);
+    const puzzles = res.body.puzzles as { slug: string; category: string; locked: boolean }[];
+    const firstOfCategory = new Set<string>();
+    for (const p of puzzles) {
+      if (!firstOfCategory.has(p.category)) {
+        firstOfCategory.add(p.category);
+        expect({ slug: p.slug, locked: p.locked }).toEqual({ slug: p.slug, locked: false });
+      } else if (p.locked === false) {
+        throw new Error(`${p.slug} should be locked (not first of ${p.category})`);
+      }
+    }
+    expect(firstOfCategory.size).toBeGreaterThanOrEqual(4);
 
     const detail = await request(app).get('/api/puzzles/seal-in');
     expect(detail.status).toBe(403);
+  });
+});
+
+describe('cabinet puzzles', () => {
+  it('grades a correct wiring as solved and persists progress', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/auth/register').send({ email: 'sparky@example.com', password: 'password123' });
+
+    const res = await agent
+      .post('/api/puzzles/cabinet-lamp/submit')
+      .send({ program: cabinetLampSolution });
+    expect(res.status).toBe(200);
+    expect(res.body.validation.valid).toBe(true);
+    expect(res.body.grade.solved).toBe(true);
+    expect(res.body.grade.score).toBe(100);
+
+    const list = await agent.get('/api/puzzles');
+    const lamp = list.body.puzzles.find((p: { slug: string }) => p.slug === 'cabinet-lamp');
+    expect(lamp.status).toBe('solved');
+    // Solving the first cabinet puzzle unlocks the second.
+    const dol = list.body.puzzles.find((p: { slug: string }) => p.slug === 'cabinet-dol');
+    expect(dol.locked).toBe(false);
+  });
+
+  it('the first cabinet puzzle is unlocked for a fresh user', async () => {
+    const res = await request(app).get('/api/puzzles');
+    const bySlug = new Map(res.body.puzzles.map((p: { slug: string; locked: boolean }) => [p.slug, p.locked]));
+    expect(bySlug.get('cabinet-lamp')).toBe(false);
+    expect(bySlug.get('cabinet-dol')).toBe(true);
+  });
+
+  it('rejects a malformed wiring body', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/auth/register').send({ email: 'sparky2@example.com', password: 'password123' });
+    const res = await agent
+      .post('/api/puzzles/cabinet-lamp/submit')
+      .send({ program: { wires: [{ id: 'w1', from: 'PS.L1' }] } });
+    expect(res.status).toBe(400);
+  });
+
+  it('rejects a ladder program posted to a cabinet slug', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/auth/register').send({ email: 'sparky3@example.com', password: 'password123' });
+    const res = await agent
+      .post('/api/puzzles/cabinet-lamp/submit')
+      .send({ program: directControlSolution });
+    expect(res.status).toBe(400);
+  });
+
+  it('a structurally valid but wrong wiring grades as unsolved', async () => {
+    const agent = request.agent(app);
+    await agent.post('/api/auth/register').send({ email: 'sparky4@example.com', password: 'password123' });
+    const res = await agent
+      .post('/api/puzzles/cabinet-lamp/submit')
+      .send({ program: { wires: [{ id: 'w1', from: 'PS.L1', to: 'H1.X1' }] } });
+    expect(res.status).toBe(200);
+    expect(res.body.validation.valid).toBe(true);
+    expect(res.body.grade.solved).toBe(false);
   });
 });
 

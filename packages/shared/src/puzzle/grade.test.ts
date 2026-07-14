@@ -3,6 +3,15 @@ import type { LadderElement, LadderProgram, Rung, VLink } from '../ladder/types.
 import { getPuzzle } from './content/index.js';
 import { gradeProgram, traceScenario } from './grade.js';
 import { validateProgram } from './validate.js';
+import type { LadderPuzzleSpec } from './types.js';
+
+/** Every puzzle in this file is a ladder puzzle; fail loudly if that changes. */
+function getLadderPuzzle(slug: string): LadderPuzzleSpec | undefined {
+  const spec = getPuzzle(slug);
+  if (!spec) return undefined;
+  if (spec.kind !== 'ladder') throw new Error(`puzzle ${slug} is not a ladder puzzle`);
+  return spec;
+}
 
 // --- tiny ladder builders -------------------------------------------------
 const no = (d: string): LadderElement => ({ type: 'contact-no', device: d });
@@ -246,7 +255,7 @@ const solutions: Record<string, LadderProgram> = {
 describe('gradeProgram — canonical solutions solve every puzzle', () => {
   for (const [slug, program] of Object.entries(solutions)) {
     it(`solves "${slug}"`, () => {
-      const spec = getPuzzle(slug);
+      const spec = getLadderPuzzle(slug);
       expect(spec, `puzzle ${slug} exists`).toBeDefined();
       const validation = validateProgram(spec!, program);
       expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
@@ -263,7 +272,7 @@ describe('gradeProgram — canonical solutions solve every puzzle', () => {
 
 describe('gradeProgram — wrong programs do not solve', () => {
   it('a direct wire without seal-in fails the seal-in puzzle', () => {
-    const spec = getPuzzle('seal-in')!;
+    const spec = getLadderPuzzle('seal-in')!;
     const bad: LadderProgram = { rungs: [R('r1', 1, 2, { '0,0': no('X0'), '0,1': out('Y0') })] };
     const result = gradeProgram(spec, bad);
     expect(result.solved).toBe(false);
@@ -271,7 +280,7 @@ describe('gradeProgram — wrong programs do not solve', () => {
   });
 
   it('an empty program never solves', () => {
-    const spec = getPuzzle('direct-control')!;
+    const spec = getLadderPuzzle('direct-control')!;
     const empty: LadderProgram = { rungs: [R('r1', 1, 2, {})] };
     expect(gradeProgram(spec, empty).solved).toBe(false);
   });
@@ -282,7 +291,7 @@ describe('gradeProgram — plausible wrong elevator programs are rejected', () =
   // that is what proves the scenarios discriminate, not just that the puzzle
   // is solvable.
   function expectFailsGrading(slug: string, program: LadderProgram): ReturnType<typeof gradeProgram> {
-    const spec = getPuzzle(slug)!;
+    const spec = getLadderPuzzle(slug)!;
     const validation = validateProgram(spec, program);
     expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
     const result = gradeProgram(spec, program);
@@ -357,7 +366,7 @@ describe('gradeProgram — plausible wrong elevator programs are rejected', () =
 
 describe('traceScenario', () => {
   it('matches gradeProgram pass/fail and samples every scan for a solved puzzle', () => {
-    const spec = getPuzzle('seal-in')!;
+    const spec = getLadderPuzzle('seal-in')!;
     const program = solutions['seal-in'];
     const grade = gradeProgram(spec, program);
     for (const scenario of spec.scenarios) {
@@ -384,7 +393,7 @@ describe('traceScenario', () => {
   });
 
   it('marks the failing step for a wrong program', () => {
-    const spec = getPuzzle('seal-in')!;
+    const spec = getLadderPuzzle('seal-in')!;
     const bad: LadderProgram = { rungs: [R('r1', 1, 2, { '0,0': no('X0'), '0,1': out('Y0') })] };
     const scenario = spec.scenarios[0];
     const trace = traceScenario(spec, bad, scenario.name)!;
@@ -392,14 +401,14 @@ describe('traceScenario', () => {
   });
 
   it('returns undefined for an unknown scenario name', () => {
-    const spec = getPuzzle('direct-control')!;
+    const spec = getLadderPuzzle('direct-control')!;
     expect(traceScenario(spec, solutions['direct-control'], 'nope')).toBeUndefined();
   });
 });
 
 describe('validateProgram', () => {
   it('flags disallowed instructions', () => {
-    const spec = getPuzzle('direct-control')!; // timer not allowed here
+    const spec = getLadderPuzzle('direct-control')!; // timer not allowed here
     const prog: LadderProgram = {
       rungs: [R('r1', 1, 2, { '0,0': no('X0'), '0,1': timer('T0', 10) })],
     };
@@ -409,7 +418,7 @@ describe('validateProgram', () => {
   });
 
   it('flags a coil driving an input device kind', () => {
-    const spec = getPuzzle('direct-control')!;
+    const spec = getLadderPuzzle('direct-control')!;
     const prog: LadderProgram = {
       rungs: [R('r1', 1, 2, { '0,0': no('X0'), '0,1': out('X5') })],
     };

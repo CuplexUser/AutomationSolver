@@ -40,9 +40,16 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 - Timer presets are K-units of 100 ms (`TIMER_BASE_MS`).
 
 ### 3. Puzzle system — `shared/src/puzzle/`
-- **`PuzzleSpec`** (`types.ts`) — briefing, hints, `devices` (the physical I/O), optional
-  `registers` (internal M/T/C the puzzle expects, surfaced as an IO list), `allowedInstructions`,
-  `maxRungs`, a `processId`, and graded `scenarios`.
+- **`PuzzleSpec`** (`types.ts`) — a discriminated union on `kind`:
+  - **`LadderPuzzleSpec`** (`kind: 'ladder'`) — briefing, hints, `devices` (the physical I/O),
+    optional `registers` (internal M/T/C the puzzle expects, surfaced as an IO list),
+    `allowedInstructions`, `maxRungs`, a `processId`, and graded `scenarios`.
+  - **`CabinetPuzzleSpec`** (`kind: 'cabinet'`) — same base (devices/scenarios/briefing) but a
+    fixed `cabinet` component layout instead of ladder fields; the player's "program" is a
+    `WiringDoc` (see §3b).
+  - Every spec also carries a **`category`** (`basics` / `timers-counters` / `stations` /
+    `elevator` / `control-cabinet`) — the unit of unlock progression and list grouping
+    (`CATEGORY_ORDER` / `CATEGORY_TITLES` in `types.ts`).
 - **Process models** (`processes/`) — small state machines that react to `Y` outputs and drive
   `X` inputs. Registered via `registerProcess`.
   - `passthrough` — no machine dynamics; the HMI *is* the process.
@@ -75,6 +82,26 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     capture on/off) so the two can never disagree. Deterministic and side-effect-free like
     `gradeProgram`, so the **client calls it directly** — no server round trip — to power replay.
 
+### 3b. Control-cabinet circuit domain — `shared/src/circuit/`
+The second puzzle genre: instead of ladder logic the player wires terminals of fixed components
+(3-phase supply, contactors, thermal overload, pushbuttons, lamps, 3-phase motor). Pure
+deterministic TS under the same lint bans as the rest of `shared`.
+- **`types.ts`** — component/terminal registry (`terminalsOf`). Terminal ids (`"K1.A1"`,
+  `"F1.96"`, IEC numbering) are a **persistence API**: saved slots embed them, so the names are
+  frozen once shipped.
+- **`solver.ts`** — `CabinetSim`, the cabinet counterpart of `SimEngine`. Nets via
+  disjoint-set union (wires + closed internal contacts; loads never merge nets); one supply
+  potential per net; ≥2 potentials on a net = short circuit → breaker trips, everything
+  de-energizes, fault reported. Contactor coils are the sequential state; each `step()` iterates
+  to a fixpoint (max 8) — non-convergence (contact chatter) forces all coils off with an
+  "unstable" fault. Motor runs on 3 distinct phases; direction from permutation parity
+  (even = fwd, transposition = rev).
+- **`validateWiring.ts` / `gradeWiring.ts`** — the cabinet counterparts of
+  `validateProgram`/`gradeProgram`, returning the same `ValidationResult`/`GradeResult` shapes so
+  the client ResultsCard renders both kinds identically. Any electrical fault during a graded
+  step fails that step. `gradeCabinet.test.ts` holds canonical wirings for every shipped cabinet
+  puzzle — the same solvability guardrail as `grade.test.ts`.
+
 ### 4. Puzzle content — `shared/src/puzzle/content/`
 
 | # | Slug | Difficulty | Teaches | Process |
@@ -90,6 +117,12 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 | 9 | `elevator-5-dispatch` | hard | multi-floor call dispatch, up/down latch + tie-break | elevator5 |
 | 10 | `elevator-doors` | hard | rising-edge door trigger, dwell timer, physical move interlock | elevator5 |
 | 11 | `elevator-full` | hard | capstone: dispatch + doors + idle auto-return timer | elevator5 |
+| 12 | `cabinet-lamp` | tutorial | first wiring: button + lamp control circuit | (cabinet) |
+| 13 | `cabinet-dol` | medium | DOL 400V starter: contactor, overload, seal-in | (cabinet) |
+| 14 | `cabinet-reversing` | hard | two interlocked contactors, phase-swap reversal | (cabinet) |
+
+Categories: 1–3 `basics`, 4–5 `timers-counters`, 6–7 `stations`, 8–11 `elevator`,
+12–14 `control-cabinet`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -102,8 +135,21 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   - **Density and zoom** — compact 72×52 cells, plus a 50–200% zoom (`Ctrl` +/−/0, or **Fit**,
     which sizes the program to the window — a two-rung tutorial scales up, an eight-rung sequence
     scales down). The zoom is remembered per puzzle, so the density suits the exercise.
+- **Cabinet editor** (`features/cabinet/`) — the play surface for `kind: 'cabinet'` puzzles,
+  lazy-loaded into its own chunk from `PuzzlePlayPage` (which dispatches on `spec.kind`;
+  `pages/play/LadderPlay.tsx` is the ladder branch, `CabinetPlay.tsx` the cabinet one, both
+  sharing `pages/play/BriefColumn.tsx`). SVG panel of fixed components; drag terminal→terminal
+  (or click-click) to run a wire, double-click a wire to remove it (Esc cancels, Delete removes
+  the selected wire). Wires and terminals color by live net potential (IEC-ish: L1 brown,
+  L2 black, L3 grey, N blue, PE green-yellow) via `useCabinetSim`, which drives the shared
+  `CabinetSim` exactly like `useSimRunner` drives `SimEngine`. Wiring state in Zustand
+  (`cabinetStore.ts` — wire ids are generated client-side because `shared` is banned from
+  non-determinism).
 - **Sim runner + HMI** (`features/sim/`) — run / step / reset; live rung highlighting; an
   interactive operator panel of push buttons, toggles, e-stops, lamps and motors bound to X/Y.
+  `HmiPanel` renders from the narrow **`HmiRunner`** contract, which both the ladder `SimRunner`
+  and the cabinet runner implement, with the machine visualization injected as a `machineSlot` —
+  so the same operator panel serves both puzzle kinds.
   - **`SimRunner` is the shared contract** (`{running, inputs, bits, machine, evalResults,
     history, start/stop/step/reset/setInput}`) that `LadderEditor`, `HmiPanel` and `MachineView`
     all render from — they don't know or care whether it's backed by a live `useSimRunner` engine
@@ -161,13 +207,16 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 - **Auth** (`auth/`) — Passport local + Google + GitHub OAuth, `node:crypto` scrypt hashing,
   httpOnly session cookies backed by a custom `SqliteStore`.
 - **Routes** (`routes/`) — puzzle list/detail, save slots, submit, progress, settings.
-- **Submit flow** (`routes/puzzles.ts`) is two-phase: `validateProgram()` then `gradeProgram()`,
-  both from `shared`. The server is the source of truth for scoring.
-- **Puzzle-map locking** (`routes/puzzles.ts`) — `lockInfo()` walks `PUZZLES` in order; a puzzle
-  is locked unless the previous one is solved (or the puzzle itself already is, so a historical
+- **Submit flow** (`routes/puzzles.ts`) is two-phase and branches on `spec.kind`:
+  `validateProgram()`+`gradeProgram()` for ladder, `validateWiring()`+`gradeWiring()` for
+  cabinet (`parseProgramBody()` picks the matching zod schema). The server is the source of
+  truth for scoring.
+- **Puzzle-map locking** (`routes/puzzles.ts`) — `lockInfo()` runs one sequential chain **per
+  category**: the first puzzle of each category is always unlocked; within a category a puzzle
+  is locked unless its predecessor is solved (or the puzzle itself already is, so a historical
   solve is never un-solved by a neighbor). Enforced on `GET /puzzles/:slug` and
   `POST /puzzles/:slug/submit` (403), not just hidden in the UI — the puzzle list just annotates
-  each item with `locked`/`requiresTitle` for display.
+  each item with `locked`/`requiresTitle`/`category` for display.
 - **Save slots** — `solution_slots` (`db/index.ts`) replaces the old one-draft-per-puzzle
   `solutions` table (kept, unused, only so a returning player's old draft lazily migrates into
   "Slot 1" the first time `listSlots()` is called). `POST/GET/PUT/DELETE

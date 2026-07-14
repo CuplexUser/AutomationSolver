@@ -1,10 +1,15 @@
 import { Router } from 'express';
 import {
   gradeProgram,
+  gradeWiring,
   getPuzzle,
   PUZZLES,
   validateProgram,
+  validateWiring,
   type LadderProgram,
+  type PuzzleCategory,
+  type PuzzleSpec,
+  type WiringDoc,
 } from '@automationsolver/shared';
 import {
   createSlot,
@@ -20,10 +25,22 @@ import {
 } from '../db/repo.js';
 import { config } from '../config.js';
 import { asyncHandler, requireAuth } from '../http.js';
-import { programSchema } from '../validation.js';
+import { programSchema, wiringSchema } from '../validation.js';
 
 function slotSummary(s: SolutionSlotRow) {
   return { id: s.id, name: s.name, updatedAt: s.updated_at, isSubmitted: s.is_submitted === 1 };
+}
+
+type ParsedProgram =
+  | { ok: true; json: string; program: LadderProgram | WiringDoc }
+  | { ok: false; details: unknown };
+
+/** Parse a submitted program body with the schema matching the puzzle kind. */
+function parseProgramBody(spec: PuzzleSpec, body: unknown): ParsedProgram {
+  const schema = spec.kind === 'cabinet' ? wiringSchema : programSchema;
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) return { ok: false, details: parsed.error.flatten() };
+  return { ok: true, json: JSON.stringify(parsed.data), program: parsed.data as LadderProgram | WiringDoc };
 }
 
 export const puzzlesRouter = Router();
@@ -42,10 +59,11 @@ interface LockEntry {
 }
 
 /**
- * Sequential gating: puzzle i is locked unless puzzle i-1 is solved. A puzzle
- * that's already solved is never locked, even if a neighbor isn't — otherwise
- * a solve that predates this feature (or an out-of-order solve) would flip a
- * puzzle from solved to locked.
+ * Per-category sequential gating: the first puzzle of each category is always
+ * unlocked; within a category, a puzzle is locked unless its predecessor is
+ * solved. A puzzle that's already solved is never locked, even if a neighbor
+ * isn't — otherwise a solve that predates this feature (or an out-of-order
+ * solve) would flip a puzzle from solved to locked.
  *
  * Dev unlock: outside production, a user can flip `devUnlockAll` in settings
  * to bypass this entirely (all puzzles open). Gated on !config.isProd so it
@@ -58,17 +76,16 @@ function lockInfo(userId: number | undefined): Map<string, LockEntry> {
     return map;
   }
   const progress = progressMap(userId);
-  let prevSolved = true;
-  let prev: { slug: string; title: string } | undefined;
+  const prevByCategory = new Map<PuzzleCategory, { slug: string; title: string; solved: boolean }>();
   for (const p of PUZZLES) {
+    const prev = prevByCategory.get(p.category);
     const solved = progress.get(p.slug)?.status === 'solved';
-    const locked = !prevSolved && !solved;
+    const locked = prev != null && !prev.solved && !solved;
     map.set(
       p.slug,
-      locked ? { locked: true, requiresSlug: prev?.slug, requiresTitle: prev?.title } : { locked: false },
+      locked ? { locked: true, requiresSlug: prev.slug, requiresTitle: prev.title } : { locked: false },
     );
-    prevSolved = solved;
-    prev = p;
+    prevByCategory.set(p.category, { slug: p.slug, title: p.title, solved });
   }
   return map;
 }
@@ -83,6 +100,7 @@ puzzlesRouter.get('/puzzles', (req, res) => {
       title: p.title,
       difficulty: p.difficulty,
       order: p.order,
+      category: p.category,
       summary: p.summary,
       status: map.get(p.slug)?.status ?? 'unsolved',
       bestScore: map.get(p.slug)?.score ?? 0,
@@ -129,15 +147,15 @@ puzzlesRouter.post(
   asyncHandler((req, res) => {
     const spec = getPuzzle(req.params.slug);
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
-    const parsed = programSchema.safeParse(req.body?.program);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid program', details: parsed.error.flatten() });
+    const parsed = parseProgramBody(spec, req.body?.program);
+    if (!parsed.ok) {
+      return res.status(400).json({ error: 'Invalid program', details: parsed.details });
     }
     const userId = req.user!.id;
     const existing = listSlots(userId, spec.slug);
     const rawName = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
     const name = rawName ? rawName.slice(0, 60) : `Slot ${existing.length + 1}`;
-    const slot = createSlot({ userId, slug: spec.slug, name, programJson: JSON.stringify(parsed.data) });
+    const slot = createSlot({ userId, slug: spec.slug, name, programJson: parsed.json });
     return res.status(201).json(slotSummary(slot));
   }),
 );
@@ -150,7 +168,10 @@ puzzlesRouter.get(
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
     const slot = getSlot(req.user!.id, spec.slug, Number(req.params.id));
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
-    return res.json({ ...slotSummary(slot), program: JSON.parse(slot.program_json) as LadderProgram });
+    return res.json({
+      ...slotSummary(slot),
+      program: JSON.parse(slot.program_json) as LadderProgram | WiringDoc,
+    });
   }),
 );
 
@@ -162,11 +183,11 @@ puzzlesRouter.put(
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
     let programJson: string | undefined;
     if (req.body?.program !== undefined) {
-      const parsed = programSchema.safeParse(req.body.program);
-      if (!parsed.success) {
-        return res.status(400).json({ error: 'Invalid program', details: parsed.error.flatten() });
+      const parsed = parseProgramBody(spec, req.body.program);
+      if (!parsed.ok) {
+        return res.status(400).json({ error: 'Invalid program', details: parsed.details });
       }
-      programJson = JSON.stringify(parsed.data);
+      programJson = parsed.json;
     }
     const rawName = typeof req.body?.name === 'string' ? req.body.name.trim() : '';
     const slot = updateSlot({
@@ -225,21 +246,26 @@ puzzlesRouter.post(
         .status(403)
         .json({ error: 'locked', requiresSlug: lock.requiresSlug, requiresTitle: lock.requiresTitle });
     }
-    const parsed = programSchema.safeParse(req.body?.program);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Invalid program', details: parsed.error.flatten() });
+    const parsed = parseProgramBody(spec, req.body?.program);
+    if (!parsed.ok) {
+      return res.status(400).json({ error: 'Invalid program', details: parsed.details });
     }
-    const program = parsed.data as LadderProgram;
 
-    saveToActiveSlot(userId, spec.slug, JSON.stringify(program), true);
+    saveToActiveSlot(userId, spec.slug, parsed.json, true);
 
-    const validation = validateProgram(spec, program);
+    const validation =
+      spec.kind === 'cabinet'
+        ? validateWiring(spec, parsed.program as WiringDoc)
+        : validateProgram(spec, parsed.program as LadderProgram);
     if (!validation.valid) {
       upsertProgress({ userId, slug: spec.slug, status: 'in_progress', score: 0 });
       return res.json({ validation, grade: null });
     }
 
-    const grade = gradeProgram(spec, program);
+    const grade =
+      spec.kind === 'cabinet'
+        ? gradeWiring(spec, parsed.program as WiringDoc)
+        : gradeProgram(spec, parsed.program as LadderProgram);
     upsertProgress({
       userId,
       slug: spec.slug,
