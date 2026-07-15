@@ -7,6 +7,7 @@ import {
   type CabinetPuzzleSpec,
   type CabinetSimResult,
   type MotorReading,
+  type PuzzleDevice,
   type SupplyPotential,
   type TerminalId,
 } from '@automationsolver/shared';
@@ -47,10 +48,14 @@ export function PanelView({
   spec,
   result,
   running,
+  inputs,
+  setInput,
 }: {
   spec: CabinetPuzzleSpec;
   result: CabinetSimResult | null;
   running: boolean;
+  inputs: Record<string, boolean>;
+  setInput: (address: string, value: boolean) => void;
 }) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const sceneRef = useRef<SVGGElement | null>(null);
@@ -341,7 +346,9 @@ export function PanelView({
           c={c}
           result={result}
           enclTop={enclT}
-          estop={spec.devices.some((d) => d.address === c.hmiAddress && d.widget === 'estop')}
+          device={spec.devices.find((d) => d.address === c.hmiAddress && d.io === 'input')}
+          pressed={c.hmiAddress != null && inputs[c.hmiAddress] === true}
+          setInput={setInput}
         />
       ))}
 
@@ -432,7 +439,21 @@ function Duct({ x, y, w, h, horizontal = false }: { x: number; y: number; w: num
 
 /* ------------------------------- devices ------------------------------- */
 
-function PanelDevice({ c, result, enclTop, estop }: { c: CabinetComponent; result: CabinetSimResult | null; enclTop: number; estop: boolean }) {
+function PanelDevice({
+  c,
+  result,
+  enclTop,
+  device,
+  pressed,
+  setInput,
+}: {
+  c: CabinetComponent;
+  result: CabinetSimResult | null;
+  enclTop: number;
+  device: PuzzleDevice | undefined;
+  pressed: boolean;
+  setInput: (address: string, value: boolean) => void;
+}) {
   const energized = result?.energized[c.id] === true;
   switch (c.type) {
     case 'contactor':
@@ -443,7 +464,7 @@ function PanelDevice({ c, result, enclTop, estop }: { c: CabinetComponent; resul
       return <SupplyBlock c={c} enclTop={enclTop} />;
     case 'button-no':
     case 'button-nc':
-      return <DoorButton c={c} nc={c.type === 'button-nc'} estop={estop} />;
+      return <DoorButton c={c} nc={c.type === 'button-nc'} device={device} pressed={pressed} setInput={setInput} />;
     case 'lamp':
       return <DoorLamp c={c} energized={energized} />;
     case 'motor3':
@@ -506,31 +527,86 @@ function SupplyBlock({ c, enclTop }: { c: CabinetComponent; enclTop: number }) {
   );
 }
 
-function DoorButton({ c, nc, estop }: { c: CabinetComponent; nc: boolean; estop: boolean }) {
+function DoorButton({
+  c,
+  nc,
+  device,
+  pressed,
+  setInput,
+}: {
+  c: CabinetComponent;
+  nc: boolean;
+  device: PuzzleDevice | undefined;
+  pressed: boolean;
+  setInput: (address: string, value: boolean) => void;
+}) {
   const cx = c.x - 40;
   const cy = c.y + 24;
+  const estop = device?.widget === 'estop';
+  const addr = c.hmiAddress;
+  // Momentary operators spring back on release; e-stops/toggles latch.
+  const latching = estop || device?.widget === 'toggle' || device?.widget === 'selector';
+  const press = (v: boolean) => addr != null && setInput(addr, v);
+
+  const interactive: React.SVGProps<SVGGElement> =
+    device != null && addr != null
+      ? {
+          className: `pnl-op${pressed ? ' pressed' : ''}`,
+          role: 'button',
+          tabIndex: 0,
+          'aria-pressed': pressed,
+          'aria-label': `${c.label}${latching && pressed ? ' (latched)' : ''}`,
+          onPointerDown: (e) => {
+            e.stopPropagation(); // don't start a pan under the button
+            if (!latching) press(true);
+          },
+          onPointerUp: () => !latching && press(false),
+          onPointerLeave: () => !latching && pressed && press(false),
+          onPointerCancel: () => !latching && press(false),
+          onClick: (e) => {
+            e.stopPropagation(); // don't clear a pending wire selection
+            if (latching) press(!pressed);
+          },
+          onKeyDown: (e) => {
+            if (e.key !== ' ' && e.key !== 'Enter') return;
+            e.preventDefault();
+            if (latching) press(!pressed);
+            else if (!e.repeat) press(true);
+          },
+          onKeyUp: (e) => {
+            if (!latching && (e.key === ' ' || e.key === 'Enter')) press(false);
+          },
+        }
+      : {};
+
   return (
     <g className="cab-deco" transform={`translate(${cx}, ${cy})`}>
       {/* wire stub from operator to its contact block */}
       <line x1={14} y1={0} x2={30} y2={0} stroke="#8f959b" strokeWidth={3} />
-      {estop ? (
-        <>
-          {/* yellow backing disc + red mushroom head */}
-          <circle r={16.5} fill="#e8c11c" stroke="#a68a10" strokeWidth={1.2} />
-          <circle r={11} fill="#c93131" stroke="#8f1f1f" strokeWidth={1.2} />
-          <circle r={11} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1} transform="translate(-1,-1.5)" opacity={0.6} />
-          <circle r={7} fill="none" stroke="#8f1f1f" strokeWidth={1} opacity={0.7} />
-        </>
-      ) : (
-        <>
-          <circle r={15} className="pnl-bezel" />
-          <circle r={nc ? 11 : 9.5} fill={nc ? '#c93131' : '#2c9540'} stroke={nc ? '#8f1f1f' : '#1d6b2d'} strokeWidth={1.2} />
-          <circle r={nc ? 11 : 9.5} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1} transform="translate(-1,-1.5)" opacity={0.6} />
-          <text y={3.5} className="pnl-btn-glyph">
-            {nc ? 'O' : 'I'}
-          </text>
-        </>
-      )}
+      <g {...interactive}>
+        {estop ? (
+          <>
+            {/* yellow backing disc + red mushroom head */}
+            <circle r={16.5} fill="#e8c11c" stroke="#a68a10" strokeWidth={1.2} />
+            <g className="pnl-cap">
+              <circle r={11} fill="#c93131" stroke="#8f1f1f" strokeWidth={1.2} />
+              <circle r={11} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1} transform="translate(-1,-1.5)" opacity={0.6} />
+              <circle r={7} fill="none" stroke="#8f1f1f" strokeWidth={1} opacity={0.7} />
+            </g>
+          </>
+        ) : (
+          <>
+            <circle r={15} className="pnl-bezel" />
+            <g className="pnl-cap">
+              <circle r={nc ? 11 : 9.5} fill={nc ? '#c93131' : '#2c9540'} stroke={nc ? '#8f1f1f' : '#1d6b2d'} strokeWidth={1.2} />
+              <circle r={nc ? 11 : 9.5} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1} transform="translate(-1,-1.5)" opacity={0.6} />
+              <text y={3.5} className="pnl-btn-glyph">
+                {nc ? 'O' : 'I'}
+              </text>
+            </g>
+          </>
+        )}
+      </g>
       <text y={30} className="pnl-plate-label">
         {c.label}
       </text>

@@ -148,7 +148,13 @@ export function CabinetPlay({ spec, user, submit }: PlayProps<CabinetPuzzleSpec>
           />
         )}
 
-        <CabinetEditor spec={spec} result={runner.result} running={runner.running} />
+        <CabinetEditor
+          spec={spec}
+          result={runner.result}
+          running={runner.running}
+          inputs={runner.inputs}
+          setInput={runner.setInput}
+        />
       </main>
 
       {hmiOpen && (

@@ -16,10 +16,14 @@ export function CabinetEditor({
   spec,
   result,
   running,
+  inputs,
+  setInput,
 }: {
   spec: CabinetPuzzleSpec;
   result: CabinetSimResult | null;
   running: boolean;
+  inputs: Record<string, boolean>;
+  setInput: (address: string, value: boolean) => void;
 }) {
   const [view, setView] = useState<CabinetViewKind>(() =>
     localStorage.getItem(VIEW_KEY) === 'schematic' ? 'schematic' : 'panel',
@@ -55,12 +59,12 @@ export function CabinetEditor({
       {view === 'schematic' ? (
         <SchematicView spec={spec} result={result} running={running} />
       ) : (
-        <PanelView spec={spec} result={result} running={running} />
+        <PanelView spec={spec} result={result} running={running} inputs={inputs} setInput={setInput} />
       )}
 
       <p className="cabinet-help muted sm">
         {running
-          ? 'Sim running — use the operator panel. Stop to edit wiring.'
+          ? 'Sim running — press the door buttons or use the operator panel. Stop to edit wiring.'
           : selectedTerminal
             ? `Wiring from ${selectedTerminal} — drop on a second terminal (Esc to cancel).`
             : 'Drag from terminal to terminal to run a wire. Double-click a wire to remove it. Both views edit the same wiring.'}
