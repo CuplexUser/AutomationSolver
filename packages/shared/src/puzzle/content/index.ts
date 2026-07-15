@@ -22,7 +22,7 @@ import { cabinetTwoStation } from './20-cabinet-two-station.js';
 import { packBasics } from './21-pack-basics.js';
 import { packInterlock } from './22-pack-interlock.js';
 import { packSequence } from './23-pack-sequence.js';
-import { packBatch } from './24-pack-batch.js';
+import { packFull } from './24-pack-full.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -48,7 +48,7 @@ export const PUZZLES: PuzzleSpec[] = [
   packBasics,
   packInterlock,
   packSequence,
-  packBatch,
+  packFull,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

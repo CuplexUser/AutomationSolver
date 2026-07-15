@@ -107,6 +107,39 @@ function doorRungs(): Rung[] {
   ];
 }
 
+// Full carton-packer cycle: a 12-stage one-hot sequencer (M0..M11) driving all
+// six actuators. START from home sets M0; each stage's end sensor SETs the next
+// relay and RSTs its own, so exactly one relay is ever true. The back-stop (Y5)
+// and lift (Y2) are latched across their sub-stages via SET/RST off the relay
+// that owns them; the four pushers wire straight to their momentary step relay
+// so dropping the relay at the hand-off springs the cylinder back.
+function packFullCycle(): Rung[] {
+  // end-of-travel sensor that closes each of the 12 stages, in order
+  const ends = ['X13', 'X1', 'X0', 'X3', 'X2', 'X5', 'X7', 'X6', 'X11', 'X10', 'X4', 'X12'];
+  const rungs: Rung[] = [
+    // start from the fully-home state (pusher in, back-stop back)
+    R('pf0', 1, 4, { '0,0': no('X20'), '0,1': no('X0'), '0,2': no('X12'), '0,3': set('M0') }),
+  ];
+  for (let s = 0; s < 12; s++) {
+    const end = ends[s];
+    if (s < 11) {
+      rungs.push(R(`pfs${s}`, 1, 3, { '0,0': no(`M${s}`), '0,1': no(end), '0,2': set(`M${s + 1}`) }));
+    }
+    rungs.push(R(`pfr${s}`, 1, 3, { '0,0': no(`M${s}`), '0,1': no(end), '0,2': rst(`M${s}`) }));
+  }
+  return [
+    ...rungs,
+    R('pfY5s', 1, 2, { '0,0': no('M0'), '0,1': set('Y5') }), // back-stop forward, stages 1-11
+    R('pfY5r', 1, 2, { '0,0': no('M11'), '0,1': rst('Y5') }), // released in stage 12
+    R('pfY2s', 1, 2, { '0,0': no('M5'), '0,1': set('Y2') }), // lift up, held across the 16-packs
+    R('pfY2r', 1, 2, { '0,0': no('M10'), '0,1': rst('Y2') }), // lowered in stage 11
+    R('pfY0', 1, 2, { '0,0': no('M1'), '0,1': out('Y0') }), // momentary pushers
+    R('pfY1', 1, 2, { '0,0': no('M3'), '0,1': out('Y1') }),
+    R('pfY3', 1, 2, { '0,0': no('M6'), '0,1': out('Y3') }),
+    R('pfY4', 1, 2, { '0,0': no('M8'), '0,1': out('Y4') }),
+  ];
+}
+
 // --- canonical solutions --------------------------------------------------
 const solutions: Record<string, LadderProgram> = {
   'direct-control': {
@@ -243,23 +276,7 @@ const solutions: Record<string, LadderProgram> = {
       R('r10', 1, 2, { '0,0': no('M1'), '0,1': out('Y0') }), // pusher out only in step 2
     ],
   },
-  'pack-batch': {
-    rungs: [
-      R('r1', 1, 2, { '0,0': no('X20'), '0,1': set('M0') }), // start the cycle
-      R('r2', 1, 2, { '0,0': no('Y6'), '0,1': rst('M0') }), // end it when the batch is done
-      R('r3', 1, 2, { '0,0': no('M0'), '0,1': out('Y5') }), // back-stop forward all batch
-      // Reciprocate the pusher: home, active, guarded, under count, carton present.
-      R('r4', 1, 6, {
-        '0,0': no('X0'), '0,1': no('M0'), '0,2': no('X13'), '0,3': nc('C0'), '0,4': no('X16'), '0,5': set('M1'),
-      }),
-      R('r5', 1, 2, { '0,0': no('X1'), '0,1': rst('M1') }), // drop at OUT -> retract
-      R('r6', 1, 2, { '0,0': no('M1'), '0,1': out('Y0') }),
-      R('r7', 1, 2, { '0,0': no('X1'), '0,1': counter('C0', 3) }), // one tick per stroke
-      R('r8', 1, 3, { '0,0': no('C0'), '0,1': no('X0'), '0,2': set('Y6') }), // finish when 3 packed and home
-      R('r9', 1, 2, { '0,0': no('X22'), '0,1': rst('Y6') }),
-      R('r10', 1, 2, { '0,0': no('X22'), '0,1': rst('C0') }),
-    ],
-  },
+  'pack-full': { rungs: packFullCycle() },
   'conveyor-stop': {
     rungs: [
       R(
@@ -382,6 +399,19 @@ describe('gradeProgram — wrong programs do not solve', () => {
     const spec = getLadderPuzzle('direct-control')!;
     const empty: LadderProgram = { rungs: [R('r1', 1, 2, {})] };
     expect(gradeProgram(spec, empty).solved).toBe(false);
+  });
+
+  it('a latched (non-momentary) pusher stalls the full-cycle packer and fails', () => {
+    // Drive the 2-pack pusher with a SET instead of an OUT coil: it extends but
+    // never springs back, so its retract stage never sees the home sensor and
+    // the one-hot sequencer wedges before it can reach the 4-pack.
+    const spec = getLadderPuzzle('pack-full')!;
+    const stalled = packFullCycle().map((r) =>
+      r.id === 'pfY0' ? R('pfY0', 1, 2, { '0,0': no('M1'), '0,1': set('Y0') }) : r,
+    );
+    const validation = validateProgram(spec, { rungs: stalled });
+    expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+    expect(gradeProgram(spec, { rungs: stalled }).solved).toBe(false);
   });
 });
 

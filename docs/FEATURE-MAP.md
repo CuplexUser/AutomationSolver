@@ -143,7 +143,7 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 21 | `pack-basics` | easy | intro to the packer: index a cylinder to its end sensor | packaging |
 | 22 | `pack-interlock` | medium | two actuators with mutual "other is clear" interlocks | packaging |
 | 23 | `pack-sequence` | hard | one-hot step sequencer: guarded back-stop + push cycle | packaging |
-| 24 | `pack-batch` | hard | capstone: belt-gated reciprocation + counter + batch-done latch | packaging |
+| 24 | `pack-full` | hard | capstone: 12-stage one-hot sequencer driving all six actuators, hands-off | packaging |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 `elevator`,
 15–20 `control-cabinet`, 21–24 `packaging`.
