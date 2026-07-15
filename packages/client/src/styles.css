@@ -1085,38 +1085,39 @@
 }
 .cabinet-help {
   margin: 8px 2px 0;
+  /* Always exactly one line: if this wraps when the message changes mid-drag,
+     the svg resizes and the wire lands beside the terminal. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.cab-body {
-  fill: var(--panel-2);
-  stroke: var(--edge-strong);
-  stroke-width: 1.5;
+/* View tabs: ⚡ Schematic / 🔧 Panel */
+.cab-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
 }
-/* Bodies and captions are decoration — clicks must reach wires beneath them
-   (short wires between a component's own terminals run under its body). */
-.cab-body,
-.cab-glyph,
-.cab-label,
-.cab-motor-dir {
-  pointer-events: none;
-}
-.cab-comp.energized .cab-body {
-  stroke: var(--live);
-  filter: drop-shadow(0 0 4px rgba(255, 176, 32, 0.35));
-}
-.cab-label {
-  fill: var(--ink-dim);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.04em;
-}
-.cab-glyph {
-  fill: var(--ink-dim);
-  font-family: var(--font-mono);
+.cab-tabs button {
+  padding: 5px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--edge);
+  background: var(--panel-2);
+  color: var(--ink-dim);
+  font-family: var(--font-display);
   font-size: 12px;
-  text-anchor: middle;
+  letter-spacing: 0.05em;
+  cursor: pointer;
 }
-.cab-glyph.sm {
-  font-size: 8px;
+.cab-tabs button.active {
+  background: var(--inset);
+  color: var(--live);
+  border-color: var(--edge-strong);
+}
+/* Device bodies and captions are decoration — clicks must reach wires beneath
+   them (short wires between a component's own terminals run under its body). */
+.cab-deco,
+.cab-deco * {
+  pointer-events: none;
 }
 .cab-motor-dir {
   fill: var(--live);
@@ -1144,7 +1145,8 @@
 .cab-term-label {
   fill: var(--muted);
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 10px;
+  font-weight: 600;
   text-anchor: middle;
   pointer-events: none;
 }
@@ -1193,6 +1195,259 @@
   padding-left: 18px;
   color: var(--stop, #e5484d);
   font-size: 12px;
+}
+
+/* ---- Schematic view: a white engineering drawing, theme-independent ---- */
+.sch-paper {
+  fill: #f7f4ec;
+  stroke: #c8c1ad;
+  stroke-width: 1;
+}
+.sch-frame {
+  fill: none;
+  stroke: #b9b19c;
+  stroke-width: 0.8;
+}
+.sch-title rect {
+  fill: #fffdf6;
+  stroke: #b9b19c;
+  stroke-width: 0.8;
+}
+.sch-title text {
+  fill: #2c3138;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+.sch-title text.sch-dim {
+  fill: #9a927c;
+  font-size: 7px;
+}
+.sch-ink {
+  stroke: #2c3138;
+  stroke-width: 1.6;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.sch-coil,
+.sch-lens,
+.sch-motor {
+  fill: #f7f4ec;
+}
+.sch-link {
+  stroke-dasharray: 3 3;
+  stroke-width: 1;
+}
+.sch-glyph {
+  fill: #2c3138;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  text-anchor: middle;
+}
+.sch-glyph.sm {
+  font-size: 8px;
+  font-weight: 400;
+}
+.sch-ref {
+  fill: #2c3138;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  text-anchor: end;
+}
+.sch-rail-label {
+  fill: #2c3138;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  text-anchor: end;
+}
+.cab-term-label.sch-term {
+  fill: #6b6350;
+}
+.sch-view .cab-terminal {
+  stroke: #6d6653;
+}
+.sch-view .cab-terminal.selected {
+  stroke: var(--live);
+}
+.sch-part.energized .sch-ink {
+  stroke: #b45309;
+}
+.sch-part.energized .sch-coil,
+.sch-part.energized .sch-lens,
+.sch-part.energized .sch-motor {
+  fill: #fde68a;
+}
+
+/* ---- Panel view: grey enclosure, DIN rails, ducts (theme-independent) --- */
+.pnl-encl {
+  fill: #b7bbb5;
+  stroke: #878c85;
+  stroke-width: 1.5;
+}
+.pnl-plate {
+  fill: #d6d9d2;
+  stroke: #a8ada4;
+  stroke-width: 1;
+}
+.pnl-door {
+  fill: #cdd0c9;
+  stroke: #9fa49b;
+  stroke-width: 1.2;
+}
+.pnl-screw {
+  fill: #9aa0a6;
+  stroke: #6c7176;
+  stroke-width: 0.8;
+}
+.pnl-duct {
+  fill: #c3cad1;
+  stroke: #8f99a3;
+  stroke-width: 1;
+}
+.pnl-duct-slot {
+  fill: #8f99a3;
+  opacity: 0.55;
+}
+.pnl-plate-label {
+  fill: #565b54;
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  letter-spacing: 0.1em;
+  text-anchor: middle;
+}
+.pnl-dev-body {
+  stroke: #878d92;
+  stroke-width: 1;
+}
+.pnl-dev.energized .pnl-dev-body {
+  stroke: var(--live);
+  filter: drop-shadow(0 0 5px rgba(255, 176, 32, 0.4));
+}
+.pnl-dev-id {
+  fill: #f2f4f5;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+.pnl-dev-id.center {
+  text-anchor: middle;
+}
+.pnl-dev-sub {
+  fill: #ccd1d6;
+  font-family: var(--font-mono);
+  font-size: 8px;
+}
+.pnl-dev-sub.center {
+  text-anchor: middle;
+}
+.pnl-dev-sub.xs {
+  font-size: 6px;
+  fill: #4b525c;
+}
+.pnl-flag {
+  fill: #23272c;
+  stroke: #14181c;
+}
+.pnl-flag.on {
+  fill: var(--live);
+  filter: drop-shadow(0 0 4px rgba(255, 176, 32, 0.7));
+}
+.pnl-bezel {
+  fill: #2e3338;
+  stroke: #171b1f;
+  stroke-width: 1;
+}
+.pnl-btn-glyph {
+  fill: #fff;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  font-weight: 700;
+  text-anchor: middle;
+}
+.pnl-lens {
+  fill: #7a6420;
+  stroke: #4c3f16;
+  stroke-width: 1;
+}
+.pnl-lens.on {
+  fill: #ffd23e;
+  filter: drop-shadow(0 0 6px rgba(255, 210, 62, 0.9));
+}
+.pnl-screwterm {
+  fill: #dfe2e5;
+  stroke: #70767c;
+  stroke-width: 1;
+}
+.pnl-screwslot {
+  stroke: #70767c;
+  stroke-width: 1.4;
+}
+.pnl-cable {
+  fill: none;
+  stroke: #23272c;
+  stroke-width: 9;
+  stroke-linecap: round;
+}
+/* Terminal names sit on varied backgrounds (grey bodies, dark shrouds, the
+   app background around the motor) — a light halo keeps them readable. */
+.cab-term-label.pnl-term {
+  fill: #23282e;
+  paint-order: stroke;
+  stroke: rgba(238, 240, 236, 0.85);
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+.pnl-view .cab-terminal {
+  stroke: #565c63;
+}
+.pnl-view .cab-terminal.selected {
+  stroke: var(--live);
+}
+.pnl-fan {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+.pnl-fan.fwd {
+  animation: pnl-spin 1.1s linear infinite;
+}
+.pnl-fan.rev {
+  animation: pnl-spin 1.1s linear infinite reverse;
+}
+@keyframes pnl-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pnl-fan.fwd,
+  .pnl-fan.rev {
+    animation: none;
+  }
+}
+
+/* Zoom controls, shared by both cabinet views */
+.cab-zoom g {
+  cursor: pointer;
+}
+.cab-zoom rect {
+  fill: var(--panel-2);
+  stroke: var(--edge-strong);
+  stroke-width: 1;
+}
+.cab-zoom text {
+  fill: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-anchor: middle;
+}
+.cab-zoom g:hover rect {
+  stroke: var(--live);
+}
+.cab-zoom g:hover text {
+  fill: var(--live);
 }
 
 /* ===================== HMI panel ===================== */

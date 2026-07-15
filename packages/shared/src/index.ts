@@ -8,6 +8,7 @@ export * from './sim/scanCycle.js';
 
 // Control-cabinet wiring domain
 export * from './circuit/types.js';
+export * from './circuit/schematic.js';
 export * from './circuit/solver.js';
 export * from './circuit/validateWiring.js';
 export * from './circuit/gradeWiring.js';

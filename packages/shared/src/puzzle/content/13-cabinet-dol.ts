@@ -36,13 +36,31 @@ export const cabinetDol: PuzzleSpec = {
     { address: 'M1', label: 'Motor', io: 'output', widget: 'motor', color: '#38bdf8' },
   ],
   cabinet: {
+    // Panel: two DIN-rail rows (supply + contactor, then the overload),
+    // start/stop buttons on the door strip, motor below the enclosure.
     components: [
-      { id: 'PS', type: 'supply3ph', label: '400V supply', x: 60, y: 60 },
-      { id: 'K1', type: 'contactor', label: 'Contactor', hmiAddress: 'K1', x: 300, y: 60 },
-      { id: 'F1', type: 'overload', label: 'Overload relay', hmiAddress: 'F1T', x: 300, y: 220 },
-      { id: 'S1', type: 'button-no', label: 'Start', hmiAddress: 'S1', x: 100, y: 200 },
-      { id: 'S2', type: 'button-nc', label: 'Stop', hmiAddress: 'S2', x: 170, y: 200 },
-      { id: 'M1', type: 'motor3', label: 'Motor', hmiAddress: 'M1', x: 300, y: 380 },
+      { id: 'PS', type: 'supply3ph', label: '400V supply', x: 250, y: 80 },
+      { id: 'K1', type: 'contactor', label: 'Contactor', hmiAddress: 'K1', x: 430, y: 80 },
+      { id: 'F1', type: 'overload', label: 'Overload relay', hmiAddress: 'F1T', x: 250, y: 220 },
+      { id: 'S1', type: 'button-no', label: 'Start', hmiAddress: 'S1', x: 70, y: 150 },
+      { id: 'S2', type: 'button-nc', label: 'Stop', hmiAddress: 'S2', x: 70, y: 250 },
+      { id: 'M1', type: 'motor3', label: 'Motor', hmiAddress: 'M1', x: 430, y: 380 },
+    ],
+    // Diagram sheet: power circuit on the left (rails → K1 main → F1 main →
+    // motor), control rung on the right, spare contacts parked at the margin.
+    schematic: [
+      { componentId: 'PS', part: 'phases', x: 140, y: 40 },
+      { componentId: 'K1', part: 'main', x: 140, y: 140 },
+      { componentId: 'F1', part: 'main', x: 140, y: 240 },
+      { componentId: 'M1', part: 'motor', x: 140, y: 350 },
+      { componentId: 'S2', part: 'contact', x: 420, y: 120 },
+      { componentId: 'S1', part: 'contact', x: 420, y: 210 },
+      { componentId: 'K1', part: 'aux13', x: 500, y: 210 },
+      { componentId: 'K1', part: 'coil', x: 420, y: 310 },
+      { componentId: 'F1', part: 'aux95', x: 420, y: 400 },
+      { componentId: 'PS', part: 'npe', x: 420, y: 490 },
+      { componentId: 'K1', part: 'aux21', x: 590, y: 120 },
+      { componentId: 'F1', part: 'aux97', x: 590, y: 210 },
     ],
   },
   maxWires: 24,

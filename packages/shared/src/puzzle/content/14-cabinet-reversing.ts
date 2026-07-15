@@ -36,14 +36,34 @@ export const cabinetReversing: PuzzleSpec = {
     { address: 'M1', label: 'Motor', io: 'output', widget: 'motor', color: '#a78bfa' },
   ],
   cabinet: {
+    // Panel: supply + forward contactor on the top rail row, reverse contactor
+    // on the second row, three door buttons, motor below the enclosure.
     components: [
-      { id: 'PS', type: 'supply3ph', label: '400V supply', x: 60, y: 60 },
-      { id: 'K1', type: 'contactor', label: 'Forward', hmiAddress: 'K1', x: 300, y: 60 },
-      { id: 'K2', type: 'contactor', label: 'Reverse', hmiAddress: 'K2', x: 300, y: 220 },
-      { id: 'S1', type: 'button-no', label: 'Forward', hmiAddress: 'S1', x: 80, y: 200 },
-      { id: 'S2', type: 'button-no', label: 'Reverse', hmiAddress: 'S2', x: 150, y: 200 },
-      { id: 'S3', type: 'button-nc', label: 'Stop', hmiAddress: 'S3', x: 115, y: 340 },
-      { id: 'M1', type: 'motor3', label: 'Motor', hmiAddress: 'M1', x: 320, y: 400 },
+      { id: 'PS', type: 'supply3ph', label: '400V supply', x: 250, y: 80 },
+      { id: 'K1', type: 'contactor', label: 'Forward', hmiAddress: 'K1', x: 430, y: 80 },
+      { id: 'K2', type: 'contactor', label: 'Reverse', hmiAddress: 'K2', x: 430, y: 220 },
+      { id: 'S1', type: 'button-no', label: 'Forward', hmiAddress: 'S1', x: 70, y: 120 },
+      { id: 'S2', type: 'button-no', label: 'Reverse', hmiAddress: 'S2', x: 70, y: 220 },
+      { id: 'S3', type: 'button-nc', label: 'Stop', hmiAddress: 'S3', x: 70, y: 320 },
+      { id: 'M1', type: 'motor3', label: 'Motor', hmiAddress: 'M1', x: 430, y: 390 },
+    ],
+    // Diagram sheet: two power branches (K1 straight, K2 phase-swapped) into
+    // one motor; two mirrored control rungs with cross interlocks.
+    schematic: [
+      { componentId: 'PS', part: 'phases', x: 150, y: 40 },
+      { componentId: 'K1', part: 'main', x: 110, y: 150 },
+      { componentId: 'K2', part: 'main', x: 250, y: 150 },
+      { componentId: 'M1', part: 'motor', x: 150, y: 330 },
+      { componentId: 'S3', part: 'contact', x: 430, y: 110 },
+      { componentId: 'S1', part: 'contact', x: 380, y: 200 },
+      { componentId: 'K1', part: 'aux13', x: 315, y: 200 },
+      { componentId: 'K2', part: 'aux21', x: 380, y: 290 },
+      { componentId: 'K1', part: 'coil', x: 380, y: 380 },
+      { componentId: 'S2', part: 'contact', x: 490, y: 200 },
+      { componentId: 'K2', part: 'aux13', x: 555, y: 200 },
+      { componentId: 'K1', part: 'aux21', x: 490, y: 290 },
+      { componentId: 'K2', part: 'coil', x: 490, y: 380 },
+      { componentId: 'PS', part: 'npe', x: 435, y: 470 },
     ],
   },
   maxWires: 32,

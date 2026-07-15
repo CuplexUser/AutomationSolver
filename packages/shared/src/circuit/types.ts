@@ -40,6 +40,12 @@ export interface CabinetComponent {
 
 export interface CabinetLayout {
   components: CabinetComponent[];
+  /**
+   * Authored positions of each component's schematic parts on the diagram
+   * sheet (see circuit/schematic.ts). Every part of every component must be
+   * placed exactly once — schematic.test.ts enforces this for shipped puzzles.
+   */
+  schematic: import('./schematic.js').SchematicPlacement[];
 }
 
 export interface Wire {

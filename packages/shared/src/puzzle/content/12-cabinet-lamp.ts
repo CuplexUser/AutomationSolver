@@ -30,10 +30,19 @@ export const cabinetLamp: PuzzleSpec = {
     { address: 'H1', label: 'Panel lamp', io: 'output', widget: 'lamp', color: '#facc15' },
   ],
   cabinet: {
+    // Panel: rail-mounted gear on DIN-rail rows inside the enclosure,
+    // buttons/lamps on the door strip at the left.
     components: [
-      { id: 'PS', type: 'supply3ph', label: '400V supply', x: 60, y: 60 },
-      { id: 'S1', type: 'button-no', label: 'Test button', hmiAddress: 'S1', x: 140, y: 180 },
-      { id: 'H1', type: 'lamp', label: 'Panel lamp', hmiAddress: 'H1', x: 320, y: 180 },
+      { id: 'PS', type: 'supply3ph', label: '400V supply', x: 250, y: 80 },
+      { id: 'S1', type: 'button-no', label: 'Test button', hmiAddress: 'S1', x: 70, y: 150 },
+      { id: 'H1', type: 'lamp', label: 'Panel lamp', hmiAddress: 'H1', x: 70, y: 280 },
+    ],
+    // Diagram sheet: one control rung between the L1 rail (top) and N rail (bottom).
+    schematic: [
+      { componentId: 'PS', part: 'phases', x: 200, y: 40 },
+      { componentId: 'S1', part: 'contact', x: 200, y: 150 },
+      { componentId: 'H1', part: 'lamp', x: 200, y: 260 },
+      { componentId: 'PS', part: 'npe', x: 200, y: 370 },
     ],
   },
   maxWires: 6,

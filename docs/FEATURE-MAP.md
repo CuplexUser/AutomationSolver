@@ -101,6 +101,12 @@ deterministic TS under the same lint bans as the rest of `shared`.
   the client ResultsCard renders both kinds identically. Any electrical fault during a graded
   step fails that step. `gradeCabinet.test.ts` holds canonical wirings for every shipped cabinet
   puzzle — the same solvability guardrail as `grade.test.ts`.
+- **`schematic.ts`** — the diagram-side representation: each component type breaks into
+  distributed IEC parts (a contactor = 3-pole `main` + `coil` + `aux13`/`aux21`), each part
+  carrying a subset of the component's terminals at symbol-local offsets. Puzzles author where
+  each part sits on the diagram sheet via `CabinetLayout.schematic`; `schematic.test.ts`
+  enforces that every terminal belongs to exactly one part and every part of every shipped
+  cabinet puzzle has exactly one placement (no terminal is unreachable in the schematic view).
 
 ### 4. Puzzle content — `shared/src/puzzle/content/`
 
@@ -138,13 +144,27 @@ Categories: 1–3 `basics`, 4–5 `timers-counters`, 6–7 `stations`, 8–11 `e
 - **Cabinet editor** (`features/cabinet/`) — the play surface for `kind: 'cabinet'` puzzles,
   lazy-loaded into its own chunk from `PuzzlePlayPage` (which dispatches on `spec.kind`;
   `pages/play/LadderPlay.tsx` is the ladder branch, `CabinetPlay.tsx` the cabinet one, both
-  sharing `pages/play/BriefColumn.tsx`). SVG panel of fixed components; drag terminal→terminal
-  (or click-click) to run a wire, double-click a wire to remove it (Esc cancels, Delete removes
-  the selected wire). Wires and terminals color by live net potential (IEC-ish: L1 brown,
-  L2 black, L3 grey, N blue, PE green-yellow) via `useCabinetSim`, which drives the shared
-  `CabinetSim` exactly like `useSimRunner` drives `SimEngine`. Wiring state in Zustand
-  (`cabinetStore.ts` — wire ids are generated client-side because `shared` is banned from
-  non-determinism).
+  sharing `pages/play/BriefColumn.tsx`). **Two editable views of the same `WiringDoc`**, toggled
+  by tabs in `CabinetEditor.tsx` (choice persisted in `localStorage['as-cabinet-view']`):
+  - **⚡ Schematic** (`SchematicView.tsx`) — an IEC circuit diagram on white drawing paper
+    (theme-independent, like a print): supply rails span the sheet, components render as their
+    distributed parts from `shared/circuit/schematic.ts` with `-K1` cross-references, wires run
+    as Manhattan paths.
+  - **🔧 Panel** (`PanelView.tsx`) — an illustrated cabinet: enclosure + mounting plate, DIN
+    rails and slotted wire ducts derived from component rows (no extra schema), door strip with
+    real operators (green I / red O buttons, glowing lamp lens), finned motor with spinning-fan
+    run cue. Panel-to-panel wires route orthogonally through the ducts (per-wire lane offsets,
+    left spine duct for row crossings); wires to the door exit via the spine and hang as a loose
+    harness; motor cables stay bezier.
+  - Shared machinery: `useWiringGestures.ts` (drag or click-click wiring, `data-terminal` hit
+    test, Esc/Delete keys), `WiresLayer.tsx` (wire + hit paths, pending rubber band, ✕ delete
+    control, per-view color palettes), `usePanZoom.tsx` (wheel zoom toward the cursor,
+    drag-to-pan when zoomed, corner +/−/fit buttons).
+  Double-click a wire to remove it (Esc cancels, Delete removes the selected wire). Wires and
+  terminals color by live net potential (IEC-ish: L1 brown, L2 black, L3 grey, N blue,
+  PE green-yellow) via `useCabinetSim`, which drives the shared `CabinetSim` exactly like
+  `useSimRunner` drives `SimEngine`. Wiring state in Zustand (`cabinetStore.ts` — wire ids are
+  generated client-side because `shared` is banned from non-determinism).
 - **Sim runner + HMI** (`features/sim/`) — run / step / reset; live rung highlighting; an
   interactive operator panel of push buttons, toggles, e-stops, lamps and motors bound to X/Y.
   `HmiPanel` renders from the narrow **`HmiRunner`** contract, which both the ladder `SimRunner`

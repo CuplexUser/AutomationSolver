@@ -14,6 +14,7 @@ const lampLayout: CabinetLayout = {
     { id: 'H1', type: 'lamp', label: 'Lamp', hmiAddress: 'H1', x: 120, y: 100 },
     { id: 'H2', type: 'lamp', label: 'Lamp 2', hmiAddress: 'H2', x: 180, y: 100 },
   ],
+  schematic: [], // solver ignores diagram placements
 };
 
 const sealLayout: CabinetLayout = {
@@ -22,6 +23,7 @@ const sealLayout: CabinetLayout = {
     { id: 'S1', type: 'button-no', label: 'Start', hmiAddress: 'S1', x: 0, y: 100 },
     { id: 'K1', type: 'contactor', label: 'Contactor', hmiAddress: 'K1', x: 100, y: 100 },
   ],
+  schematic: [],
 };
 
 const motorLayout: CabinetLayout = {
@@ -29,6 +31,7 @@ const motorLayout: CabinetLayout = {
     { id: 'PS', type: 'supply3ph', label: 'Supply', x: 0, y: 0 },
     { id: 'M1', type: 'motor3', label: 'Motor', hmiAddress: 'M1', x: 0, y: 100 },
   ],
+  schematic: [],
 };
 
 describe('CabinetSim — nets and loads', () => {
@@ -184,6 +187,7 @@ describe('CabinetSim — overload relay', () => {
       { id: 'H2', type: 'lamp', label: 'Trip lamp', hmiAddress: 'H2', x: 160, y: 100 },
       { id: 'M1', type: 'motor3', label: 'Motor', hmiAddress: 'M1', x: 0, y: 200 },
     ],
+    schematic: [],
   };
   const wiring = doc(
     // power through the overload poles
