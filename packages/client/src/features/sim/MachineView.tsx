@@ -10,6 +10,9 @@ const DrillStation3D = lazy(() =>
 const ElevatorShaft3D = lazy(() =>
   import('./ElevatorShaft3D').then((m) => ({ default: m.ElevatorShaft3D })),
 );
+const PackMachine3D = lazy(() =>
+  import('./PackMachine3D').then((m) => ({ default: m.PackMachine3D })),
+);
 
 /** Reserves the scene's footprint while its chunk downloads (no layout shift). */
 const sceneFallback = <div className="machine3d" style={{ height: 300 }} />;
@@ -39,6 +42,28 @@ export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: 
           <Readout label="Feed" value={pct(numOf(m.drill))} on={numOf(m.drill) >= 1} />
           <Readout label="Spindle" value={boolOf(m.spinning) ? 'RUN' : 'OFF'} on={boolOf(m.spinning)} />
           <Readout label="Eject" value={pct(numOf(m.push))} on={numOf(m.push) >= 1} />
+        </div>
+      </div>
+    );
+  }
+  if (spec.processId === 'packaging') {
+    const m = runner.machine;
+    return (
+      <div className="machine-view panel">
+        <div className="mv-head">
+          <span className="eyebrow">Packaging Machine</span>
+          <span className="mv-tag">{packTag(m)}</span>
+        </div>
+        <Suspense fallback={sceneFallback}>
+          <PackMachine3D machine={m} height={300} />
+        </Suspense>
+        <div className="mv-readout">
+          <Readout label="2-Pack" value={pct(numOf(m.push2))} on={numOf(m.push2) >= 1} />
+          <Readout label="4-Pack" value={pct(numOf(m.push4))} on={numOf(m.push4) >= 1} />
+          <Readout label="Lift" value={pct(numOf(m.lift))} on={numOf(m.lift) >= 1} />
+          <Readout label="16-Pk 1" value={pct(numOf(m.push16a))} on={numOf(m.push16a) >= 1} />
+          <Readout label="16-Pk 2" value={pct(numOf(m.push16b))} on={numOf(m.push16b) >= 1} />
+          <Readout label="Back-Stop" value={pct(numOf(m.backstop))} on={numOf(m.backstop) >= 1} />
         </div>
       </div>
     );
@@ -93,6 +118,18 @@ function drillTag(m: MachineState): string {
   if (boolOf(m.done)) return '✔ cycle done';
   if (boolOf(m.spinning)) return '⚙ drilling';
   if (numOf(m.clamp) > 0) return 'clamping';
+  return 'idle';
+}
+
+// --- Packaging ---------------------------------------------------------------
+
+function packTag(m: MachineState): string {
+  const anyPush =
+    numOf(m.push2) > 0.01 || numOf(m.push4) > 0.01 || numOf(m.push16a) > 0.01 || numOf(m.push16b) > 0.01;
+  if (numOf(m.lift) > 0.01 && numOf(m.lift) < 1) return '⇡ lifting';
+  if (numOf(m.lift) >= 1) return '▲ raised';
+  if (anyPush) return '⏵ pushing';
+  if (numOf(m.backstop) >= 1) return '▮ guarded';
   return 'idle';
 }
 

@@ -1,12 +1,27 @@
-import { Link } from 'react-router-dom';
-import { CATEGORY_ORDER, CATEGORY_TITLES } from '@automationsolver/shared';
+import { Link, useParams } from 'react-router-dom';
+import {
+  CATEGORY_ORDER,
+  CATEGORY_TITLES,
+  CATEGORY_BLURBS,
+  type PuzzleCategory,
+} from '@automationsolver/shared';
 import { usePuzzles } from '../api/queries';
 import { useAuth } from '../auth/AuthContext';
 import type { PuzzleListItem } from '../api/client';
 
+function isCategory(value: string | undefined): value is PuzzleCategory {
+  return value != null && (CATEGORY_ORDER as readonly string[]).includes(value);
+}
+
 export function PuzzleListPage() {
   const { data, isLoading, isError } = usePuzzles();
   const { user } = useAuth();
+  const { category } = useParams();
+  const active: PuzzleCategory | 'all' = isCategory(category) ? category : 'all';
+
+  const puzzles = data?.puzzles ?? [];
+  const byCat = (cat: PuzzleCategory) => puzzles.filter((p) => p.category === cat);
+  const shownCats = active === 'all' ? CATEGORY_ORDER : [active];
 
   return (
     <div className="list-page">
@@ -18,23 +33,46 @@ export function PuzzleListPage() {
         {!user && <p className="list-note">Sign in to save your solutions and track progress.</p>}
       </header>
 
+      {/* Category navigation — jump to a single track or view them all. */}
+      <nav className="cat-nav" aria-label="Puzzle categories">
+        <CatPill to="/puzzles" label="All" count={puzzles.length} active={active === 'all'} />
+        {CATEGORY_ORDER.map((cat) => {
+          const list = byCat(cat);
+          if (list.length === 0) return null;
+          const solved = list.filter((p) => p.status === 'solved').length;
+          return (
+            <CatPill
+              key={cat}
+              to={`/puzzles/category/${cat}`}
+              label={CATEGORY_TITLES[cat]}
+              count={list.length}
+              solved={solved}
+              active={active === cat}
+            />
+          );
+        })}
+      </nav>
+
       {isLoading && <p className="muted">Loading puzzles…</p>}
       {isError && <p className="auth-error">Could not load puzzles. Is the server running?</p>}
 
-      {CATEGORY_ORDER.map((cat) => {
-        const puzzles = data?.puzzles.filter((p) => p.category === cat) ?? [];
-        if (puzzles.length === 0) return null;
-        const solved = puzzles.filter((p) => p.status === 'solved').length;
+      {shownCats.map((cat) => {
+        const list = byCat(cat);
+        if (list.length === 0) return null;
+        const solved = list.filter((p) => p.status === 'solved').length;
         return (
-          <section key={cat} className="puzzle-category">
+          <section key={cat} id={cat} className="puzzle-category">
             <div className="category-head">
-              <h2 className="eyebrow">{CATEGORY_TITLES[cat]}</h2>
+              <div className="category-head-titles">
+                <h2 className="eyebrow">{CATEGORY_TITLES[cat]}</h2>
+                <p className="category-blurb">{CATEGORY_BLURBS[cat]}</p>
+              </div>
               <span className="category-count">
-                {solved}/{puzzles.length} solved
+                {solved}/{list.length} solved
               </span>
             </div>
             <div className="puzzle-grid">
-              {puzzles.map((p) => (
+              {list.map((p) => (
                 <PuzzleCard key={p.slug} puzzle={p} />
               ))}
             </div>
@@ -42,6 +80,28 @@ export function PuzzleListPage() {
         );
       })}
     </div>
+  );
+}
+
+function CatPill({
+  to,
+  label,
+  count,
+  solved,
+  active,
+}: {
+  to: string;
+  label: string;
+  count: number;
+  solved?: number;
+  active: boolean;
+}) {
+  const complete = solved != null && solved === count && count > 0;
+  return (
+    <Link to={to} className={`cat-pill${active ? ' active' : ''}${complete ? ' complete' : ''}`}>
+      <span className="cat-pill-label">{label}</span>
+      <span className="cat-pill-count">{solved != null ? `${solved}/${count}` : count}</span>
+    </Link>
   );
 }
 

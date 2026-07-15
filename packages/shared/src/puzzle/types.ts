@@ -3,7 +3,13 @@ import type { CabinetLayout } from '../circuit/types.js';
 
 export type Difficulty = 'tutorial' | 'easy' | 'medium' | 'hard';
 
-export type PuzzleCategory = 'basics' | 'timers-counters' | 'stations' | 'elevator' | 'control-cabinet';
+export type PuzzleCategory =
+  | 'basics'
+  | 'timers-counters'
+  | 'stations'
+  | 'elevator'
+  | 'control-cabinet'
+  | 'packaging';
 
 /** Display order of category sections on the puzzle list. */
 export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
@@ -12,6 +18,7 @@ export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
   'stations',
   'elevator',
   'control-cabinet',
+  'packaging',
 ];
 
 export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
@@ -20,6 +27,17 @@ export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
   stations: 'Stations',
   elevator: 'Elevator',
   'control-cabinet': 'Control Cabinet',
+  packaging: 'Packaging Machine',
+};
+
+/** One-line blurb per category for the puzzle-list section headers / nav. */
+export const CATEGORY_BLURBS: Record<PuzzleCategory, string> = {
+  basics: 'Contacts, coils and seal-in logic.',
+  'timers-counters': 'On-delay, off-delay, oscillators and counting.',
+  stations: 'Sequenced single-station machines.',
+  elevator: 'Multi-floor dispatch and door interlocks.',
+  'control-cabinet': 'Wire real 400 V starters terminal to terminal.',
+  packaging: 'Coordinate a six-actuator carton packer and its conveyor.',
 };
 
 /** How a device is drawn/driven on the HMI panel. */

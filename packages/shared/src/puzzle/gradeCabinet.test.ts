@@ -37,6 +37,32 @@ const solutions: Record<string, WiringDoc> = {
       w('F1.6', 'M1.W'),
     ],
   },
+  'cabinet-two-station': {
+    wires: [
+      // control: L1 → stop A (NC) → stop B (NC) → [start A ∥ start B ∥ K1 seal] →
+      // coil → overload 95-96 → N
+      w('PS.L1', 'S2.21'),
+      w('S2.22', 'S4.21'),
+      w('S4.22', 'S1.13'),
+      w('S4.22', 'S3.13'),
+      w('S4.22', 'K1.13'),
+      w('S1.14', 'K1.A1'),
+      w('S3.14', 'K1.A1'),
+      w('K1.14', 'K1.A1'),
+      w('K1.A2', 'F1.95'),
+      w('F1.96', 'PS.N'),
+      // power: three phases through the contactor, then the overload, to the motor
+      w('PS.L1', 'K1.1'),
+      w('PS.L2', 'K1.3'),
+      w('PS.L3', 'K1.5'),
+      w('K1.2', 'F1.1'),
+      w('K1.4', 'F1.3'),
+      w('K1.6', 'F1.5'),
+      w('F1.2', 'M1.U'),
+      w('F1.4', 'M1.V'),
+      w('F1.6', 'M1.W'),
+    ],
+  },
   'cabinet-reversing': {
     wires: [
       // control feed through STOP

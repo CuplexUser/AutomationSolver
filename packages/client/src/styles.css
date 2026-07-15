@@ -302,23 +302,80 @@
 }
 .puzzle-category {
   margin-bottom: 34px;
+  scroll-margin-top: 16px;
 }
 .category-head {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  gap: 16px;
   border-bottom: 1px solid var(--edge-strong);
   padding-bottom: 8px;
   margin-bottom: 16px;
+}
+.category-head-titles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .category-head h2 {
   font-size: 13px;
   margin: 0;
 }
+.category-blurb {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
 .category-count {
   color: var(--ink-dim);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ---- Category navigation pills ---- */
+.cat-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 26px;
+}
+.cat-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--ink-dim);
+  font-size: 13px;
+  text-decoration: none;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
+}
+.cat-pill:hover {
+  border-color: var(--live);
+  color: var(--live);
+}
+.cat-pill.active {
+  border-color: var(--live);
+  color: var(--live);
+  background: color-mix(in srgb, var(--live) 12%, transparent);
+}
+.cat-pill.complete .cat-pill-count {
+  color: var(--run);
+}
+.cat-pill-count {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--muted);
+}
+.cat-pill.active .cat-pill-count {
+  color: inherit;
 }
 .puzzle-card {
   padding: 20px;

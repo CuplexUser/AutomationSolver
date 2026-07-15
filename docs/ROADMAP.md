@@ -71,6 +71,43 @@ increasing difficulty (`elevator-5-dispatch` → `elevator-doors` → `elevator-
 5-floor puzzles render (see FEATURE-MAP.md's Machine views section). All solvable with the
 already-shipped instruction set — no `MOV`/compare needed.
 
+## Packaging-machine expansion ✅ *shipped (first cut)* · ⏳ *full-machine rework planned*
+
+A sixth category, `packaging`, modelled on the real "Laboration 7" carton packer, plus category
+navigation on the puzzle list (`/puzzles/category/:category` + pill nav). What shipped this
+round: the `packaging` process model (six double-acting pneumatic actuators `Y0`–`Y5`, each a
+0→1 extension driving its two end-of-travel sensors; conveyor box-presence sensors `X14`–`X17`),
+four puzzles of increasing difficulty (`pack-basics` → `pack-interlock` → `pack-sequence` →
+`pack-batch`), a **procedural** `PackMachine3D` scene (three.js primitives, no glTF — the machine
+is parametric boxes and rods), and the surrounding nav/routing. Also added this round outside
+packaging: `run-on-timer`, `flasher`, `two-hand-press` (+ `press` process), and
+`cabinet-two-station`.
+
+**Known gap — the capstone does not yet drive the real machine.** `pack-batch` invents a
+seventh output, a `Y6` "Batch Done" lamp, and only exercises `Y0`/`Y5`. The real machine has
+**exactly six outputs** (`Y0` 2-pack, `Y1` 4-pack, `Y2` lift, `Y3` 16-pack-1, `Y4` 16-pack-2,
+`Y5` back-stop) and no "batch done" line. The full-machine rework:
+
+1. **Rebuild the capstone as `pack-full`** — a one-shot automatic cycle that sequences **all six
+   actuators** in a believable packing order (back-stop forward → 2-pack out/retract → 4-pack
+   out/retract → lift up → 16-pack-1 out/retract → 16-pack-2 out/retract → lift down → back-stop
+   back), a one-hot step sequencer (`M0..M11`) with SET/RST transitions gated on each stage's end
+   sensor, latched `Y5`/`Y2` (held across their sub-steps) and momentary `Y0`/`Y1`/`Y3`/`Y4`.
+   ~32 rungs — precedent exists (`elevator-full` ≈ 29). Author the canonical in `grade.test.ts`
+   via a `packFullCycle()` helper (like `dispatchCore()`), with scenario samples taken at
+   mid-step midpoints (travel times: 2/4/16-pack 600 ms, lift 900 ms, back-stop 300 ms) so the
+   asserts stay off the step boundaries.
+2. **Drop the synthetic `Y6`.** Completion/idle is machine state (all sensors home), not an
+   output; if a cue is wanted, use an internal `M` relay, never a fabricated `Y`.
+3. **Model the two feed conveyors properly.** Promote `X14`–`X17` from scenario/HMI toggles to
+   real belt dynamics in the process (cartons index onto the near/far bands and are consumed),
+   so a puzzle can genuinely react to box flow instead of a hand-held toggle.
+4. **Broaden the mid-tier puzzles** so `Y1`/`Y3`/`Y4` each get a dedicated exercise before the
+   capstone (right now only `Y0`/`Y2`/`Y5` appear pre-capstone).
+5. **Optional: a Blender hero model.** The procedural scene is deliberately swappable — the
+   process model already exposes every actuator's extension — so a `pack-machine.glb` could
+   replace `PackMachine3D` later without touching puzzle logic, matching the drill/elevator look.
+
 ## Phase 3 — Content depth
 
 With replay and traces in place, harder content becomes fair rather than frustrating.

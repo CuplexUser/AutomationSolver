@@ -104,6 +104,25 @@ const drill: ProcessModel = {
 };
 
 /**
+ * Two-hand safety press. The press ram (Y0) advances while commanded and
+ * retracts otherwise; the machine reports a single bottom-of-stroke sensor:
+ *   Y0 press → X3 "At Bottom" (ram fully advanced)
+ * Machine state (ram 0..1) drives any bespoke view.
+ */
+const press: ProcessModel = {
+  id: 'press',
+  init: () => ({ ram: 0 }),
+  step: ({ outputs, machine, dtMs }) => {
+    const advanceMs = 600;
+    const retractMs = 400;
+    const advancing = outputs['Y0'] === true;
+    let ram = num(machine.ram);
+    ram = advancing ? Math.min(1, ram + dtMs / advanceMs) : Math.max(0, ram - dtMs / retractMs);
+    return { machine: { ram }, derivedInputs: { X3: ram >= 1 } };
+  },
+};
+
+/**
  * Passenger elevator over 3 floors. Y0 drives the car up, Y1 down; the process
  * integrates a continuous car position (1..3) and reports floor sensors:
  *   X3 "At Floor 1", X4 "At Floor 2", X5 "At Floor 3".
@@ -210,10 +229,66 @@ const elevator5: ProcessModel = {
   },
 };
 
+/**
+ * Carton packaging machine — six double-acting pneumatic actuators plus a
+ * conveyor. Each actuator extends (position 0→1) while its output coil is
+ * energized and retracts (spring return) otherwise; the machine reports the two
+ * end-of-travel sensors for each. Fixed address convention (shared by every
+ * packaging puzzle, mirroring the real Laboration-7 I/O list):
+ *   Y0 2-pack push    → X0 in  / X1 out
+ *   Y1 4-pack push    → X2 in  / X3 out
+ *   Y2 lift up        → X4 down (in) / X5 up (out)
+ *   Y3 16-pack1 push  → X6 in  / X7 out
+ *   Y4 16-pack2 push  → X10 in / X11 out
+ *   Y5 back-stop fwd  → X12 back (in) / X13 forward (out)
+ * The conveyor box-presence sensors X14-X17 are driven by the scenario/HMI (a
+ * carton either is or isn't there), so the process leaves them alone and only
+ * mirrors them into machine state for the view. Every actuator's travel is a
+ * multiple of both scan cadences (60ms client, 50ms grader) so end sensors trip
+ * on the same scan under either — see the elevator5 note for why that matters.
+ */
+const PACK_ACTUATORS = [
+  { cmd: 'Y0', inS: 'X0', outS: 'X1', ms: 600, key: 'push2' },
+  { cmd: 'Y1', inS: 'X2', outS: 'X3', ms: 600, key: 'push4' },
+  { cmd: 'Y2', inS: 'X4', outS: 'X5', ms: 900, key: 'lift' },
+  { cmd: 'Y3', inS: 'X6', outS: 'X7', ms: 600, key: 'push16a' },
+  { cmd: 'Y4', inS: 'X10', outS: 'X11', ms: 600, key: 'push16b' },
+  { cmd: 'Y5', inS: 'X12', outS: 'X13', ms: 300, key: 'backstop' },
+] as const;
+
+const PACK_BOX_SENSORS = ['X14', 'X15', 'X16', 'X17'] as const;
+
+const packaging: ProcessModel = {
+  id: 'packaging',
+  init: () => {
+    const m: MachineState = {};
+    for (const a of PACK_ACTUATORS) m[a.key] = 0;
+    for (const s of PACK_BOX_SENSORS) m[`box_${s}`] = false;
+    return m;
+  },
+  step: ({ outputs, inputs, machine, dtMs }) => {
+    const eps = 0.02;
+    const m: MachineState = {};
+    const derivedInputs: Record<string, boolean> = {};
+    for (const a of PACK_ACTUATORS) {
+      const pos = num(machine[a.key]);
+      const extend = outputs[a.cmd] === true;
+      const next = extend ? Math.min(1, pos + dtMs / a.ms) : Math.max(0, pos - dtMs / a.ms);
+      m[a.key] = next;
+      derivedInputs[a.inS] = next <= eps;
+      derivedInputs[a.outS] = next >= 1 - eps;
+    }
+    for (const s of PACK_BOX_SENSORS) m[`box_${s}`] = inputs[s] === true;
+    return { machine: m, derivedInputs };
+  },
+};
+
 const registry = new Map<string, ProcessModel>([
   [passthrough.id, passthrough],
   [conveyor.id, conveyor],
   [drill.id, drill],
+  [press.id, press],
+  [packaging.id, packaging],
   [elevator.id, elevator],
   [elevator5.id, elevator5],
 ]);

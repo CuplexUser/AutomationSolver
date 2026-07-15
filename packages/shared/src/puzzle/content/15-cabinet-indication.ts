@@ -5,7 +5,7 @@ export const cabinetIndication: PuzzleSpec = {
   slug: 'cabinet-indication',
   title: 'Run & Trip Indication',
   difficulty: 'medium',
-  order: 15,
+  order: 19,
   category: 'control-cabinet',
   summary: 'Add pilot lights to a DOL starter: a run lamp on the coil, a trip lamp on the overload.',
   briefing: [

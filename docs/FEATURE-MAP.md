@@ -48,14 +48,22 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     fixed `cabinet` component layout instead of ladder fields; the player's "program" is a
     `WiringDoc` (see §3b).
   - Every spec also carries a **`category`** (`basics` / `timers-counters` / `stations` /
-    `elevator` / `control-cabinet`) — the unit of unlock progression and list grouping
-    (`CATEGORY_ORDER` / `CATEGORY_TITLES` in `types.ts`).
+    `elevator` / `control-cabinet` / `packaging`) — the unit of unlock progression and list
+    grouping (`CATEGORY_ORDER` / `CATEGORY_TITLES` / `CATEGORY_BLURBS` in `types.ts`).
 - **Process models** (`processes/`) — small state machines that react to `Y` outputs and drive
   `X` inputs. Registered via `registerProcess`.
   - `passthrough` — no machine dynamics; the HMI *is* the process.
   - `conveyor` — moves a part and derives a position sensor.
   - `drill` — clamp travel, drill feed depth, spindle/beacon/done state; derives `X2` (clamped)
     and `X3` (at bottom).
+  - `press` — a single ram (`Y0`) that advances/retracts; derives `X3` (at bottom). Backs the
+    two-hand safety press.
+  - `packaging` — the carton packer: six double-acting pneumatic actuators (`Y0`–`Y5`), each a
+    0→1 extension driving its two end-of-travel sensors (`Y0`→`X0`/`X1`, `Y2` lift→`X4`/`X5`,
+    `Y5` back-stop→`X12`/`X13`, …), plus conveyor box-presence sensors `X14`–`X17` that stay
+    scenario/HMI-driven (a carton is or isn't there) and are only mirrored into machine state
+    for the view. Address convention is fixed across all packaging puzzles (mirrors the real
+    Laboration-7 I/O list).
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
   - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
     buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by
@@ -117,20 +125,28 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 3 | `estop` | easy | normally-closed safety wiring | passthrough |
 | 4 | `delayed-start` | medium | on-delay timer + run latch | passthrough |
 | 5 | `batch-counter` | medium | counter with reset | passthrough |
-| 6 | `conveyor-stop` | medium | reacting to a machine-driven sensor | conveyor |
-| 7 | `drill-station` | hard | multi-step sequence, SET/RST, beacon | drill |
-| 8 | `elevator-auto-return` | hard | timed auto-return, cancelable descent | elevator |
-| 9 | `elevator-5-dispatch` | hard | multi-floor call dispatch, up/down latch + tie-break | elevator5 |
-| 10 | `elevator-doors` | hard | rising-edge door trigger, dwell timer, physical move interlock | elevator5 |
-| 11 | `elevator-full` | hard | capstone: dispatch + doors + idle auto-return timer | elevator5 |
-| 12 | `cabinet-lamp` | tutorial | first wiring: button + lamp control circuit | (cabinet) |
-| 13 | `cabinet-dol` | medium | DOL 400V starter: contactor, overload, seal-in | (cabinet) |
-| 14 | `cabinet-reversing` | hard | two interlocked contactors, phase-swap reversal | (cabinet) |
-| 15 | `cabinet-indication` | medium | pilot lights: run lamp across the coil, trip lamp on the overload 97-98 aux | (cabinet) |
-| 16 | `cabinet-reversing-protected` | hard | capstone: reversing + overload + e-stop + fwd/rev/trip lamps | (cabinet) |
+| 6 | `run-on-timer` | medium | off-delay built from an on-delay timer (fan run-on) | passthrough |
+| 7 | `flasher` | hard | two-timer oscillator, symmetric blink | passthrough |
+| 8 | `conveyor-stop` | medium | reacting to a machine-driven sensor | conveyor |
+| 9 | `drill-station` | hard | multi-step sequence, SET/RST, beacon | drill |
+| 10 | `two-hand-press` | medium | two-hand safety AND-gate, anti-repeat latch | press |
+| 11 | `elevator-auto-return` | hard | timed auto-return, cancelable descent | elevator |
+| 12 | `elevator-5-dispatch` | hard | multi-floor call dispatch, up/down latch + tie-break | elevator5 |
+| 13 | `elevator-doors` | hard | rising-edge door trigger, dwell timer, physical move interlock | elevator5 |
+| 14 | `elevator-full` | hard | capstone: dispatch + doors + idle auto-return timer | elevator5 |
+| 15 | `cabinet-lamp` | tutorial | first wiring: button + lamp control circuit | (cabinet) |
+| 16 | `cabinet-dol` | medium | DOL 400V starter: contactor, overload, seal-in | (cabinet) |
+| 17 | `cabinet-two-station` | medium | control from two stations: parallel starts, series stops | (cabinet) |
+| 18 | `cabinet-reversing` | hard | two interlocked contactors, phase-swap reversal | (cabinet) |
+| 19 | `cabinet-indication` | medium | pilot lights: run lamp across the coil, trip lamp on the overload 97-98 aux | (cabinet) |
+| 20 | `cabinet-reversing-protected` | hard | capstone: reversing + overload + e-stop + fwd/rev/trip lamps | (cabinet) |
+| 21 | `pack-basics` | easy | intro to the packer: index a cylinder to its end sensor | packaging |
+| 22 | `pack-interlock` | medium | two actuators with mutual "other is clear" interlocks | packaging |
+| 23 | `pack-sequence` | hard | one-hot step sequencer: guarded back-stop + push cycle | packaging |
+| 24 | `pack-batch` | hard | capstone: belt-gated reciprocation + counter + batch-done latch | packaging |
 
-Categories: 1–3 `basics`, 4–5 `timers-counters`, 6–7 `stations`, 8–11 `elevator`,
-12–16 `control-cabinet`.
+Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 `elevator`,
+15–20 `control-cabinet`, 21–24 `packaging`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -188,11 +204,19 @@ Categories: 1–3 `basics`, 4–5 `timers-counters`, 6–7 `stations`, 8–11 `e
   - **Progressive hints** — `PuzzlePlayPage`'s `HintsPanel` reveals `spec.hints` one at a time;
     the reveal count is remembered per puzzle in `localStorage`.
 - **Machine views** (`features/sim/MachineView.tsx`) — puzzle-specific 3D scenes chosen by
-  `processId`, both authored in Blender and loaded as `.glb` via `useGLTF`/react-three-fiber. The
-  view is a diagnostic instrument, not decoration: it never animates on its own — every transform
-  is driven each frame straight from the deterministic `machine.*` state the process model
-  computes from `dt` — and it carries a readout of the machine's actual state (clamp %, feed %,
-  spindle; or floor/direction/door for the elevator).
+  `processId`. The view is a diagnostic instrument, not decoration: it never animates on its own —
+  every transform is driven each frame straight from the deterministic `machine.*` state the
+  process model computes from `dt` — and it carries a readout of the machine's actual state
+  (clamp %, feed %, spindle; floor/direction/door for the elevator; per-actuator extension for the
+  packer). Two authoring styles coexist:
+  - **glTF-backed** (drill, elevator) — hero models authored in Blender, loaded as `.glb` via
+    `useGLTF`, driven by looking up named nodes. Best for detailed/organic geometry; the cost is
+    that node names are a load-bearing coupling and a typo silently no-ops.
+  - **Procedural** (`PackMachine3D.tsx`, `processId: 'packaging'`) — built entirely from three.js
+    primitives (boxes + cylinders), no asset. Chosen because the packer *is* parametric boxes and
+    rods: each of the six actuators maps to a ref we lerp from its `machine.*` extension, so there
+    is no `.glb`/Blender round-trip and nothing to keep in sync by name. A GLB could be swapped in
+    later without touching puzzle logic, since the process model already exposes the state.
   - **`MachineCanvas.tsx`** — the shared `<Canvas>` + ambient/directional lights + optional
     `OrbitControls` rig both scenes render into, parameterized by camera position/fov/target/
     distance bounds/height. Three control modes: `interactive` (drag-to-rotate + scroll-to-zoom,
@@ -223,6 +247,11 @@ Categories: 1–3 `basics`, 4–5 `timers-counters`, 6–7 `stations`, 8–11 `e
   most-recently-updated slot) and loads its program; `SlotsPanel` lists/creates/renames/deletes
   slots. The editor waits for slot resolution before rendering interactively, so a fast typist
   can't have their first edits clobbered by the async slot load.
+- **Puzzle list + category nav** (`pages/PuzzleListPage.tsx`) — grouped by category, each section
+  headed with its `CATEGORY_BLURBS` line. A pill nav routes between an **All** view and a single
+  category via `/puzzles/category/:category` (the route sits before `/puzzles/:slug` in `App.tsx`;
+  React Router's specificity ranking, not order, keeps the two-segment category path from being
+  read as a slug). Each pill shows that category's `solved/total` and lights green when complete.
 - **Server state** via TanStack Query; auth context wraps the app.
 
 ### 6. Server — `packages/server/src/`

@@ -5,7 +5,7 @@ export const elevatorDispatch: PuzzleSpec = {
   slug: 'elevator-5-dispatch',
   title: 'Elevator — 5-Floor Dispatch',
   difficulty: 'hard',
-  order: 9,
+  order: 12,
   category: 'elevator',
   summary: 'Wire per-floor call buttons so a 5-floor car dispatches toward whichever floors are called.',
   briefing: [

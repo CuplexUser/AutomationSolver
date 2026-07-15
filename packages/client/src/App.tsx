@@ -15,6 +15,7 @@ export function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/puzzles" element={<PuzzleListPage />} />
+          <Route path="/puzzles/category/:category" element={<PuzzleListPage />} />
           <Route path="/puzzles/:slug" element={<PuzzlePlayPage />} />
           <Route path="/settings" element={<SettingsPage />} />
           <Route path="*" element={<LandingPage />} />

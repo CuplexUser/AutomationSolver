@@ -5,7 +5,7 @@ export const elevatorFull: PuzzleSpec = {
   slug: 'elevator-full',
   title: 'Elevator — Fully Functional',
   difficulty: 'hard',
-  order: 11,
+  order: 14,
   category: 'elevator',
   summary: 'The complete 5-story elevator: dispatch, doors, and an automatic return to the lobby when idle.',
   briefing: [

@@ -161,6 +161,105 @@ const solutions: Record<string, LadderProgram> = {
       R('r3', 1, 2, { '0,0': no('X1'), '0,1': rst('C0') }),
     ],
   },
+  'run-on-timer': {
+    rungs: [
+      // Motor seal-in: (X0 OR Y0) AND NOT X1 -> Y0
+      R(
+        'r1',
+        2,
+        3,
+        { '0,0': no('X0'), '1,0': no('Y0'), '0,1': nc('X1'), '0,2': out('Y0') },
+        [{ row: 0, col: 1 }],
+      ),
+      // Fan seal-in: (Y0 OR (Y1 AND NOT T0)) -> Y1 — follows the motor, then holds
+      // itself until the run-on timer finishes.
+      R(
+        'r2',
+        2,
+        3,
+        { '0,0': no('Y0'), '0,1': wire, '0,2': out('Y1'), '1,0': no('Y1'), '1,1': nc('T0') },
+        [{ row: 0, col: 2 }],
+      ),
+      // Run-on timer counts only while the fan is on but the motor is off.
+      R('r3', 1, 3, { '0,0': no('Y1'), '0,1': nc('Y0'), '0,2': timer('T0', 30) }),
+    ],
+  },
+  flasher: {
+    rungs: [
+      // Two-timer oscillator: T0 times the on-phase, T1 the off-phase.
+      R('r1', 1, 3, { '0,0': no('X0'), '0,1': nc('T1'), '0,2': timer('T0', 10) }),
+      R('r2', 1, 2, { '0,0': no('T0'), '0,1': timer('T1', 10) }),
+      // Beacon lit while enabled and T0 has not yet completed its phase.
+      R('r3', 1, 3, { '0,0': no('X0'), '0,1': nc('T0'), '0,2': out('Y0') }),
+    ],
+  },
+  'two-hand-press': {
+    rungs: [
+      // Advance only with both palms + healthy e-stop, and not already latched-done.
+      R('r1', 1, 5, {
+        '0,0': no('X0'), '0,1': no('X1'), '0,2': no('X2'), '0,3': nc('M0'), '0,4': out('Y0'),
+      }),
+      R('r2', 1, 2, { '0,0': no('X3'), '0,1': set('M0') }), // latch done at bottom
+      R('r3', 1, 3, { '0,0': nc('X0'), '0,1': nc('X1'), '0,2': rst('M0') }), // clear on both released
+      R('r4', 1, 2, { '0,0': no('M0'), '0,1': out('Y1') }), // stroke-complete lamp
+    ],
+  },
+  'pack-basics': {
+    rungs: [
+      // Index the pusher to its OUT sensor, then let it retract: (X20 OR Y0) AND NOT X1.
+      R(
+        'r1',
+        2,
+        3,
+        { '0,0': no('X20'), '1,0': no('Y0'), '0,1': nc('X1'), '0,2': out('Y0') },
+        [{ row: 0, col: 1 }],
+      ),
+    ],
+  },
+  'pack-interlock': {
+    rungs: [
+      R('r1', 1, 3, { '0,0': no('X20'), '0,1': no('X4'), '0,2': out('Y0') }), // push only if lift down
+      R('r2', 1, 3, { '0,0': no('X21'), '0,1': no('X0'), '0,2': out('Y2') }), // raise only if pusher home
+    ],
+  },
+  'pack-sequence': {
+    rungs: [
+      R('r1', 1, 4, { '0,0': no('X20'), '0,1': no('X12'), '0,2': no('X0'), '0,3': set('M0') }),
+      R('r2', 1, 3, { '0,0': no('M0'), '0,1': no('X13'), '0,2': set('M1') }),
+      R('r3', 1, 3, { '0,0': no('M0'), '0,1': no('X13'), '0,2': rst('M0') }),
+      R('r4', 1, 3, { '0,0': no('M1'), '0,1': no('X1'), '0,2': set('M2') }),
+      R('r5', 1, 3, { '0,0': no('M1'), '0,1': no('X1'), '0,2': rst('M1') }),
+      R('r6', 1, 3, { '0,0': no('M2'), '0,1': no('X0'), '0,2': set('M3') }),
+      R('r7', 1, 3, { '0,0': no('M2'), '0,1': no('X0'), '0,2': rst('M2') }),
+      R('r8', 1, 3, { '0,0': no('M3'), '0,1': no('X12'), '0,2': rst('M3') }),
+      // Back-stop forward for steps 1-3 (M0 OR M1 OR M2).
+      R(
+        'r9',
+        3,
+        2,
+        { '0,0': no('M0'), '1,0': no('M1'), '2,0': no('M2'), '0,1': out('Y5') },
+        [{ row: 0, col: 1 }, { row: 1, col: 1 }],
+      ),
+      R('r10', 1, 2, { '0,0': no('M1'), '0,1': out('Y0') }), // pusher out only in step 2
+    ],
+  },
+  'pack-batch': {
+    rungs: [
+      R('r1', 1, 2, { '0,0': no('X20'), '0,1': set('M0') }), // start the cycle
+      R('r2', 1, 2, { '0,0': no('Y6'), '0,1': rst('M0') }), // end it when the batch is done
+      R('r3', 1, 2, { '0,0': no('M0'), '0,1': out('Y5') }), // back-stop forward all batch
+      // Reciprocate the pusher: home, active, guarded, under count, carton present.
+      R('r4', 1, 6, {
+        '0,0': no('X0'), '0,1': no('M0'), '0,2': no('X13'), '0,3': nc('C0'), '0,4': no('X16'), '0,5': set('M1'),
+      }),
+      R('r5', 1, 2, { '0,0': no('X1'), '0,1': rst('M1') }), // drop at OUT -> retract
+      R('r6', 1, 2, { '0,0': no('M1'), '0,1': out('Y0') }),
+      R('r7', 1, 2, { '0,0': no('X1'), '0,1': counter('C0', 3) }), // one tick per stroke
+      R('r8', 1, 3, { '0,0': no('C0'), '0,1': no('X0'), '0,2': set('Y6') }), // finish when 3 packed and home
+      R('r9', 1, 2, { '0,0': no('X22'), '0,1': rst('Y6') }),
+      R('r10', 1, 2, { '0,0': no('X22'), '0,1': rst('C0') }),
+    ],
+  },
   'conveyor-stop': {
     rungs: [
       R(

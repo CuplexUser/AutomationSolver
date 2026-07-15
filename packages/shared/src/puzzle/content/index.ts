@@ -15,6 +15,14 @@ import { cabinetDol } from './13-cabinet-dol.js';
 import { cabinetReversing } from './14-cabinet-reversing.js';
 import { cabinetIndication } from './15-cabinet-indication.js';
 import { cabinetReversingProtected } from './16-cabinet-reversing-protected.js';
+import { runOnTimer } from './17-run-on-timer.js';
+import { flasher } from './18-flasher.js';
+import { twoHandPress } from './19-two-hand-press.js';
+import { cabinetTwoStation } from './20-cabinet-two-station.js';
+import { packBasics } from './21-pack-basics.js';
+import { packInterlock } from './22-pack-interlock.js';
+import { packSequence } from './23-pack-sequence.js';
+import { packBatch } from './24-pack-batch.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -22,17 +30,25 @@ export const PUZZLES: PuzzleSpec[] = [
   eStop,
   delayedStart,
   batchCounter,
+  runOnTimer,
+  flasher,
   conveyorStop,
   drillStation,
+  twoHandPress,
   elevatorAutoReturn,
   elevatorDispatch,
   elevatorDoors,
   elevatorFull,
   cabinetLamp,
   cabinetDol,
+  cabinetTwoStation,
   cabinetReversing,
   cabinetIndication,
   cabinetReversingProtected,
+  packBasics,
+  packInterlock,
+  packSequence,
+  packBatch,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

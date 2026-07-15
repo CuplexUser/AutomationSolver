@@ -5,7 +5,7 @@ export const cabinetReversingProtected: PuzzleSpec = {
   slug: 'cabinet-reversing-protected',
   title: 'Reversing with Protection',
   difficulty: 'hard',
-  order: 16,
+  order: 20,
   category: 'control-cabinet',
   summary:
     'The full machine: reversing starter with overload, emergency stop and three pilot lights.',

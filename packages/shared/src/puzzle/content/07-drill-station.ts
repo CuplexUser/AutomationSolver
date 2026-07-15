@@ -5,7 +5,7 @@ export const drillStation: PuzzleSpec = {
   slug: 'drill-station',
   title: 'Drill Station Cycle',
   difficulty: 'hard',
-  order: 7,
+  order: 9,
   category: 'stations',
   summary: 'Sequence a clamp, drill feed, warning beacon and eject pusher into one automatic stroke.',
   briefing: [

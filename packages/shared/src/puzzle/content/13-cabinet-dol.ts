@@ -5,7 +5,7 @@ export const cabinetDol: PuzzleSpec = {
   slug: 'cabinet-dol',
   title: 'DOL Motor Starter',
   difficulty: 'medium',
-  order: 13,
+  order: 16,
   category: 'control-cabinet',
   summary: 'Wire a direct-on-line 400V starter: contactor, overload, start/stop with seal-in.',
   briefing: [

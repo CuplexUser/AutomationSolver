@@ -5,7 +5,7 @@ export const cabinetReversing: PuzzleSpec = {
   slug: 'cabinet-reversing',
   title: 'Reversing Starter',
   difficulty: 'hard',
-  order: 14,
+  order: 18,
   category: 'control-cabinet',
   summary: 'Two interlocked contactors drive the motor forward and reverse — without shorts.',
   briefing: [

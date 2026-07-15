@@ -5,7 +5,7 @@ export const elevatorDoors: PuzzleSpec = {
   slug: 'elevator-doors',
   title: 'Elevator — Doors',
   difficulty: 'hard',
-  order: 10,
+  order: 13,
   category: 'elevator',
   summary: 'Add a door that opens on arrival, dwells, and auto-closes — the car cannot move until it does.',
   briefing: [

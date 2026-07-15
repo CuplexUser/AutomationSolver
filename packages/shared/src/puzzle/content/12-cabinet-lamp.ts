@@ -5,7 +5,7 @@ export const cabinetLamp: PuzzleSpec = {
   slug: 'cabinet-lamp',
   title: 'Panel Lamp Circuit',
   difficulty: 'tutorial',
-  order: 12,
+  order: 15,
   category: 'control-cabinet',
   summary: 'Wire your first control circuit: a pushbutton switching a panel lamp.',
   briefing: [
