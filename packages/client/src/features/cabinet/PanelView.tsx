@@ -19,6 +19,7 @@ import {
   WiresLayer,
   bezierAnchor,
   bezierPath,
+  bezierSag,
   roundedPath,
   type WireGeometry,
 } from './WiresLayer';
@@ -115,6 +116,7 @@ export function PanelView({
   // ---- Wire routing -----------------------------------------------------
   const laneOf = (idx: number) => ((idx % 7) - 3) * 2.6;
   const spineLaneOf = (idx: number) => spineX + ((idx % 5) - 2) * 3.2;
+  const bottomDuct = ducts[ducts.length - 1];
   /** Duct run from a rail terminal to the spine, then a loose harness to the door. */
   const railToDoor = (railPt: Pt, railM: TermMeta, doorPt: Pt, idx: number): string => {
     const d = ductFor(railM) + laneOf(idx);
@@ -123,13 +125,67 @@ export function PanelView({
     return `${run} C ${sx - 60} ${d}, ${doorPt.x + 60} ${doorPt.y}, ${doorPt.x} ${doorPt.y}`;
   };
 
+  /**
+   * Rail terminal to the motor: through the ducts (via the spine when the
+   * terminal's own duct isn't the bottom one), then a straight drop out of
+   * the cabinet into the top-facing motor terminal.
+   */
+  const railToMotorPts = (railPt: Pt, railM: TermMeta, motorPt: Pt, idx: number): Pt[] => {
+    const lane = laneOf(idx);
+    const da = ductFor(railM);
+    if (da === bottomDuct) {
+      return [railPt, { x: railPt.x, y: da + lane }, { x: motorPt.x, y: da + lane }, motorPt];
+    }
+    const sx = spineLaneOf(idx);
+    return [
+      railPt,
+      { x: railPt.x, y: da + lane },
+      { x: sx, y: da + lane },
+      { x: sx, y: bottomDuct + lane },
+      { x: motorPt.x, y: bottomDuct + lane },
+      motorPt,
+    ];
+  };
+  const railToMotorAnchor = (railPt: Pt, railM: TermMeta, motorPt: Pt, idx: number): Pt => {
+    const da = ductFor(railM);
+    if (da === bottomDuct) return { x: (railPt.x + motorPt.x) / 2, y: da + laneOf(idx) };
+    return { x: spineLaneOf(idx), y: (da + bottomDuct) / 2 };
+  };
+
+  // Door-to-door wires: facing terminals in the gap between two contact
+  // blocks connect straight; anything else loops around the right side of
+  // the blocks instead of sagging behind them.
+  const doorFacing = (a: Pt, ma: TermMeta, b: Pt, mb: TermMeta): boolean => {
+    const [top, bot] = a.y <= b.y ? [ma, mb] : [mb, ma];
+    return Math.abs(a.x - b.x) < 1 && !top.topRow && bot.topRow;
+  };
+  const doorEscape = (p: Pt, m: TermMeta) => (m.topRow ? p.y - 12 : p.y + 12);
+  const doorLaneX = (a: Pt, b: Pt, idx: number) => Math.max(a.x, b.x) + 18 + (idx % 3) * 2.5;
+
+  /** Hanging harness with entry direction per end (-1 enters from above). */
+  const harness = (a: Pt, dirA: number, b: Pt, dirB: number): string => {
+    const sag = bezierSag(a, b);
+    return `M ${a.x} ${a.y} C ${a.x} ${a.y + sag * dirA}, ${b.x} ${b.y + sag * dirB}, ${b.x} ${b.y}`;
+  };
+
   const geometry: WireGeometry = {
     path: (a, b, w, idx) => {
       const [ma, mb] = [metaOf.get(w.from), metaOf.get(w.to)];
       if (!ma || !mb) return bezierPath(a, b);
       if (ma.zone === 'rail' && mb.zone === 'door') return railToDoor(a, ma, b, idx);
       if (ma.zone === 'door' && mb.zone === 'rail') return railToDoor(b, mb, a, idx);
-      if (ma.zone !== 'rail' || mb.zone !== 'rail') return bezierPath(a, b);
+      if (ma.zone === 'rail' && mb.zone === 'motor') return roundedPath(railToMotorPts(a, ma, b, idx), 8);
+      if (ma.zone === 'motor' && mb.zone === 'rail') return roundedPath(railToMotorPts(b, mb, a, idx), 8);
+      if (ma.zone === 'door' && mb.zone === 'door') {
+        if (doorFacing(a, ma, b, mb)) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
+        const lx = doorLaneX(a, b, idx);
+        const ea = doorEscape(a, ma);
+        const eb = doorEscape(b, mb);
+        return roundedPath([a, { x: a.x, y: ea }, { x: lx, y: ea }, { x: lx, y: eb }, { x: b.x, y: eb }, b], 8);
+      }
+      if (ma.zone === 'motor' || mb.zone === 'motor') {
+        return harness(a, ma.zone === 'motor' ? -1 : 1, b, mb.zone === 'motor' ? -1 : 1);
+      }
       const da = ductFor(ma);
       const db = ductFor(mb);
       const lane = laneOf(idx);
@@ -158,7 +214,16 @@ export function PanelView({
         const d = ductFor(railSide.m) + laneOf(idx);
         return { x: (spineLaneOf(idx) + doorSide.x) / 2, y: (d + doorSide.y) / 2 };
       }
-      if (ma.zone !== 'rail' || mb.zone !== 'rail') return bezierAnchor(a, b);
+      if (ma.zone === 'rail' && mb.zone === 'motor') return railToMotorAnchor(a, ma, b, idx);
+      if (ma.zone === 'motor' && mb.zone === 'rail') return railToMotorAnchor(b, mb, a, idx);
+      if (ma.zone === 'door' && mb.zone === 'door') {
+        if (doorFacing(a, ma, b, mb)) return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+        return { x: doorLaneX(a, b, idx), y: (doorEscape(a, ma) + doorEscape(b, mb)) / 2 };
+      }
+      if (ma.zone === 'motor' || mb.zone === 'motor') {
+        const dirs = (ma.zone === 'motor' ? -1 : 1) + (mb.zone === 'motor' ? -1 : 1);
+        return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 + bezierSag(a, b) * 0.375 * dirs };
+      }
       const da = ductFor(ma);
       const db = ductFor(mb);
       if (da === db) return { x: (a.x + b.x) / 2, y: da + laneOf(idx) };
