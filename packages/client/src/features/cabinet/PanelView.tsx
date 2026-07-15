@@ -117,12 +117,23 @@ export function PanelView({
   const laneOf = (idx: number) => ((idx % 7) - 3) * 2.6;
   const spineLaneOf = (idx: number) => spineX + ((idx % 5) - 2) * 3.2;
   const bottomDuct = ducts[ducts.length - 1];
-  /** Duct run from a rail terminal to the spine, then a loose harness to the door. */
-  const railToDoor = (railPt: Pt, railM: TermMeta, doorPt: Pt, idx: number): string => {
+  /**
+   * Duct run from a rail terminal to the spine, then a loose harness to the
+   * door. The harness levels out at the terminal's escape line and enters it
+   * vertically past the end of its contact block, so on multi-column door
+   * strips the run crosses other columns in the gaps between rows instead of
+   * disappearing behind their blocks.
+   */
+  const railToDoor = (railPt: Pt, railM: TermMeta, doorPt: Pt, doorM: TermMeta, idx: number): string => {
     const d = ductFor(railM) + laneOf(idx);
     const sx = spineLaneOf(idx);
+    const esc = doorEscape(doorPt, doorM, idx);
+    const into = doorM.topRow ? 6 : -6;
     const run = roundedPath([railPt, { x: railPt.x, y: d }, { x: sx, y: d }], 8);
-    return `${run} C ${sx - 60} ${d}, ${doorPt.x + 60} ${doorPt.y}, ${doorPt.x} ${doorPt.y}`;
+    return (
+      `${run} C ${sx - 60} ${d}, ${doorPt.x + 110} ${esc}, ${doorPt.x + 8} ${esc}` +
+      ` Q ${doorPt.x} ${esc} ${doorPt.x} ${esc + into} L ${doorPt.x} ${doorPt.y}`
+    );
   };
 
   /**
@@ -159,7 +170,12 @@ export function PanelView({
     const [top, bot] = a.y <= b.y ? [ma, mb] : [mb, ma];
     return Math.abs(a.x - b.x) < 1 && !top.topRow && bot.topRow;
   };
-  const doorEscape = (p: Pt, m: TermMeta) => (m.topRow ? p.y - 12 : p.y + 12);
+  // Escape line: just past the end of the contact block, staggered per wire
+  // so parallel runs between door columns don't sit on top of each other.
+  const doorEscape = (p: Pt, m: TermMeta, idx: number) => {
+    const off = 13 + (idx % 3) * 4;
+    return m.topRow ? p.y - off : p.y + off;
+  };
   const doorLaneX = (a: Pt, b: Pt, idx: number) => Math.max(a.x, b.x) + 18 + (idx % 3) * 2.5;
 
   /** Hanging harness with entry direction per end (-1 enters from above). */
@@ -172,15 +188,15 @@ export function PanelView({
     path: (a, b, w, idx) => {
       const [ma, mb] = [metaOf.get(w.from), metaOf.get(w.to)];
       if (!ma || !mb) return bezierPath(a, b);
-      if (ma.zone === 'rail' && mb.zone === 'door') return railToDoor(a, ma, b, idx);
-      if (ma.zone === 'door' && mb.zone === 'rail') return railToDoor(b, mb, a, idx);
+      if (ma.zone === 'rail' && mb.zone === 'door') return railToDoor(a, ma, b, mb, idx);
+      if (ma.zone === 'door' && mb.zone === 'rail') return railToDoor(b, mb, a, ma, idx);
       if (ma.zone === 'rail' && mb.zone === 'motor') return roundedPath(railToMotorPts(a, ma, b, idx), 8);
       if (ma.zone === 'motor' && mb.zone === 'rail') return roundedPath(railToMotorPts(b, mb, a, idx), 8);
       if (ma.zone === 'door' && mb.zone === 'door') {
         if (doorFacing(a, ma, b, mb)) return `M ${a.x} ${a.y} L ${b.x} ${b.y}`;
         const lx = doorLaneX(a, b, idx);
-        const ea = doorEscape(a, ma);
-        const eb = doorEscape(b, mb);
+        const ea = doorEscape(a, ma, idx);
+        const eb = doorEscape(b, mb, idx);
         return roundedPath([a, { x: a.x, y: ea }, { x: lx, y: ea }, { x: lx, y: eb }, { x: b.x, y: eb }, b], 8);
       }
       if (ma.zone === 'motor' || mb.zone === 'motor') {
@@ -212,13 +228,14 @@ export function PanelView({
       const railSide = ma.zone === 'rail' ? { m: ma, p: a } : mb.zone === 'rail' ? { m: mb, p: b } : null;
       if (doorSide && railSide) {
         const d = ductFor(railSide.m) + laneOf(idx);
-        return { x: (spineLaneOf(idx) + doorSide.x) / 2, y: (d + doorSide.y) / 2 };
+        const esc = doorEscape(doorSide, ma.zone === 'door' ? ma : mb, idx);
+        return { x: (spineLaneOf(idx) + doorSide.x) / 2 + 20, y: (d + esc) / 2 };
       }
       if (ma.zone === 'rail' && mb.zone === 'motor') return railToMotorAnchor(a, ma, b, idx);
       if (ma.zone === 'motor' && mb.zone === 'rail') return railToMotorAnchor(b, mb, a, idx);
       if (ma.zone === 'door' && mb.zone === 'door') {
         if (doorFacing(a, ma, b, mb)) return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-        return { x: doorLaneX(a, b, idx), y: (doorEscape(a, ma) + doorEscape(b, mb)) / 2 };
+        return { x: doorLaneX(a, b, idx), y: (doorEscape(a, ma, idx) + doorEscape(b, mb, idx)) / 2 };
       }
       if (ma.zone === 'motor' || mb.zone === 'motor') {
         const dirs = (ma.zone === 'motor' ? -1 : 1) + (mb.zone === 'motor' ? -1 : 1);
@@ -319,7 +336,13 @@ export function PanelView({
       />
 
       {components.map((c) => (
-        <PanelDevice key={c.id} c={c} result={result} enclTop={enclT} />
+        <PanelDevice
+          key={c.id}
+          c={c}
+          result={result}
+          enclTop={enclT}
+          estop={spec.devices.some((d) => d.address === c.hmiAddress && d.widget === 'estop')}
+        />
       ))}
 
       {/* Terminals above device bodies */}
@@ -409,7 +432,7 @@ function Duct({ x, y, w, h, horizontal = false }: { x: number; y: number; w: num
 
 /* ------------------------------- devices ------------------------------- */
 
-function PanelDevice({ c, result, enclTop }: { c: CabinetComponent; result: CabinetSimResult | null; enclTop: number }) {
+function PanelDevice({ c, result, enclTop, estop }: { c: CabinetComponent; result: CabinetSimResult | null; enclTop: number; estop: boolean }) {
   const energized = result?.energized[c.id] === true;
   switch (c.type) {
     case 'contactor':
@@ -420,7 +443,7 @@ function PanelDevice({ c, result, enclTop }: { c: CabinetComponent; result: Cabi
       return <SupplyBlock c={c} enclTop={enclTop} />;
     case 'button-no':
     case 'button-nc':
-      return <DoorButton c={c} nc={c.type === 'button-nc'} />;
+      return <DoorButton c={c} nc={c.type === 'button-nc'} estop={estop} />;
     case 'lamp':
       return <DoorLamp c={c} energized={energized} />;
     case 'motor3':
@@ -483,19 +506,31 @@ function SupplyBlock({ c, enclTop }: { c: CabinetComponent; enclTop: number }) {
   );
 }
 
-function DoorButton({ c, nc }: { c: CabinetComponent; nc: boolean }) {
+function DoorButton({ c, nc, estop }: { c: CabinetComponent; nc: boolean; estop: boolean }) {
   const cx = c.x - 40;
   const cy = c.y + 24;
   return (
     <g className="cab-deco" transform={`translate(${cx}, ${cy})`}>
       {/* wire stub from operator to its contact block */}
       <line x1={14} y1={0} x2={30} y2={0} stroke="#8f959b" strokeWidth={3} />
-      <circle r={15} className="pnl-bezel" />
-      <circle r={nc ? 11 : 9.5} fill={nc ? '#c93131' : '#2c9540'} stroke={nc ? '#8f1f1f' : '#1d6b2d'} strokeWidth={1.2} />
-      <circle r={nc ? 11 : 9.5} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1} transform="translate(-1,-1.5)" opacity={0.6} />
-      <text y={3.5} className="pnl-btn-glyph">
-        {nc ? 'O' : 'I'}
-      </text>
+      {estop ? (
+        <>
+          {/* yellow backing disc + red mushroom head */}
+          <circle r={16.5} fill="#e8c11c" stroke="#a68a10" strokeWidth={1.2} />
+          <circle r={11} fill="#c93131" stroke="#8f1f1f" strokeWidth={1.2} />
+          <circle r={11} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1} transform="translate(-1,-1.5)" opacity={0.6} />
+          <circle r={7} fill="none" stroke="#8f1f1f" strokeWidth={1} opacity={0.7} />
+        </>
+      ) : (
+        <>
+          <circle r={15} className="pnl-bezel" />
+          <circle r={nc ? 11 : 9.5} fill={nc ? '#c93131' : '#2c9540'} stroke={nc ? '#8f1f1f' : '#1d6b2d'} strokeWidth={1.2} />
+          <circle r={nc ? 11 : 9.5} fill="none" stroke="rgba(255,255,255,0.35)" strokeWidth={1} transform="translate(-1,-1.5)" opacity={0.6} />
+          <text y={3.5} className="pnl-btn-glyph">
+            {nc ? 'O' : 'I'}
+          </text>
+        </>
+      )}
       <text y={30} className="pnl-plate-label">
         {c.label}
       </text>

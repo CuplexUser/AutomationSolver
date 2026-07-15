@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { PuzzleSpec } from '@automationsolver/shared';
-import type { useSubmit } from '../../api/queries';
+import { usePuzzles, type useSubmit } from '../../api/queries';
 
 export function BriefColumn({
   spec,
@@ -67,8 +67,40 @@ export function BriefColumn({
         )}
       </div>
 
-      <ResultsCard result={result} pending={pending} user={user} onReplay={onReplay} />
+      <ResultsCard slug={spec.slug} result={result} pending={pending} user={user} onReplay={onReplay} />
     </aside>
+  );
+}
+
+/**
+ * Link to the next open puzzle, so finishing one doesn't require a trip back
+ * to the list. "Next" = the next unlocked puzzle after this one in order
+ * (submitting refetches the list, so the puzzle a solve unlocks is included);
+ * if the player is at the end, fall back to any open unsolved puzzle.
+ */
+function NextPuzzleNav({ slug, onlyIfSolved }: { slug: string; onlyIfSolved?: boolean }) {
+  const { data } = usePuzzles();
+  const list = data?.puzzles ?? [];
+  const i = list.findIndex((p) => p.slug === slug);
+  if (i < 0) return null;
+  if (onlyIfSolved && list[i].status !== 'solved') return null;
+  const next =
+    list.slice(i + 1).find((p) => !p.locked) ??
+    list.find((p) => !p.locked && p.slug !== slug && p.status !== 'solved');
+  return (
+    <div className="next-nav">
+      {onlyIfSolved && <span className="muted sm">✔ Solved</span>}
+      {next ? (
+        <Link to={`/puzzles/${next.slug}`} className="btn btn-primary sm">
+          Next: {next.title} →
+        </Link>
+      ) : (
+        <span className="muted sm">All work orders complete 🎉</span>
+      )}
+      <Link to="/puzzles" className="inline-link">
+        All puzzles
+      </Link>
+    </div>
   );
 }
 
@@ -106,11 +138,13 @@ function HintsPanel({ slug, hints }: { slug: string; hints: string[] }) {
 }
 
 function ResultsCard({
+  slug,
   result,
   pending,
   user,
   onReplay,
 }: {
+  slug: string;
   result: ReturnType<typeof useSubmit>['data'];
   pending: boolean;
   user: boolean;
@@ -142,6 +176,8 @@ function ResultsCard({
       <div className="results-card panel">
         <span className="eyebrow">Grading</span>
         <p className="muted sm">Build your solution, run it to test, then submit for grading.</p>
+        {/* Returning to an already-solved puzzle still offers the next one. */}
+        <NextPuzzleNav slug={slug} onlyIfSolved />
       </div>
     );
   }
@@ -166,7 +202,12 @@ function ResultsCard({
         <span className="eyebrow">Grading</span>
         <span className={`score${grade.solved ? ' ok' : ''}`}>{grade.score}%</span>
       </div>
-      {grade.solved && <p className="solved-banner">✔ Solved — all scenarios pass</p>}
+      {grade.solved && (
+        <>
+          <p className="solved-banner">✔ Solved — all scenarios pass</p>
+          <NextPuzzleNav slug={slug} />
+        </>
+      )}
       <ul className="scenario-list">
         {grade.scenarios.map((s, i) => (
           <li key={i} className={s.passed ? 'pass' : 'fail'}>

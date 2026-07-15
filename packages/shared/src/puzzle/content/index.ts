@@ -13,6 +13,8 @@ import { elevatorFull } from './11-elevator-full.js';
 import { cabinetLamp } from './12-cabinet-lamp.js';
 import { cabinetDol } from './13-cabinet-dol.js';
 import { cabinetReversing } from './14-cabinet-reversing.js';
+import { cabinetIndication } from './15-cabinet-indication.js';
+import { cabinetReversingProtected } from './16-cabinet-reversing-protected.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -29,6 +31,8 @@ export const PUZZLES: PuzzleSpec[] = [
   cabinetLamp,
   cabinetDol,
   cabinetReversing,
+  cabinetIndication,
+  cabinetReversingProtected,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

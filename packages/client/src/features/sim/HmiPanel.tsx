@@ -78,13 +78,15 @@ function InputWidget({ device, runner }: { device: PuzzleDevice; runner: HmiRunn
   }
 
   if (device.widget === 'estop') {
-    // Normally-closed: healthy input = true; pressed = false.
-    const pressed = runner.inputs[addr] === false;
+    // Ladder inputs read the physical NC contact (normallyClosed: healthy =
+    // true, pressed = false); cabinet devices report "actuated" directly.
+    const nc = device.normallyClosed === true;
+    const pressed = nc ? runner.inputs[addr] === false : runner.inputs[addr] === true;
     return (
       <div className="widget">
         <button
           className={`estop${pressed ? ' pressed' : ''}`}
-          onClick={() => runner.setInput(addr, pressed)}
+          onClick={() => runner.setInput(addr, nc ? pressed : !pressed)}
           aria-pressed={pressed}
           aria-label={`${device.label} ${pressed ? 'pressed' : 'healthy'}`}
         >

@@ -72,6 +72,83 @@ const solutions: Record<string, WiringDoc> = {
       w('K2.6', 'M1.W'),
     ],
   },
+  'cabinet-indication': {
+    wires: [
+      // control: same DOL rung as cabinet-dol
+      w('PS.L1', 'S2.21'),
+      w('S2.22', 'S1.13'),
+      w('S1.14', 'K1.A1'),
+      w('K1.A2', 'F1.95'),
+      w('F1.96', 'PS.N'),
+      w('K1.13', 'S1.13'),
+      w('K1.14', 'S1.14'),
+      // run lamp in parallel with the coil
+      w('H1.X1', 'K1.A1'),
+      w('H1.X2', 'K1.A2'),
+      // trip lamp straight from L1 through the overload's NO aux
+      w('PS.L1', 'F1.97'),
+      w('F1.98', 'H2.X1'),
+      w('H2.X2', 'PS.N'),
+      // power: phases through the contactor, then the overload, to the motor
+      w('PS.L1', 'K1.1'),
+      w('PS.L2', 'K1.3'),
+      w('PS.L3', 'K1.5'),
+      w('K1.2', 'F1.1'),
+      w('K1.4', 'F1.3'),
+      w('K1.6', 'F1.5'),
+      w('F1.2', 'M1.U'),
+      w('F1.4', 'M1.V'),
+      w('F1.6', 'M1.W'),
+    ],
+  },
+  'cabinet-reversing-protected': {
+    wires: [
+      // common feed: e-stop → overload NC → stop, then split to both starts
+      w('PS.L1', 'S0.21'),
+      w('S0.22', 'F1.95'),
+      w('F1.96', 'S3.21'),
+      w('S3.22', 'S1.13'),
+      w('S3.22', 'S2.13'),
+      // forward: S1 → K2 NC interlock → K1 coil, sealed, lamp across coil
+      w('S1.14', 'K2.21'),
+      w('K2.22', 'K1.A1'),
+      w('K1.A2', 'PS.N'),
+      w('K1.13', 'S1.13'),
+      w('K1.14', 'S1.14'),
+      w('H1.X1', 'K1.A1'),
+      w('H1.X2', 'K1.A2'),
+      // reverse: S2 → K1 NC interlock → K2 coil, sealed, lamp across coil
+      w('S2.14', 'K1.21'),
+      w('K1.22', 'K2.A1'),
+      w('K2.A2', 'PS.N'),
+      w('K2.13', 'S2.13'),
+      w('K2.14', 'S2.14'),
+      w('H2.X1', 'K2.A1'),
+      w('H2.X2', 'K2.A2'),
+      // trip lamp straight from L1 through the overload's NO aux
+      w('PS.L1', 'F1.97'),
+      w('F1.98', 'H3.X1'),
+      w('H3.X2', 'PS.N'),
+      // forward power: straight through K1 into the overload
+      w('PS.L1', 'K1.1'),
+      w('PS.L2', 'K1.3'),
+      w('PS.L3', 'K1.5'),
+      // reverse power: two phases swapped through K2, joining the same overload inputs
+      w('PS.L3', 'K2.1'),
+      w('PS.L2', 'K2.3'),
+      w('PS.L1', 'K2.5'),
+      w('K1.2', 'F1.1'),
+      w('K1.4', 'F1.3'),
+      w('K1.6', 'F1.5'),
+      w('K2.2', 'F1.1'),
+      w('K2.4', 'F1.3'),
+      w('K2.6', 'F1.5'),
+      // overload to motor
+      w('F1.2', 'M1.U'),
+      w('F1.4', 'M1.V'),
+      w('F1.6', 'M1.W'),
+    ],
+  },
 };
 
 function getCabinetPuzzle(slug: string): CabinetPuzzleSpec {

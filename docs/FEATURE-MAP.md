@@ -126,9 +126,11 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 12 | `cabinet-lamp` | tutorial | first wiring: button + lamp control circuit | (cabinet) |
 | 13 | `cabinet-dol` | medium | DOL 400V starter: contactor, overload, seal-in | (cabinet) |
 | 14 | `cabinet-reversing` | hard | two interlocked contactors, phase-swap reversal | (cabinet) |
+| 15 | `cabinet-indication` | medium | pilot lights: run lamp across the coil, trip lamp on the overload 97-98 aux | (cabinet) |
+| 16 | `cabinet-reversing-protected` | hard | capstone: reversing + overload + e-stop + fwd/rev/trip lamps | (cabinet) |
 
 Categories: 1–3 `basics`, 4–5 `timers-counters`, 6–7 `stations`, 8–11 `elevator`,
-12–14 `control-cabinet`.
+12–16 `control-cabinet`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,

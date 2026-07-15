@@ -570,6 +570,13 @@
   font-weight: 600;
   margin: 10px 0;
 }
+.next-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
 .scenario-list {
   list-style: none;
   padding: 0;
