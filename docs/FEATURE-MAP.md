@@ -58,12 +58,18 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     and `X3` (at bottom).
   - `press` — a single ram (`Y0`) that advances/retracts; derives `X3` (at bottom). Backs the
     two-hand safety press.
-  - `packaging` — the carton packer: six double-acting pneumatic actuators (`Y0`–`Y5`), each a
-    0→1 extension driving its two end-of-travel sensors (`Y0`→`X0`/`X1`, `Y2` lift→`X4`/`X5`,
-    `Y5` back-stop→`X12`/`X13`, …), plus conveyor box-presence sensors `X14`–`X17` that stay
-    scenario/HMI-driven (a carton is or isn't there) and are only mirrored into machine state
-    for the view. Address convention is fixed across all packaging puzzles (mirrors the real
-    Laboration-7 I/O list).
+  - `packaging` — the two-lane box packer: a modelled feed belt (two lanes of boxes advancing
+    to an end stop; `X20` = belt run, sensors `X14`–`X17` derived from the modelled lanes) plus
+    six double-acting pneumatic actuators (`Y0`–`Y5`), each a 0→1 extension driving its two
+    end-of-travel sensors (`Y0`→`X0`/`X1`, `Y2` lift→`X4`/`X5`, `Y5` back-stop→`X12`/`X13`, …).
+    Product genuinely moves: 2-pack strokes stage pairs into section 2 (two steps = a 4-pack),
+    the 4-pack stroke loads the lift, the lift **flips** its load into section 3 (four flips =
+    16), 16-pack-1 pushes the block into section 4 against the forward back-stop, 16-pack-2
+    ships it once the stop releases. A pusher picks its boxes up when it leaves home and only
+    delivers on a **completed** stroke; wrong moves (lone box, over-fill, raised/occupied lift,
+    back-stop misplaced, aborted stroke) latch a `jam` flag that scenarios assert stays false.
+    Address convention is fixed across all packaging puzzles (mirrors the real Laboration-7
+    I/O list).
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
   - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
     buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by
@@ -140,10 +146,10 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 18 | `cabinet-reversing` | hard | two interlocked contactors, phase-swap reversal | (cabinet) |
 | 19 | `cabinet-indication` | medium | pilot lights: run lamp across the coil, trip lamp on the overload 97-98 aux | (cabinet) |
 | 20 | `cabinet-reversing-protected` | hard | capstone: reversing + overload + e-stop + fwd/rev/trip lamps | (cabinet) |
-| 21 | `pack-basics` | easy | intro to the packer: index a cylinder to its end sensor | packaging |
-| 22 | `pack-interlock` | medium | two actuators with mutual "other is clear" interlocks | packaging |
-| 23 | `pack-sequence` | hard | one-hot step sequencer: guarded back-stop + push cycle | packaging |
-| 24 | `pack-full` | hard | capstone: 12-stage one-hot sequencer driving all six actuators, hands-off | packaging |
+| 21 | `pack-basics` | easy | match a pair on the two lanes, seal one full push stroke | packaging |
+| 22 | `pack-group` | medium | count two pair-strokes (C0), load the staged 4-pack onto the lift | packaging |
+| 23 | `pack-lift` | hard | latch the flip cycle: lift up on load, release at the top | packaging |
+| 24 | `pack-full` | hard | capstone: count four flips, then ship the 16-pack via a one-hot step chain | packaging |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 `elevator`,
 15–20 `control-cabinet`, 21–24 `packaging`.
@@ -207,16 +213,17 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 
   `processId`. The view is a diagnostic instrument, not decoration: it never animates on its own —
   every transform is driven each frame straight from the deterministic `machine.*` state the
   process model computes from `dt` — and it carries a readout of the machine's actual state
-  (clamp %, feed %, spindle; floor/direction/door for the elevator; per-actuator extension for the
-  packer). Two authoring styles coexist:
+  (clamp %, feed %, spindle; floor/direction/door for the elevator; section box counts and
+  shipped packs for the packer, plus a jam tag). Two authoring styles coexist:
   - **glTF-backed** (drill, elevator) — hero models authored in Blender, loaded as `.glb` via
     `useGLTF`, driven by looking up named nodes. Best for detailed/organic geometry; the cost is
     that node names are a load-bearing coupling and a typo silently no-ops.
   - **Procedural** (`PackMachine3D.tsx`, `processId: 'packaging'`) — built entirely from three.js
-    primitives (boxes + cylinders), no asset. Chosen because the packer *is* parametric boxes and
-    rods: each of the six actuators maps to a ref we lerp from its `machine.*` extension, so there
-    is no `.glb`/Blender round-trip and nothing to keep in sync by name. A GLB could be swapped in
-    later without touching puzzle logic, since the process model already exposes the state.
+    primitives, no asset. Chosen because the packer *is* parametric boxes and rods: the scene is
+    a pure function of `machine.*` — lane positions, section counts and carry flags place every
+    box, actuator extensions place every plate/rod, and the lift renders as a flipper (a group
+    rotating about its hinge). There is no `.glb`/Blender round-trip and nothing to keep in sync
+    by name; a GLB could be swapped in later without touching puzzle logic.
   - **`MachineCanvas.tsx`** — the shared `<Canvas>` + ambient/directional lights + optional
     `OrbitControls` rig both scenes render into, parameterized by camera position/fov/target/
     distance bounds/height. Three control modes: `interactive` (drag-to-rotate + scroll-to-zoom,

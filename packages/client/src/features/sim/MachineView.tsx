@@ -58,12 +58,15 @@ export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: 
           <PackMachine3D machine={m} height={300} />
         </Suspense>
         <div className="mv-readout">
-          <Readout label="2-Pack" value={pct(numOf(m.push2))} on={numOf(m.push2) >= 1} />
-          <Readout label="4-Pack" value={pct(numOf(m.push4))} on={numOf(m.push4) >= 1} />
-          <Readout label="Lift" value={pct(numOf(m.lift))} on={numOf(m.lift) >= 1} />
-          <Readout label="16-Pk 1" value={pct(numOf(m.push16a))} on={numOf(m.push16a) >= 1} />
-          <Readout label="16-Pk 2" value={pct(numOf(m.push16b))} on={numOf(m.push16b) >= 1} />
-          <Readout label="Back-Stop" value={pct(numOf(m.backstop))} on={numOf(m.backstop) >= 1} />
+          <Readout label="Sec 2" value={`${numOf(m.sec2)}/4`} on={numOf(m.sec2) > 0} />
+          <Readout
+            label="Lift"
+            value={numOf(m.liftLoad) > 0 ? `${numOf(m.liftLoad)} ▲` : '—'}
+            on={numOf(m.liftLoad) > 0}
+          />
+          <Readout label="Sec 3" value={`${numOf(m.sec3)}/16`} on={numOf(m.sec3) > 0} />
+          <Readout label="Sec 4" value={`${numOf(m.sec4)}/16`} on={numOf(m.sec4) > 0} />
+          <Readout label="Shipped" value={`${numOf(m.finished)}`} on={numOf(m.finished) > 0} />
         </div>
       </div>
     );
@@ -124,10 +127,10 @@ function drillTag(m: MachineState): string {
 // --- Packaging ---------------------------------------------------------------
 
 function packTag(m: MachineState): string {
+  if (m.jam === true) return '⚠ jammed';
   const anyPush =
     numOf(m.push2) > 0.01 || numOf(m.push4) > 0.01 || numOf(m.push16a) > 0.01 || numOf(m.push16b) > 0.01;
-  if (numOf(m.lift) > 0.01 && numOf(m.lift) < 1) return '⇡ lifting';
-  if (numOf(m.lift) >= 1) return '▲ raised';
+  if (numOf(m.lift) > 0.01) return '⇡ flipping';
   if (anyPush) return '⏵ pushing';
   if (numOf(m.backstop) >= 1) return '▮ guarded';
   return 'idle';

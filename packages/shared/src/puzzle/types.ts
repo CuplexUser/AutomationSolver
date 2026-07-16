@@ -37,7 +37,7 @@ export const CATEGORY_BLURBS: Record<PuzzleCategory, string> = {
   stations: 'Sequenced single-station machines.',
   elevator: 'Multi-floor dispatch and door interlocks.',
   'control-cabinet': 'Wire real 400 V starters terminal to terminal.',
-  packaging: 'Coordinate a six-actuator carton packer and its conveyor.',
+  packaging: 'Group boxes 2 → 4 → 16 with pushers, a flipping lift and an out-feed.',
 };
 
 /** How a device is drawn/driven on the HMI panel. */

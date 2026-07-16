@@ -230,22 +230,35 @@ const elevator5: ProcessModel = {
 };
 
 /**
- * Carton packaging machine — six double-acting pneumatic actuators plus a
- * conveyor. Each actuator extends (position 0→1) while its output coil is
- * energized and retracts (spring return) otherwise; the machine reports the two
- * end-of-travel sensors for each. Fixed address convention (shared by every
- * packaging puzzle, mirroring the real Laboration-7 I/O list):
- *   Y0 2-pack push    → X0 in  / X1 out
- *   Y1 4-pack push    → X2 in  / X3 out
- *   Y2 lift up        → X4 down (in) / X5 up (out)
- *   Y3 16-pack1 push  → X6 in  / X7 out
- *   Y4 16-pack2 push  → X10 in / X11 out
- *   Y5 back-stop fwd  → X12 back (in) / X13 forward (out)
- * The conveyor box-presence sensors X14-X17 are driven by the scenario/HMI (a
- * carton either is or isn't there), so the process leaves them alone and only
- * mirrors them into machine state for the view. Every actuator's travel is a
- * multiple of both scan cadences (60ms client, 50ms grader) so end sensors trip
- * on the same scan under either — see the elevator5 note for why that matters.
+ * Two-lane box packer, modelled on the real "Laboration 7" machine. A feed
+ * belt carries boxes down two lanes to an end stop; from there six
+ * double-acting pneumatic actuators group them 2 → 4 → 16 → out:
+ *   Y0 2-pack push   (X0 in / X1 out)   pushes a matched pair off the belt
+ *                                       into section 2 — two strokes stage a
+ *                                       4-pack in two steps
+ *   Y1 4-pack push   (X2 in / X3 out)   pushes the 4-pack sideways onto the
+ *                                       lift platform (lift must be down/empty)
+ *   Y2 lift/flipper  (X4 down / X5 up)  flips its load over the wall into
+ *                                       section 3; four flips build a 16-pack
+ *   Y3 16-pack1 push (X6 in / X7 out)   pushes the 16-pack into section 4 —
+ *                                       the back-stop must be forward to keep
+ *                                       it from sliding out the open side
+ *   Y4 16-pack2 push (X10 in / X11 out) ships the pack from section 4 to the
+ *                                       finished station — back-stop must be
+ *                                       back out of the way first
+ *   Y5 back-stop     (X12 back / X13 forward)
+ * Box-flow sensors are derived from the modelled lanes (never scenario-set):
+ *   X14/X15 box at the stop (near/far lane), X16/X17 box waiting in the queue.
+ * X20, when the puzzle wires it, is the belt-run command: boxes advance only
+ * while it is on (absent = belt always running).
+ *
+ * A pusher picks its product up the moment it leaves home and delivers it only
+ * when the stroke COMPLETES (position crosses fully out) — dropping the coil
+ * mid-stroke strands the boxes and latches `jam`, as does pushing a lone box,
+ * over-filling a section, loading a raised/occupied lift, or stroking the
+ * 16-packs with the back-stop in the wrong place. Scenarios assert `jam`
+ * stays false. Actuator travels are multiples of both scan cadences (60ms
+ * client, 50ms grader) so end sensors trip on the same scan under either.
  */
 const PACK_ACTUATORS = [
   { cmd: 'Y0', inS: 'X0', outS: 'X1', ms: 600, key: 'push2' },
@@ -256,29 +269,164 @@ const PACK_ACTUATORS = [
   { cmd: 'Y5', inS: 'X12', outS: 'X13', ms: 300, key: 'backstop' },
 ] as const;
 
-const PACK_BOX_SENSORS = ['X14', 'X15', 'X16', 'X17'] as const;
+const PACK_EPS = 0.02;
+/** Full lane travel time; the queue hold point sits halfway, so queue → stop = 600ms. */
+const LANE_FEED_MS = 1200;
+const LANE_QUEUE_POS = 0.5;
+/** Arriving boxes hold short of the stop while the 2-pack plate is extended. */
+const LANE_BLOCKED_CAP = 0.8;
+
+const PACK_LANES = [
+  { lead: 'laneA1', next: 'laneA2', carry: 'carryA', atStop: 'X14', inQueue: 'X16' },
+  { lead: 'laneB1', next: 'laneB2', carry: 'carryB', atStop: 'X15', inQueue: 'X17' },
+] as const;
 
 const packaging: ProcessModel = {
   id: 'packaging',
-  init: () => {
-    const m: MachineState = {};
-    for (const a of PACK_ACTUATORS) m[a.key] = 0;
-    for (const s of PACK_BOX_SENSORS) m[`box_${s}`] = false;
-    return m;
-  },
+  init: () => ({
+    push2: 0,
+    push4: 0,
+    lift: 0,
+    push16a: 0,
+    push16b: 0,
+    backstop: 0,
+    // Lane positions 0..1 (1 = at the stop). Lane B starts further out so the
+    // very first pair demonstrably does NOT line up at the same instant.
+    laneA1: 0.5,
+    laneA2: 0,
+    laneB1: 0.25,
+    laneB2: 0,
+    // Boxes riding a mid-stroke pusher plate (delivered at end of stroke).
+    carryA: false,
+    carryB: false,
+    carry4: 0,
+    carry16a: 0,
+    carry16b: 0,
+    // Section box counts along the line, and finished 16-packs shipped.
+    sec2: 0,
+    liftLoad: 0,
+    sec3: 0,
+    sec4: 0,
+    finished: 0,
+    jam: false,
+  }),
   step: ({ outputs, inputs, machine, dtMs }) => {
-    const eps = 0.02;
-    const m: MachineState = {};
+    const m: MachineState = { ...machine };
+    let jam = machine.jam === true;
+
+    // -- actuators -----------------------------------------------------------
+    const pos: Record<string, { prev: number; next: number }> = {};
+    for (const a of PACK_ACTUATORS) {
+      const prev = num(machine[a.key]);
+      let extend = outputs[a.cmd] === true;
+      // Physical interlock: the lift cannot leave the bottom while the 4-pack
+      // rod is still extended under its platform.
+      if (a.key === 'lift' && prev <= PACK_EPS && num(machine.push4) > PACK_EPS) extend = false;
+      const next = extend ? Math.min(1, prev + dtMs / a.ms) : Math.max(0, prev - dtMs / a.ms);
+      m[a.key] = next;
+      pos[a.key] = { prev, next };
+    }
+    const strokeStarts = (k: string) => pos[k].prev <= PACK_EPS && pos[k].next > PACK_EPS;
+    const strokeEnds = (k: string) => pos[k].prev < 1 - PACK_EPS && pos[k].next >= 1 - PACK_EPS;
+    const strokeAborts = (k: string) => pos[k].prev > PACK_EPS && pos[k].next <= PACK_EPS;
+
+    // -- product transfers (downstream stages first) --------------------------
+    // 16-pack2: section 4 → finished station, needs the back-stop out of the way.
+    if (strokeStarts('push16b') && num(m.sec4) > 0) {
+      m.carry16b = num(m.sec4);
+      m.sec4 = 0;
+    }
+    if (strokeEnds('push16b') && num(m.carry16b) > 0) {
+      if (num(m.backstop) <= PACK_EPS) m.finished = num(m.finished) + 1;
+      else jam = true; // shoved the pack into the raised back-stop
+      m.carry16b = 0;
+    }
+    // 16-pack1: section 3 → section 4, needs the back-stop forward to catch it.
+    if (strokeStarts('push16a') && num(m.sec3) > 0) {
+      m.carry16a = num(m.sec3);
+      m.sec3 = 0;
+    }
+    if (strokeEnds('push16a') && num(m.carry16a) > 0) {
+      if (num(m.backstop) >= 1 - PACK_EPS && num(m.sec4) === 0) m.sec4 = num(m.carry16a);
+      else jam = true; // pack slid out the open side / crashed into the last one
+      m.carry16a = 0;
+    }
+    // Lift: flips its load over into section 3 at the top of the stroke.
+    if (strokeEnds('lift') && num(m.liftLoad) > 0) {
+      m.sec3 = num(m.sec3) + num(m.liftLoad);
+      m.liftLoad = 0;
+      if (num(m.sec3) > 16) jam = true;
+    }
+    // 4-pack: section 2 → lift platform, which must be down and empty.
+    if (strokeStarts('push4') && num(m.sec2) > 0) {
+      m.carry4 = num(m.sec2);
+      m.sec2 = 0;
+    }
+    if (strokeEnds('push4') && num(m.carry4) > 0) {
+      if (pos.lift.next <= PACK_EPS && num(m.liftLoad) === 0) m.liftLoad = num(m.carry4);
+      else jam = true; // boxes dumped against a raised or occupied lift
+      m.carry4 = 0;
+    }
+    // 2-pack: picks up whatever is at the stop when it sets off …
+    if (strokeStarts('push2')) {
+      for (const { lead, next, carry } of PACK_LANES) {
+        if (num(m[lead]) >= 1 - PACK_EPS) {
+          m[carry] = true;
+          m[lead] = num(m[next]);
+          m[next] = 0; // endless supply: a fresh box enters as the queue advances
+        }
+      }
+    }
+    // … and lands it in section 2 at full stroke. A lone box goes in askew, a
+    // third pair over-fills, and an extended 4-pack rod is in the way.
+    if (strokeEnds('push2') && (m.carryA === true || m.carryB === true)) {
+      if (m.carryA !== m.carryB || pos.push4.next > PACK_EPS) {
+        jam = true;
+      } else {
+        m.sec2 = num(m.sec2) + 2;
+        if (num(m.sec2) > 4) jam = true;
+      }
+      m.carryA = false;
+      m.carryB = false;
+    }
+    // A pusher recalled mid-stroke strands its boxes off every station.
+    for (const k of ['push4', 'push16a', 'push16b'] as const) {
+      const carryKey = k === 'push4' ? 'carry4' : k === 'push16a' ? 'carry16a' : 'carry16b';
+      if (strokeAborts(k) && num(m[carryKey]) > 0) {
+        jam = true;
+        m[carryKey] = 0;
+      }
+    }
+    if (strokeAborts('push2') && (m.carryA === true || m.carryB === true)) {
+      jam = true;
+      m.carryA = false;
+      m.carryB = false;
+    }
+
+    // -- feed belt -------------------------------------------------------------
+    const beltOn = inputs['X20'] !== false;
+    if (beltOn) {
+      for (const { lead, next } of PACK_LANES) {
+        const leadCap = pos.push2.next <= PACK_EPS ? 1 : LANE_BLOCKED_CAP;
+        const leadPos = num(m[lead]);
+        if (leadPos < leadCap) m[lead] = Math.min(leadCap, leadPos + dtMs / LANE_FEED_MS);
+        const nextPos = num(m[next]);
+        if (nextPos < LANE_QUEUE_POS) m[next] = Math.min(LANE_QUEUE_POS, nextPos + dtMs / LANE_FEED_MS);
+      }
+    }
+
+    // -- sensors ---------------------------------------------------------------
     const derivedInputs: Record<string, boolean> = {};
     for (const a of PACK_ACTUATORS) {
-      const pos = num(machine[a.key]);
-      const extend = outputs[a.cmd] === true;
-      const next = extend ? Math.min(1, pos + dtMs / a.ms) : Math.max(0, pos - dtMs / a.ms);
-      m[a.key] = next;
-      derivedInputs[a.inS] = next <= eps;
-      derivedInputs[a.outS] = next >= 1 - eps;
+      derivedInputs[a.inS] = pos[a.key].next <= PACK_EPS;
+      derivedInputs[a.outS] = pos[a.key].next >= 1 - PACK_EPS;
     }
-    for (const s of PACK_BOX_SENSORS) m[`box_${s}`] = inputs[s] === true;
+    for (const { lead, next, atStop, inQueue } of PACK_LANES) {
+      derivedInputs[atStop] = num(m[lead]) >= 1 - PACK_EPS;
+      derivedInputs[inQueue] = num(m[next]) >= LANE_QUEUE_POS - PACK_EPS;
+    }
+
+    m.jam = jam;
     return { machine: m, derivedInputs };
   },
 };

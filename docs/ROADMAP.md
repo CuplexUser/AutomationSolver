@@ -71,42 +71,41 @@ increasing difficulty (`elevator-5-dispatch` → `elevator-doors` → `elevator-
 5-floor puzzles render (see FEATURE-MAP.md's Machine views section). All solvable with the
 already-shipped instruction set — no `MOV`/compare needed.
 
-## Packaging-machine expansion ✅ *shipped (first cut)* · ⏳ *full-machine rework in progress (capstone done)*
+## Packaging-machine expansion ✅ *shipped (full-machine rework done)*
 
-A sixth category, `packaging`, modelled on the real "Laboration 7" carton packer, plus category
-navigation on the puzzle list (`/puzzles/category/:category` + pill nav). What shipped this
-round: the `packaging` process model (six double-acting pneumatic actuators `Y0`–`Y5`, each a
-0→1 extension driving its two end-of-travel sensors; conveyor box-presence sensors `X14`–`X17`),
-four puzzles of increasing difficulty (`pack-basics` → `pack-interlock` → `pack-sequence` →
-`pack-batch`), a **procedural** `PackMachine3D` scene (three.js primitives, no glTF — the machine
-is parametric boxes and rods), and the surrounding nav/routing. Also added this round outside
-packaging: `run-on-timer`, `flasher`, `two-hand-press` (+ `press` process), and
-`cabinet-two-station`.
+A sixth category, `packaging`, modelled on the real "Laboration 7" box packer, plus category
+navigation on the puzzle list (`/puzzles/category/:category` + pill nav). Also added alongside
+the first cut, outside packaging: `run-on-timer`, `flasher`, `two-hand-press` (+ `press`
+process), and `cabinet-two-station`.
 
-**The capstone now drives the real machine.** ✅ Items 1–2 below shipped; the old `pack-batch`
-(with its fabricated `Y6` "Batch Done" lamp, exercising only `Y0`/`Y5`) is gone. The machine has
-**exactly six outputs** (`Y0` 2-pack, `Y1` 4-pack, `Y2` lift, `Y3` 16-pack-1, `Y4` 16-pack-2,
-`Y5` back-stop) and no "batch done" line. Remaining rework: items 3–5.
+**The machine is now the real product line, not six abstract cylinders.** The `packaging`
+process models the actual flow: a feed belt with **two lanes of boxes** advancing to an end stop
+(`X20` belt run; `X14`–`X17` derived from the modelled lanes, no longer HMI toggles), and six
+actuators that genuinely move product — 2-pack strokes (`Y0`) stage pairs into section 2 in two
+steps, the 4-pack stroke (`Y1`) loads the lift, the lift (`Y2`) **flips** its 4-pack over into
+section 3, four flips build the 16-pack, 16-pack-1 (`Y3`) pushes it into section 4 against the
+forward back-stop (`Y5`), and 16-pack-2 (`Y4`) ships it to the finished station once the stop
+releases. Pushers pick boxes up when they leave home and deliver only on a completed stroke;
+wrong moves (lone box, over-fill, raised/occupied lift, misplaced back-stop, aborted stroke)
+latch a `jam` flag every scenario asserts stays false. The lift's rise is physically interlocked
+on the 4-pack rod being home, like the elevator door.
 
-1. ✅ **Rebuilt the capstone as `pack-full`** — a one-shot automatic cycle that sequences **all six
-   actuators** in a believable packing order (back-stop forward → 2-pack out/retract → 4-pack
-   out/retract → lift up → 16-pack-1 out/retract → 16-pack-2 out/retract → lift down → back-stop
-   back), a one-hot step sequencer (`M0..M11`) with SET/RST transitions gated on each stage's end
-   sensor, latched `Y5`/`Y2` (held across their sub-steps) and momentary `Y0`/`Y1`/`Y3`/`Y4`.
-   32 rungs (precedent: `elevator-full` ≈ 29). The canonical lives in `grade.test.ts` via a
-   `packFullCycle()` helper (like `dispatchCore()`), plus a discriminating negative test (a
-   latched pusher stalls the sequencer); scenario checkpoints sample mid-stage (travel times:
-   2/4/16-pack 600 ms, lift 900 ms, back-stop 300 ms) so the asserts stay off the stage boundaries.
-2. ✅ **Dropped the synthetic `Y6`.** Completion/idle is machine state (all actuators home), not an
-   output; the final scenario step asserts that home state via `expectMachine`.
-3. **Model the two feed conveyors properly.** Promote `X14`–`X17` from scenario/HMI toggles to
-   real belt dynamics in the process (cartons index onto the near/far bands and are consumed),
-   so a puzzle can genuinely react to box flow instead of a hand-held toggle.
-4. **Broaden the mid-tier puzzles** so `Y1`/`Y3`/`Y4` each get a dedicated exercise before the
-   capstone (right now only `Y0`/`Y2`/`Y5` appear pre-capstone).
-5. **Optional: a Blender hero model.** The procedural scene is deliberately swappable — the
-   process model already exposes every actuator's extension — so a `pack-machine.glb` could
-   replace `PackMachine3D` later without touching puzzle logic, matching the drill/elevator look.
+The four puzzles teach the line stage by stage, each building on the last: `pack-basics` (seal
+one full stroke per matched pair) → `pack-group` (count strokes on `C0`, load the lift) →
+`pack-lift` (latch the flip cycle) → `pack-full` (count flips on `C1`, ship via a one-hot
+`M1..M6` step chain). Canonicals live in `grade.test.ts` as composable helpers
+(`packFrontEnd()` / `packFlip()` / `packShip()`), timings verified against a probe run, plus a
+discriminating negative test (a latched 2-pack pusher blocks the lanes and starves the line).
+`PackMachine3D` renders the whole line procedurally — belts, gantry pusher, flipper, back-stop,
+out-feed, and every individual box straight from machine state.
+
+Remaining ideas:
+
+1. **Optional: a Blender hero model.** The procedural scene is deliberately swappable — the
+   process model already exposes every actuator's extension and all box positions — so a
+   `pack-machine.glb` could replace `PackMachine3D` later without touching puzzle logic.
+2. **Optional: jam-recovery play.** `jam` currently latches forever; a reset input (or HMI
+   button) plus scenarios that recover from a provoked jam could make a fifth puzzle.
 
 ## Phase 3 — Content depth
 

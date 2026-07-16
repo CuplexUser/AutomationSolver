@@ -107,36 +107,81 @@ function doorRungs(): Rung[] {
   ];
 }
 
-// Full carton-packer cycle: a 12-stage one-hot sequencer (M0..M11) driving all
-// six actuators. START from home sets M0; each stage's end sensor SETs the next
-// relay and RSTs its own, so exactly one relay is ever true. The back-stop (Y5)
-// and lift (Y2) are latched across their sub-stages via SET/RST off the relay
-// that owns them; the four pushers wire straight to their momentary step relay
-// so dropping the relay at the hand-off springs the cylinder back.
-function packFullCycle(): Rung[] {
-  // end-of-travel sensor that closes each of the 12 stages, in order
-  const ends = ['X13', 'X1', 'X0', 'X3', 'X2', 'X5', 'X7', 'X6', 'X11', 'X10', 'X4', 'X12'];
-  const rungs: Rung[] = [
-    // start from the fully-home state (pusher in, back-stop back)
-    R('pf0', 1, 4, { '0,0': no('X20'), '0,1': no('X0'), '0,2': no('X12'), '0,3': set('M0') }),
-  ];
-  for (let s = 0; s < 12; s++) {
-    const end = ends[s];
-    if (s < 11) {
-      rungs.push(R(`pfs${s}`, 1, 3, { '0,0': no(`M${s}`), '0,1': no(end), '0,2': set(`M${s + 1}`) }));
-    }
-    rungs.push(R(`pfr${s}`, 1, 3, { '0,0': no(`M${s}`), '0,1': no(end), '0,2': rst(`M${s}`) }));
-  }
+// Packer front end shared by pack-group / pack-lift / pack-full: one sealed
+// full 2-pack stroke per matched pair — gated on the 4-pack cylinder being home
+// (its rod crosses section 2) and on the pair count being incomplete — with C0
+// counting strokes off the OUT sensor and loading the lift on completion.
+function packFrontEnd(): Rung[] {
   return [
-    ...rungs,
-    R('pfY5s', 1, 2, { '0,0': no('M0'), '0,1': set('Y5') }), // back-stop forward, stages 1-11
-    R('pfY5r', 1, 2, { '0,0': no('M11'), '0,1': rst('Y5') }), // released in stage 12
-    R('pfY2s', 1, 2, { '0,0': no('M5'), '0,1': set('Y2') }), // lift up, held across the 16-packs
-    R('pfY2r', 1, 2, { '0,0': no('M10'), '0,1': rst('Y2') }), // lowered in stage 11
-    R('pfY0', 1, 2, { '0,0': no('M1'), '0,1': out('Y0') }), // momentary pushers
-    R('pfY1', 1, 2, { '0,0': no('M3'), '0,1': out('Y1') }),
-    R('pfY3', 1, 2, { '0,0': no('M6'), '0,1': out('Y3') }),
-    R('pfY4', 1, 2, { '0,0': no('M8'), '0,1': out('Y4') }),
+    R(
+      'pp1',
+      2,
+      6,
+      {
+        '0,0': no('X14'), '0,1': no('X15'), '0,2': no('X2'), '0,3': nc('C0'),
+        '0,4': nc('X1'), '0,5': out('Y0'),
+        '1,0': no('Y0'), '1,1': wire, '1,2': wire, '1,3': wire,
+      },
+      [{ row: 0, col: 4 }],
+    ),
+    R('pp2', 1, 2, { '0,0': no('X1'), '0,1': counter('C0', 2) }),
+    R('pp3', 1, 3, { '0,0': no('C0'), '0,1': no('X4'), '0,2': out('Y1') }),
+    R('pp4', 1, 2, { '0,0': no('X3'), '0,1': rst('C0') }),
+  ];
+}
+
+// Lift/flip cycle: latch a flip request when the 4-pack pusher reaches OUT
+// (the group is on the platform), release it at the top so the lift lowers.
+// The process itself holds the lift down until the 4-pack rod is home again.
+function packFlip(): Rung[] {
+  return [
+    R('pl1', 1, 2, { '0,0': no('X3'), '0,1': set('M0') }),
+    R('pl2', 1, 2, { '0,0': no('M0'), '0,1': out('Y2') }),
+    R('pl3', 1, 2, { '0,0': no('X5'), '0,1': rst('M0') }),
+  ];
+}
+
+// Shipping back end: count flips on C1 (K4 = 16 boxes in section 3); once the
+// lift settles back down, run a one-hot step chain M1..M6 — back-stop forward,
+// 16-pack-1 full stroke and home, back-stop released, 16-pack-2 full stroke and
+// home. C1 resets as the chain starts so flips for the NEXT pack count afresh.
+function packShip(): Rung[] {
+  // "step relay AND its end sensor" hand-off: SET the next relay, RST this one.
+  const step = (id: string, m: string, sensor: string, nextM: string | null): Rung =>
+    nextM
+      ? R(
+          id,
+          2,
+          3,
+          { '0,0': no(m), '0,1': no(sensor), '0,2': set(nextM), '1,2': rst(m) },
+          [{ row: 0, col: 2 }],
+        )
+      : R(id, 1, 3, { '0,0': no(m), '0,1': no(sensor), '0,2': rst(m) });
+  return [
+    R('ps1', 1, 2, { '0,0': no('X5'), '0,1': counter('C1', 4) }),
+    R(
+      'ps2',
+      2,
+      3,
+      { '0,0': rise('X4'), '0,1': no('C1'), '0,2': set('M1'), '1,2': rst('C1') },
+      [{ row: 0, col: 2 }],
+    ),
+    // Back-stop forward across steps 1-3 (receiving and squaring the pack).
+    R(
+      'ps3',
+      3,
+      2,
+      { '0,0': no('M1'), '1,0': no('M2'), '2,0': no('M3'), '0,1': out('Y5') },
+      [{ row: 0, col: 1 }, { row: 1, col: 1 }],
+    ),
+    R('ps4', 1, 2, { '0,0': no('M2'), '0,1': out('Y3') }),
+    R('ps5', 1, 2, { '0,0': no('M5'), '0,1': out('Y4') }),
+    step('ps6', 'M1', 'X13', 'M2'),
+    step('ps7', 'M2', 'X7', 'M3'),
+    step('ps8', 'M3', 'X6', 'M4'),
+    step('ps9', 'M4', 'X12', 'M5'),
+    step('ps10', 'M5', 'X11', 'M6'),
+    step('ps11', 'M6', 'X10', null),
   ];
 }
 
@@ -239,44 +284,22 @@ const solutions: Record<string, LadderProgram> = {
   },
   'pack-basics': {
     rungs: [
-      // Index the pusher to its OUT sensor, then let it retract: (X20 OR Y0) AND NOT X1.
+      // Seal a full stroke on a matched pair: (X14·X15 OR Y0) AND NOT X1 → Y0.
       R(
         'r1',
         2,
-        3,
-        { '0,0': no('X20'), '1,0': no('Y0'), '0,1': nc('X1'), '0,2': out('Y0') },
-        [{ row: 0, col: 1 }],
+        4,
+        {
+          '0,0': no('X14'), '0,1': no('X15'), '0,2': nc('X1'), '0,3': out('Y0'),
+          '1,0': no('Y0'), '1,1': wire,
+        },
+        [{ row: 0, col: 2 }],
       ),
     ],
   },
-  'pack-interlock': {
-    rungs: [
-      R('r1', 1, 3, { '0,0': no('X20'), '0,1': no('X4'), '0,2': out('Y0') }), // push only if lift down
-      R('r2', 1, 3, { '0,0': no('X21'), '0,1': no('X0'), '0,2': out('Y2') }), // raise only if pusher home
-    ],
-  },
-  'pack-sequence': {
-    rungs: [
-      R('r1', 1, 4, { '0,0': no('X20'), '0,1': no('X12'), '0,2': no('X0'), '0,3': set('M0') }),
-      R('r2', 1, 3, { '0,0': no('M0'), '0,1': no('X13'), '0,2': set('M1') }),
-      R('r3', 1, 3, { '0,0': no('M0'), '0,1': no('X13'), '0,2': rst('M0') }),
-      R('r4', 1, 3, { '0,0': no('M1'), '0,1': no('X1'), '0,2': set('M2') }),
-      R('r5', 1, 3, { '0,0': no('M1'), '0,1': no('X1'), '0,2': rst('M1') }),
-      R('r6', 1, 3, { '0,0': no('M2'), '0,1': no('X0'), '0,2': set('M3') }),
-      R('r7', 1, 3, { '0,0': no('M2'), '0,1': no('X0'), '0,2': rst('M2') }),
-      R('r8', 1, 3, { '0,0': no('M3'), '0,1': no('X12'), '0,2': rst('M3') }),
-      // Back-stop forward for steps 1-3 (M0 OR M1 OR M2).
-      R(
-        'r9',
-        3,
-        2,
-        { '0,0': no('M0'), '1,0': no('M1'), '2,0': no('M2'), '0,1': out('Y5') },
-        [{ row: 0, col: 1 }, { row: 1, col: 1 }],
-      ),
-      R('r10', 1, 2, { '0,0': no('M1'), '0,1': out('Y0') }), // pusher out only in step 2
-    ],
-  },
-  'pack-full': { rungs: packFullCycle() },
+  'pack-group': { rungs: packFrontEnd() },
+  'pack-lift': { rungs: [...packFrontEnd(), ...packFlip()] },
+  'pack-full': { rungs: [...packFrontEnd(), ...packFlip(), ...packShip()] },
   'conveyor-stop': {
     rungs: [
       R(
@@ -401,13 +424,18 @@ describe('gradeProgram — wrong programs do not solve', () => {
     expect(gradeProgram(spec, empty).solved).toBe(false);
   });
 
-  it('a latched (non-momentary) pusher stalls the full-cycle packer and fails', () => {
-    // Drive the 2-pack pusher with a SET instead of an OUT coil: it extends but
-    // never springs back, so its retract stage never sees the home sensor and
-    // the one-hot sequencer wedges before it can reach the 4-pack.
+  it('a latched (non-momentary) 2-pack pusher starves the whole packer line', () => {
+    // Drive the 2-pack pusher with a SET instead of the sealed OUT coil: it
+    // extends once and never springs back, so the extended plate blocks the
+    // lanes, no further pair ever reaches the stop, and every downstream
+    // milestone (flips, the shipped 16-pack) starves.
     const spec = getLadderPuzzle('pack-full')!;
-    const stalled = packFullCycle().map((r) =>
-      r.id === 'pfY0' ? R('pfY0', 1, 2, { '0,0': no('M1'), '0,1': set('Y0') }) : r,
+    const stalled = [...packFrontEnd(), ...packFlip(), ...packShip()].map((r) =>
+      r.id === 'pp1'
+        ? R('pp1', 1, 5, {
+            '0,0': no('X14'), '0,1': no('X15'), '0,2': no('X2'), '0,3': nc('C0'), '0,4': set('Y0'),
+          })
+        : r,
     );
     const validation = validateProgram(spec, { rungs: stalled });
     expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
