@@ -133,18 +133,27 @@ function packFrontEnd(): Rung[] {
 // Lift/flip cycle: latch a flip request when the 4-pack pusher reaches OUT
 // (the group is on the platform), release it at the top so the lift lowers.
 // The process itself holds the lift down until the 4-pack rod is home again.
-function packFlip(): Rung[] {
+// In pack-full the flip output is additionally gated on the mothåll's
+// bak-window (ship steps M1-M3): a flip landing with the hold away would tip
+// the on-end stack, so the lift waits at the bottom until the window closes.
+function packFlip(gated = false): Rung[] {
+  const flipOut = gated
+    ? R('pl2', 1, 5, {
+        '0,0': no('M0'), '0,1': nc('M1'), '0,2': nc('M2'), '0,3': nc('M3'), '0,4': out('Y2'),
+      })
+    : R('pl2', 1, 2, { '0,0': no('M0'), '0,1': out('Y2') });
   return [
     R('pl1', 1, 2, { '0,0': no('X3'), '0,1': set('M0') }),
-    R('pl2', 1, 2, { '0,0': no('M0'), '0,1': out('Y2') }),
+    flipOut,
     R('pl3', 1, 2, { '0,0': no('X5'), '0,1': rst('M0') }),
   ];
 }
 
-// Shipping back end: count flips on C1 (K4 = 16 boxes in section 3); once the
-// lift settles back down, run a one-hot step chain M1..M6 — back-stop forward,
-// 16-pack-1 full stroke and home, back-stop released, 16-pack-2 full stroke and
-// home. C1 resets as the chain starts so flips for the NEXT pack count afresh.
+// Shipping back end: count flips on C1 (K4 = 16 cartons in section 3); once
+// the lift settles back down, run a one-hot step chain M1..M5 — mothåll back,
+// 16-pack-1 full stroke and home (the hold springs forward again as M3
+// clears), 16-pack-2 full stroke and home. C1 resets as the chain starts so
+// flips for the NEXT pack count afresh.
 function packShip(): Rung[] {
   // "step relay AND its end sensor" hand-off: SET the next relay, RST this one.
   const step = (id: string, m: string, sensor: string, nextM: string | null): Rung =>
@@ -158,30 +167,23 @@ function packShip(): Rung[] {
         )
       : R(id, 1, 3, { '0,0': no(m), '0,1': no(sensor), '0,2': rst(m) });
   return [
-    R('ps1', 1, 2, { '0,0': no('X5'), '0,1': counter('C1', 4) }),
+    // Mothåll rests FORWARD (the stack needs it), pulled back across M1-M3.
+    R('ps1', 1, 4, { '0,0': nc('M1'), '0,1': nc('M2'), '0,2': nc('M3'), '0,3': out('Y5') }),
+    R('ps2', 1, 2, { '0,0': no('X5'), '0,1': counter('C1', 4) }),
     R(
-      'ps2',
+      'ps3',
       2,
       3,
       { '0,0': rise('X4'), '0,1': no('C1'), '0,2': set('M1'), '1,2': rst('C1') },
       [{ row: 0, col: 2 }],
     ),
-    // Back-stop forward across steps 1-3 (receiving and squaring the pack).
-    R(
-      'ps3',
-      3,
-      2,
-      { '0,0': no('M1'), '1,0': no('M2'), '2,0': no('M3'), '0,1': out('Y5') },
-      [{ row: 0, col: 1 }, { row: 1, col: 1 }],
-    ),
     R('ps4', 1, 2, { '0,0': no('M2'), '0,1': out('Y3') }),
-    R('ps5', 1, 2, { '0,0': no('M5'), '0,1': out('Y4') }),
-    step('ps6', 'M1', 'X13', 'M2'),
+    R('ps5', 1, 2, { '0,0': no('M4'), '0,1': out('Y4') }),
+    step('ps6', 'M1', 'X12', 'M2'),
     step('ps7', 'M2', 'X7', 'M3'),
     step('ps8', 'M3', 'X6', 'M4'),
-    step('ps9', 'M4', 'X12', 'M5'),
-    step('ps10', 'M5', 'X11', 'M6'),
-    step('ps11', 'M6', 'X10', null),
+    step('ps9', 'M4', 'X11', 'M5'),
+    step('ps10', 'M5', 'X10', null),
   ];
 }
 
@@ -299,7 +301,7 @@ const solutions: Record<string, LadderProgram> = {
   },
   'pack-group': { rungs: packFrontEnd() },
   'pack-lift': { rungs: [...packFrontEnd(), ...packFlip()] },
-  'pack-full': { rungs: [...packFrontEnd(), ...packFlip(), ...packShip()] },
+  'pack-full': { rungs: [...packFrontEnd(), ...packFlip(true), ...packShip()] },
   'conveyor-stop': {
     rungs: [
       R(

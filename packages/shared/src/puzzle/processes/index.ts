@@ -230,23 +230,36 @@ const elevator5: ProcessModel = {
 };
 
 /**
- * Two-lane box packer, modelled on the real "Laboration 7" machine. A feed
- * belt carries boxes down two lanes to an end stop; from there six
- * double-acting pneumatic actuators group them 2 → 4 → 16 → out:
+ * Two-lane box packer, mirroring the Blender-designed machine (pack-machine.glb).
+ * The feed belt runs continuously and starts EMPTY — boxes enter the two lanes
+ * staggered and travel to an end stop. Six double-acting pneumatic actuators
+ * (two visible tie-rod cylinders up front, hidden actuators after that) group
+ * the flat cartons 2 → 4 → 16 → out:
  *   Y0 2-pack push   (X0 in / X1 out)   pushes a matched pair off the belt
- *                                       into section 2 — two strokes stage a
- *                                       4-pack in two steps
- *   Y1 4-pack push   (X2 in / X3 out)   pushes the 4-pack sideways onto the
- *                                       lift platform (lift must be down/empty)
- *   Y2 lift/flipper  (X4 down / X5 up)  flips its load over the wall into
- *                                       section 3; four flips build a 16-pack
- *   Y3 16-pack1 push (X6 in / X7 out)   pushes the 16-pack into section 4 —
- *                                       the back-stop must be forward to keep
- *                                       it from sliding out the open side
- *   Y4 16-pack2 push (X10 in / X11 out) ships the pack from section 4 to the
- *                                       finished station — back-stop must be
- *                                       back out of the way first
- *   Y5 back-stop     (X12 back / X13 forward)
+ *                                       into the section-2 file — two strokes
+ *                                       stage a 4-pack. Its L-gate blocks the
+ *                                       lanes while the plate is away, so
+ *                                       arriving boxes hold short of the stop.
+ *   Y1 4-pack push   (X2 in / X3 out)   pushes the 4-file onto the flipper
+ *                                       tray (lift must be down/empty). Its
+ *                                       L-gate crosses the section-2 entry, so
+ *                                       a 2-pack stroke completing while it is
+ *                                       away from home jams the machine.
+ *   Y2 lift/flipper  (X4 down / X5 up)  tips its load over the wall into
+ *                                       section 3, where the cartons stand ON
+ *                                       END; four flips build a 16-pack
+ *   Y3 16-pack1 push (X6 in / X7 out)   slides the 16-block into section 4 —
+ *                                       its plate sweeps across the mothåll's
+ *                                       line, so the hold must be BACK first
+ *   Y4 16-pack2 push (X10 in / X11 out) pushes the pack onto the out-feed
+ *                                       belt, which carries it to the
+ *                                       finished station
+ *   Y5 mothåll       (X12 back / X13 forward) — the counter-hold that backs
+ *                                       the tippy on-end stack in section 3.
+ *                                       Flips landing without it forward tip
+ *                                       the stack (jam). Only enforced when
+ *                                       the puzzle wires Y5; earlier puzzles
+ *                                       have it parked forward mechanically.
  * Box-flow sensors are derived from the modelled lanes (never scenario-set):
  *   X14/X15 box at the stop (near/far lane), X16/X17 box waiting in the queue.
  * X20, when the puzzle wires it, is the belt-run command: boxes advance only
@@ -255,10 +268,12 @@ const elevator5: ProcessModel = {
  * A pusher picks its product up the moment it leaves home and delivers it only
  * when the stroke COMPLETES (position crosses fully out) — dropping the coil
  * mid-stroke strands the boxes and latches `jam`, as does pushing a lone box,
- * over-filling a section, loading a raised/occupied lift, or stroking the
- * 16-packs with the back-stop in the wrong place. Scenarios assert `jam`
+ * over-filling a section, loading a raised/occupied lift, or running the
+ * 16-pack strokes against the mothåll rules above. Scenarios assert `jam`
  * stays false. Actuator travels are multiples of both scan cadences (60ms
  * client, 50ms grader) so end sensors trip on the same scan under either.
+ * `ship` (0..1, cosmetic) tracks the latest finished pack riding the out-feed
+ * belt so the 3D view can animate the transit; grading never reads it.
  */
 const PACK_ACTUATORS = [
   { cmd: 'Y0', inS: 'X0', outS: 'X1', ms: 600, key: 'push2' },
@@ -281,6 +296,14 @@ const PACK_LANES = [
   { lead: 'laneB1', next: 'laneB2', carry: 'carryB', atStop: 'X15', inQueue: 'X17' },
 ] as const;
 
+/** The puzzle wires the mothåll — enforce its interlocks (elevator5-style feature detect). */
+function packHasMothall(devices: PuzzleDevice[]): boolean {
+  return devices.some((d) => d.address === 'Y5');
+}
+
+/** Cosmetic out-feed transit time for the latest finished pack (ship 0 → 1). */
+const OUTFEED_MS = 3000;
+
 const packaging: ProcessModel = {
   id: 'packaging',
   init: () => ({
@@ -290,12 +313,13 @@ const packaging: ProcessModel = {
     push16a: 0,
     push16b: 0,
     backstop: 0,
-    // Lane positions 0..1 (1 = at the stop). Lane B starts further out so the
-    // very first pair demonstrably does NOT line up at the same instant.
-    laneA1: 0.5,
-    laneA2: 0,
-    laneB1: 0.25,
-    laneB2: 0,
+    // Lane positions 0..1 (1 = at the stop); negative = not yet on the belt.
+    // The machine starts EMPTY, and lane B trails lane A so the very first
+    // pair demonstrably does NOT line up at the same instant.
+    laneA1: 0,
+    laneA2: -0.55,
+    laneB1: -0.25,
+    laneB2: -0.8,
     // Boxes riding a mid-stroke pusher plate (delivered at end of stroke).
     carryA: false,
     carryB: false,
@@ -308,9 +332,10 @@ const packaging: ProcessModel = {
     sec3: 0,
     sec4: 0,
     finished: 0,
+    ship: 1,
     jam: false,
   }),
-  step: ({ outputs, inputs, machine, dtMs }) => {
+  step: ({ outputs, inputs, machine, devices, dtMs }) => {
     const m: MachineState = { ...machine };
     let jam = machine.jam === true;
 
@@ -330,29 +355,37 @@ const packaging: ProcessModel = {
     const strokeEnds = (k: string) => pos[k].prev < 1 - PACK_EPS && pos[k].next >= 1 - PACK_EPS;
     const strokeAborts = (k: string) => pos[k].prev > PACK_EPS && pos[k].next <= PACK_EPS;
 
+    const hasMothall = packHasMothall(devices);
+
     // -- product transfers (downstream stages first) --------------------------
-    // 16-pack2: section 4 → finished station, needs the back-stop out of the way.
+    // 16-pack2: section 4 → out-feed belt, which carries the pack to the
+    // finished station (`ship` animates that transit; the count is final at
+    // the stroke's end). The mothåll sits north of section 4 — no interaction.
     if (strokeStarts('push16b') && num(m.sec4) > 0) {
       m.carry16b = num(m.sec4);
       m.sec4 = 0;
     }
     if (strokeEnds('push16b') && num(m.carry16b) > 0) {
-      if (num(m.backstop) <= PACK_EPS) m.finished = num(m.finished) + 1;
-      else jam = true; // shoved the pack into the raised back-stop
+      m.finished = num(m.finished) + 1;
+      m.ship = 0;
       m.carry16b = 0;
     }
-    // 16-pack1: section 3 → section 4, needs the back-stop forward to catch it.
+    // 16-pack1: section 3 → section 4. Its plate sweeps across the mothåll's
+    // line, so the hold must be fully BACK — and section 4 must be clear.
     if (strokeStarts('push16a') && num(m.sec3) > 0) {
       m.carry16a = num(m.sec3);
       m.sec3 = 0;
     }
     if (strokeEnds('push16a') && num(m.carry16a) > 0) {
-      if (num(m.backstop) >= 1 - PACK_EPS && num(m.sec4) === 0) m.sec4 = num(m.carry16a);
-      else jam = true; // pack slid out the open side / crashed into the last one
+      if (num(m.backstop) <= PACK_EPS && num(m.sec4) === 0) m.sec4 = num(m.carry16a);
+      else jam = true; // plate swept into the mothåll / crashed into the last pack
       m.carry16a = 0;
     }
-    // Lift: flips its load over into section 3 at the top of the stroke.
+    // Lift: flips its load over into section 3 at the top of the stroke. The
+    // on-end cartons tip over unless the mothåll backs the stack (only when
+    // the puzzle wires Y5 — otherwise the hold is parked forward for you).
     if (strokeEnds('lift') && num(m.liftLoad) > 0) {
+      if (hasMothall && num(m.backstop) < 1 - PACK_EPS) jam = true;
       m.sec3 = num(m.sec3) + num(m.liftLoad);
       m.liftLoad = 0;
       if (num(m.sec3) > 16) jam = true;
@@ -414,6 +447,9 @@ const packaging: ProcessModel = {
         if (nextPos < LANE_QUEUE_POS) m[next] = Math.min(LANE_QUEUE_POS, nextPos + dtMs / LANE_FEED_MS);
       }
     }
+
+    // -- out-feed transit (cosmetic; drives the 3D view only) ------------------
+    if (num(m.ship, 1) < 1) m.ship = Math.min(1, num(m.ship) + dtMs / OUTFEED_MS);
 
     // -- sensors ---------------------------------------------------------------
     const derivedInputs: Record<string, boolean> = {};
