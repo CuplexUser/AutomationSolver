@@ -338,6 +338,7 @@ const packaging: ProcessModel = {
   step: ({ outputs, inputs, machine, devices, dtMs }) => {
     const m: MachineState = { ...machine };
     let jam = machine.jam === true;
+    const hasMothall = packHasMothall(devices);
 
     // -- actuators -----------------------------------------------------------
     const pos: Record<string, { prev: number; next: number }> = {};
@@ -347,6 +348,9 @@ const packaging: ProcessModel = {
       // Physical interlock: the lift cannot leave the bottom while the 4-pack
       // rod is still extended under its platform.
       if (a.key === 'lift' && prev <= PACK_EPS && num(machine.push4) > PACK_EPS) extend = false;
+      // Puzzles that don't wire Y5 have the mothåll parked forward mechanically:
+      // it drives itself out at power-up and stays there.
+      if (a.key === 'backstop' && !hasMothall) extend = true;
       const next = extend ? Math.min(1, prev + dtMs / a.ms) : Math.max(0, prev - dtMs / a.ms);
       m[a.key] = next;
       pos[a.key] = { prev, next };
@@ -354,8 +358,6 @@ const packaging: ProcessModel = {
     const strokeStarts = (k: string) => pos[k].prev <= PACK_EPS && pos[k].next > PACK_EPS;
     const strokeEnds = (k: string) => pos[k].prev < 1 - PACK_EPS && pos[k].next >= 1 - PACK_EPS;
     const strokeAborts = (k: string) => pos[k].prev > PACK_EPS && pos[k].next <= PACK_EPS;
-
-    const hasMothall = packHasMothall(devices);
 
     // -- product transfers (downstream stages first) --------------------------
     // 16-pack2: section 4 → out-feed belt, which carries the pack to the

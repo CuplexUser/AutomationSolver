@@ -58,18 +58,24 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     and `X3` (at bottom).
   - `press` — a single ram (`Y0`) that advances/retracts; derives `X3` (at bottom). Backs the
     two-hand safety press.
-  - `packaging` — the two-lane box packer: a modelled feed belt (two lanes of boxes advancing
-    to an end stop; `X20` = belt run, sensors `X14`–`X17` derived from the modelled lanes) plus
-    six double-acting pneumatic actuators (`Y0`–`Y5`), each a 0→1 extension driving its two
-    end-of-travel sensors (`Y0`→`X0`/`X1`, `Y2` lift→`X4`/`X5`, `Y5` back-stop→`X12`/`X13`, …).
-    Product genuinely moves: 2-pack strokes stage pairs into section 2 (two steps = a 4-pack),
-    the 4-pack stroke loads the lift, the lift **flips** its load into section 3 (four flips =
-    16), 16-pack-1 pushes the block into section 4 against the forward back-stop, 16-pack-2
-    ships it once the stop releases. A pusher picks its boxes up when it leaves home and only
-    delivers on a **completed** stroke; wrong moves (lone box, over-fill, raised/occupied lift,
-    back-stop misplaced, aborted stroke) latch a `jam` flag that scenarios assert stays false.
-    Address convention is fixed across all packaging puzzles (mirrors the real Laboration-7
-    I/O list).
+  - `packaging` — the two-lane box packer, mirroring the Blender-designed machine
+    (`pack-machine.glb`): a continuously running feed belt that starts **empty** (two lanes of
+    staggered boxes advancing to an end stop; sensors `X14`–`X17` derived from the modelled
+    lanes) plus six double-acting pneumatic actuators (`Y0`–`Y5`), each a 0→1 extension driving
+    its two end-of-travel sensors (`Y0`→`X0`/`X1`, `Y2` lift→`X4`/`X5`, `Y5`
+    mothåll→`X12`/`X13`, …). Product genuinely moves: 2-pack strokes stage pairs into the
+    section-2 file (two steps = a 4-pack), the 4-pack stroke loads the flipper tray, the lift
+    **flips** its load over the wall into section 3 where the cartons stand on end (four flips
+    = 16), 16-pack-1 slides the block into section 4, 16-pack-2 pushes it onto the out-feed
+    belt (`ship` animates the cosmetic transit). The `Y5` **mothåll** is the counter-hold
+    backing the tippy on-end stack: flips landing without it forward tip the stack, and the
+    16-pack-1 plate sweeps across its line so it must be back before that push — both enforced
+    only when the puzzle wires `Y5` (elevator5-style feature detect; other puzzles have it
+    parked forward mechanically). A pusher picks its boxes up when it leaves home and only
+    delivers on a **completed** stroke; wrong moves (lone box, over-fill, raised/occupied
+    lift, mothåll misplaced, aborted stroke) latch a `jam` flag that scenarios assert stays
+    false. Address convention is fixed across all packaging puzzles (mirrors the real
+    Laboration-7 I/O list).
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
   - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
     buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by
@@ -193,7 +199,9 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 
   interactive operator panel of push buttons, toggles, e-stops, lamps and motors bound to X/Y.
   `HmiPanel` renders from the narrow **`HmiRunner`** contract, which both the ladder `SimRunner`
   and the cabinet runner implement, with the machine visualization injected as a `machineSlot` —
-  so the same operator panel serves both puzzle kinds.
+  so the same operator panel serves both puzzle kinds. Digit keys **1–9** drive the pressable
+  inputs in panel order (hold = momentary, tap = toggle/e-stop; sensors get no key) so multiple
+  buttons can be held at once — required by Two-Hand Press's simultaneous palm buttons.
   - **`SimRunner` is the shared contract** (`{running, inputs, bits, machine, evalResults,
     history, start/stop/step/reset/setInput}`) that `LadderEditor`, `HmiPanel` and `MachineView`
     all render from — they don't know or care whether it's backed by a live `useSimRunner` engine
@@ -214,16 +222,18 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 
   every transform is driven each frame straight from the deterministic `machine.*` state the
   process model computes from `dt` — and it carries a readout of the machine's actual state
   (clamp %, feed %, spindle; floor/direction/door for the elevator; section box counts and
-  shipped packs for the packer, plus a jam tag). Two authoring styles coexist:
-  - **glTF-backed** (drill, elevator) — hero models authored in Blender, loaded as `.glb` via
-    `useGLTF`, driven by looking up named nodes. Best for detailed/organic geometry; the cost is
-    that node names are a load-bearing coupling and a typo silently no-ops.
-  - **Procedural** (`PackMachine3D.tsx`, `processId: 'packaging'`) — built entirely from three.js
-    primitives, no asset. Chosen because the packer *is* parametric boxes and rods: the scene is
-    a pure function of `machine.*` — lane positions, section counts and carry flags place every
-    box, actuator extensions place every plate/rod, and the lift renders as a flipper (a group
-    rotating about its hinge). There is no `.glb`/Blender round-trip and nothing to keep in sync
-    by name; a GLB could be swapped in later without touching puzzle logic.
+  shipped packs for the packer, plus a jam tag). Every scene is **glTF-backed** (drill,
+  elevator, packer) — hero models authored in Blender, loaded as `.glb` via `useGLTF`, driven
+  by looking up named nodes. Best for detailed geometry; the cost is that node names are a
+  load-bearing coupling and a typo silently no-ops.
+  - **`PackMachine3D.tsx`** (`processId: 'packaging'`) — `pack-machine.glb`, exported from
+    `PackMachine.blend`. The glb carries one node per moving part: five `*Carriage` empties
+    (pusher plates + rods + L-gates), the `FlipperPivot` hinge, the `MothallCarriage`
+    counter-hold, and a complete carton set (`BeltBox*`, `CarryBox*`, `Sec2Box_*`,
+    `Carry4Box_*`, `LiftBox*`, `Sec3Box_c_r`, `Sec4Box_c_r`, `ShipBox_c_r`, `DoneBox_c_r`)
+    whose positions/visibility are re-derived every frame as a pure function of `machine.*` —
+    lane positions, section counts, carry flags and actuator extensions place everything, so
+    the scene never animates on its own.
   - **`MachineCanvas.tsx`** — the shared `<Canvas>` + ambient/directional lights + optional
     `OrbitControls` rig both scenes render into, parameterized by camera position/fov/target/
     distance bounds/height. Three control modes: `interactive` (drag-to-rotate + scroll-to-zoom,

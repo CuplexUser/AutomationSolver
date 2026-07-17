@@ -1,6 +1,60 @@
-import type { ReactNode } from 'react';
+import { useEffect, useMemo, type ReactNode } from 'react';
 import type { PuzzleDevice } from '@automationsolver/shared';
 import type { HmiRunner } from './useSimRunner';
+
+// A latching widget flips on keydown; anything else is a spring-return button
+// that stays on only while the key is held.
+function isLatching(d: PuzzleDevice): boolean {
+  return d.widget === 'toggle' || d.widget === 'selector' || d.widget === 'estop';
+}
+
+/**
+ * Digit keys 1–9 drive the pressable inputs in panel order. Unlike pointer
+ * clicks, several keys can be held at once — required by puzzles like
+ * Two-Hand Press where both palm buttons must be down simultaneously.
+ */
+function useInputHotkeys(keyed: PuzzleDevice[], runner: HmiRunner) {
+  const { setInput, inputs } = runner;
+  useEffect(() => {
+    const byDigit = new Map(keyed.map((d, i) => [String(i + 1), d]));
+    const deviceFor = (e: KeyboardEvent) => {
+      const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code);
+      return m ? byDigit.get(m[1]) : undefined;
+    };
+    const isTyping = (t: EventTarget | null) =>
+      t instanceof HTMLElement &&
+      (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
+      const d = deviceFor(e);
+      if (!d) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      setInput(d.address, isLatching(d) ? inputs[d.address] !== true : true);
+    };
+    // No modifier/typing guard on release: a held button must always let go.
+    const onKeyUp = (e: KeyboardEvent) => {
+      const d = deviceFor(e);
+      if (d && !isLatching(d)) setInput(d.address, false);
+    };
+    // Keyup is lost when the window blurs mid-hold; spring buttons release.
+    const onBlur = () => {
+      for (const d of keyed) {
+        if (!isLatching(d) && inputs[d.address] === true) setInput(d.address, false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, [keyed, setInput, inputs]);
+}
 
 export function HmiPanel({
   devices,
@@ -13,6 +67,14 @@ export function HmiPanel({
 }) {
   const inputs = devices.filter((d) => d.io === 'input');
   const outputs = devices.filter((d) => d.io === 'output');
+
+  // Sensors are driven by the process model, not the operator, so they get no key.
+  const keyed = useMemo(
+    () => devices.filter((d) => d.io === 'input' && d.widget !== 'sensor').slice(0, 9),
+    [devices],
+  );
+  const hotkeys = new Map(keyed.map((d, i) => [d.address, String(i + 1)]));
+  useInputHotkeys(keyed, runner);
 
   return (
     <div className="hmi panel">
@@ -48,7 +110,7 @@ export function HmiPanel({
           <span className="eyebrow io-title">Inputs</span>
           <div className="widget-grid">
             {inputs.map((d) => (
-              <InputWidget key={d.address} device={d} runner={runner} />
+              <InputWidget key={d.address} device={d} runner={runner} hotkey={hotkeys.get(d.address)} />
             ))}
           </div>
         </section>
@@ -65,7 +127,15 @@ export function HmiPanel({
   );
 }
 
-function InputWidget({ device, runner }: { device: PuzzleDevice; runner: HmiRunner }) {
+function InputWidget({
+  device,
+  runner,
+  hotkey,
+}: {
+  device: PuzzleDevice;
+  runner: HmiRunner;
+  hotkey?: string;
+}) {
   const addr = device.address;
   if (device.widget === 'sensor') {
     const on = runner.bits[addr] === true;
@@ -92,7 +162,7 @@ function InputWidget({ device, runner }: { device: PuzzleDevice; runner: HmiRunn
         >
           <span className="estop-cap" />
         </button>
-        <WidgetLabel device={device} state={pressed ? 'PRESSED' : 'OK'} />
+        <WidgetLabel device={device} state={pressed ? 'PRESSED' : 'OK'} hotkey={hotkey} />
       </div>
     );
   }
@@ -109,7 +179,7 @@ function InputWidget({ device, runner }: { device: PuzzleDevice; runner: HmiRunn
         >
           <span className="toggle-knob" />
         </button>
-        <WidgetLabel device={device} state={on ? 'ON' : 'OFF'} />
+        <WidgetLabel device={device} state={on ? 'ON' : 'OFF'} hotkey={hotkey} />
       </div>
     );
   }
@@ -129,7 +199,7 @@ function InputWidget({ device, runner }: { device: PuzzleDevice; runner: HmiRunn
       >
         <span className="push-cap" />
       </button>
-      <WidgetLabel device={device} />
+      <WidgetLabel device={device} hotkey={hotkey} />
     </div>
   );
 }
@@ -155,10 +225,17 @@ function OutputWidget({ device, on }: { device: PuzzleDevice; on: boolean }) {
   );
 }
 
-function WidgetLabel({ device, state }: { device: PuzzleDevice; state?: string }) {
+function WidgetLabel({ device, state, hotkey }: { device: PuzzleDevice; state?: string; hotkey?: string }) {
   return (
     <div className="widget-label">
-      <span className={`dev-chip dev-${device.address[0]}`}>{device.address}</span>
+      <span className="widget-chiprow">
+        <span className={`dev-chip dev-${device.address[0]}`}>{device.address}</span>
+        {hotkey && (
+          <kbd className="widget-key" title={`Keyboard: hold ${hotkey}`}>
+            {hotkey}
+          </kbd>
+        )}
+      </span>
       <span className="widget-name">{device.label}</span>
       {state && <span className="widget-state">{state}</span>}
     </div>

@@ -21,6 +21,9 @@ export const twoHandPress: PuzzleSpec = {
     '',
     'BOTTOM (X3) is a field sensor driven by the press — you cannot press it. The',
     'E-STOP is wired normally-closed, so it reads ON while healthy.',
+    '',
+    'Tip: one mouse cannot hold two buttons — hold the number keys shown on the',
+    'operator panel to press both palms at once.',
   ].join('\n'),
   hints: [
     'Rung 1: advance Y0 from X0 AND X1 AND X2 (all normally-open) in series with a',

@@ -1697,6 +1697,21 @@
   gap: 3px;
   text-align: center;
 }
+.widget-chiprow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.widget-key {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 14px;
+  padding: 0 4px;
+  color: var(--muted);
+  border: 1px solid var(--edge-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
 .widget-name {
   font-size: 11px;
   color: var(--ink-dim);

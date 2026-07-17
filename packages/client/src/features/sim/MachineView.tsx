@@ -132,7 +132,8 @@ function packTag(m: MachineState): string {
     numOf(m.push2) > 0.01 || numOf(m.push4) > 0.01 || numOf(m.push16a) > 0.01 || numOf(m.push16b) > 0.01;
   if (numOf(m.lift) > 0.01) return '⇡ flipping';
   if (anyPush) return '⏵ pushing';
-  if (numOf(m.backstop) >= 1) return '▮ guarded';
+  // The mothåll rests forward — it being pulled back is the notable state.
+  if (numOf(m.backstop) <= 0.01) return '▮ mothåll back';
   return 'idle';
 }
 

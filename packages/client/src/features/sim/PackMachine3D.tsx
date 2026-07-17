@@ -1,327 +1,238 @@
-import type { ReactNode } from 'react';
+import { useMemo } from 'react';
+import { useFrame } from '@react-three/fiber';
+import { useGLTF } from '@react-three/drei';
+import * as THREE from 'three';
 import type { MachineState } from '@automationsolver/shared';
-import { MachineCanvas } from './MachineCanvas';
+import { MachineCanvas, enableShadows, DRACO_DECODER_PATH } from './MachineCanvas';
+
+const MODEL_URL = '/models/pack-machine.glb';
 
 const numOf = (v: unknown, f = 0): number => (typeof v === 'number' ? v : f);
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 /**
- * Procedural packing-machine scene — no glTF asset. Every part is a box driven
- * straight off the `packaging` process's machine state, boxes included: lane
- * positions, per-section counts and the carry flags fully determine where every
- * box is, so the scene is a pure function of MachineState re-rendered per scan.
+ * Packing-machine scene driven off the Blender-authored pack-machine.glb
+ * (D:\Code\Claude\Design\PackMachine.blend — node names are load-bearing).
+ * The glb carries one node per moving part: five *Carriage empties (the pusher
+ * plates with their rods and L-gates), the FlipperPivot hinge, and a full set
+ * of carton nodes whose visibility/positions are a pure function of the
+ * `packaging` process's MachineState, re-derived every frame.
  *
- * Layout (top view, +x right, +z toward the camera):
- *   infeed belt along x (two lanes, z ±0.5) → 2-pack plate shoves pairs +x up
- *   onto the raised deck (section 2) → 4-pack plate shoves the 4-pack -z onto
- *   the flipper → flip lands it in section 3 (grid at z<-3.3) → 16-pack-1
- *   shoves the 16-pack +x into section 4 against the back-stop → 16-pack-2
- *   ships it +z down the out-feed to the finished station.
+ * Coordinates: Blender is Z-up, glTF is Y-up — a Blender point (x, y, z) lands
+ * at (x, z, -y) here. All constants below are in glTF space but quote their
+ * Blender-side origins (see the export script's FILE_Y / SEC4_Y tables).
  */
 
-const BOX_W = 0.78;
-const BOX_H = 0.62;
+// Infeed lanes: position 0..1 along the belt (1 = at the end stop, x = -0.05);
+// negative = not yet on the belt. Lane rows sit at z 0.45 (near) / 1.0 (far).
+const laneX = (p: number) => -8.75 + 8.7 * p;
+const LANE_Z = { A: 0.45, B: 1.0 } as const;
+const BELT_Y = 1.15; // flat-carton center height on belt and section decks
 
-// Lane geometry: position 0..1 along the infeed, 1 = at the end stop.
-const laneX = (p: number) => -8.6 + 5.2 * p;
-const LANE_Z = { A: 0.5, B: -0.5 } as const;
+// Actuator strokes, in scene units along the glTF axis each carriage moves on.
+const PUSH2_TRAVEL = 1.3; // +z: belt lanes → section 2 file entry
+const PUSH4_TRAVEL = 1.35; // +x: section 2 file → flipper tray
+const PUSH16A_TRAVEL = 3.1; // +z: section 3 → section 4
+const PUSH16B_TRAVEL = 2.75; // +x: section 4 → out-feed belt
+const FLIP_RAD = 2.0; // flipper tips ~115° over the wall
 
-// 2-pack plate: rest just behind the boxes at the stop, stroking +x.
-const plate2X = (v: number) => -3.85 + v * 1.44;
-// 4-pack plate: rest south of section 2, stroking -z onto the flipper.
-const plate4Z = (v: number) => 1.15 - v * 2.65;
-// 16-pack-1 plate: rest west of section 3, stroking +x into section 4.
-const plate16aX = (v: number) => -2.95 + v * 4.5;
-// 16-pack-2 plate: rest north of section 4, stroking +z onto the out-feed.
-const plate16bZ = (v: number) => -6.85 + v * 5.9;
+// Section 2 file slots (Blender FILE_Y negated) shared by Sec3 rows too.
+const FILE_Z = [1.75, 2.25, 2.75, 3.25] as const;
+const SEC4_Z = [4.85, 5.35, 5.85, 6.35] as const;
+const SEC3_COL_X = (c: number) => 2.1 + 0.3 * c;
+const UP_Y = 1.5; // on-end carton center height
 
-// Section grids. Section 2 pairs: newest at SEC2_X[0], stepped deeper to [1].
-const SEC2_X = [-1.9, -1.05] as const;
-const SEC3_COLS = [-2.35, -1.5, -0.65, 0.2] as const;
-const SEC_ROWS = [-3.7, -4.55, -5.4, -6.25] as const;
-const SHIP_TRAVEL = 5.9;
+// Mothåll (Y5): the counter-hold plate's rest pose in the glb sits flush with
+// a 2-column stack (Blender x 2.61); the client positions it absolutely —
+// forward = flush against the current stack, back = parked east of the
+// 16-pack-1 plate's sweep.
+const MOTHALL_REST_X = 2.61;
+const MOTHALL_BACK_X = 3.66;
+const mothallForwardX = (cols: number) => 1.95 + 0.3 * Math.max(cols, 1) + 0.06;
 
-const BELT_Y = 0.55; // box center resting on a belt
-const DECK_Y = 0.67; // box center resting on the raised deck
+// Out-feed transit: the shipped block enters the belt at x 4.85 (per column
+// +0.3c) and rides to the finished station at 12.7; ShipBox rest is at 8.6.
+const shipOffsetX = (ship: number) => 7.85 * ship - 3.75;
 
-function Box({ position, rotation }: { position: [number, number, number]; rotation?: [number, number, number] }) {
-  return (
-    <mesh position={position} rotation={rotation} castShadow receiveShadow>
-      <boxGeometry args={[BOX_W, BOX_H, BOX_W]} />
-      <meshStandardMaterial color="#e0b64b" roughness={0.85} metalness={0.05} />
-    </mesh>
-  );
-}
-
-function Steel({ position, size }: { position: [number, number, number]; size: [number, number, number] }) {
-  return (
-    <mesh position={position} castShadow receiveShadow>
-      <boxGeometry args={size} />
-      <meshStandardMaterial color="#6b7280" metalness={0.85} roughness={0.35} />
-    </mesh>
-  );
-}
-
-function GuardWall({ position, size }: { position: [number, number, number]; size: [number, number, number] }) {
-  return (
-    <mesh position={position} castShadow receiveShadow>
-      <boxGeometry args={size} />
-      <meshStandardMaterial color="#9a3838" metalness={0.3} roughness={0.6} />
-    </mesh>
-  );
-}
-
-function Plate({
-  position,
-  size,
-  color,
-}: {
-  position: [number, number, number];
-  size: [number, number, number];
-  color: string;
-}) {
-  return (
-    <mesh position={position} castShadow receiveShadow>
-      <boxGeometry args={size} />
-      <meshStandardMaterial color={color} metalness={0.3} roughness={0.5} />
-    </mesh>
-  );
-}
-
-function Rod({
-  from,
-  to,
-  axis,
-  y,
-  x,
-  z,
-}: {
-  from: number;
-  to: number;
-  axis: 'x' | 'z';
-  y: number;
-  x?: number;
-  z?: number;
-}) {
-  const len = Math.max(0.05, Math.abs(to - from));
-  const mid = (from + to) / 2;
-  const pos: [number, number, number] = axis === 'x' ? [mid, y, z ?? 0] : [x ?? 0, y, mid];
-  const size: [number, number, number] = axis === 'x' ? [len, 0.13, 0.13] : [0.13, 0.13, len];
-  return (
-    <mesh position={pos} castShadow>
-      <boxGeometry args={size} />
-      <meshStandardMaterial color="#d1d5db" metalness={0.95} roughness={0.2} />
-    </mesh>
-  );
-}
-
-/** The lift is a flipper: it tips its load over the wall into section 3. */
-function Flipper({ value, children }: { value: number; children: ReactNode }) {
-  return (
-    <group position={[-1.475, 0.42, -3.05]} rotation={[-value * 2.35, 0, 0]}>
-      {/* platform plate, hinged at the group origin, reaching toward +z */}
-      <mesh position={[0, 0, 0.875]} castShadow receiveShadow>
-        <boxGeometry args={[2.1, 0.12, 1.75]} />
-        <meshStandardMaterial color="#a78bfa" metalness={0.3} roughness={0.5} />
-      </mesh>
-      {children}
-    </group>
-  );
+interface DriveRefs {
+  push2?: THREE.Object3D;
+  push4?: THREE.Object3D;
+  push16a?: THREE.Object3D;
+  push16b?: THREE.Object3D;
+  mothall?: THREE.Object3D;
+  flipper?: THREE.Object3D;
+  beltBoxes: { node?: THREE.Object3D; lane: 'A' | 'B'; key: string }[];
+  carryA?: THREE.Object3D;
+  carryB?: THREE.Object3D;
+  sec2: (THREE.Object3D | undefined)[];
+  carry4: (THREE.Object3D | undefined)[];
+  lift: (THREE.Object3D | undefined)[];
+  sec3: (THREE.Object3D | undefined)[][]; // [col][row]
+  sec4: (THREE.Object3D | undefined)[][];
+  ship: (THREE.Object3D | undefined)[][];
+  done: (THREE.Object3D | undefined)[][];
+  beacon?: THREE.Mesh;
 }
 
 function PackMachineScene({ machine }: { machine: MachineState }) {
-  const push2 = clamp01(numOf(machine.push2));
-  const push4 = clamp01(numOf(machine.push4));
-  const lift = clamp01(numOf(machine.lift));
-  const push16a = clamp01(numOf(machine.push16a));
-  const push16b = clamp01(numOf(machine.push16b));
-  const backstop = clamp01(numOf(machine.backstop));
-  const jam = machine.jam === true;
+  const { scene } = useGLTF(MODEL_URL, DRACO_DECODER_PATH);
 
-  const p2x = plate2X(push2);
-  const p4z = plate4Z(push4);
-  const p16ax = plate16aX(push16a);
-  const p16bz = plate16bZ(push16b);
-
-  const boxes: { key: string; pos: [number, number, number] }[] = [];
-  // Infeed lanes: lead + follower box per lane, plus a pair riding the plate.
-  const lanes = [
-    { id: 'A', z: LANE_Z.A, lead: numOf(machine.laneA1), next: numOf(machine.laneA2), carry: machine.carryA === true },
-    { id: 'B', z: LANE_Z.B, lead: numOf(machine.laneB1), next: numOf(machine.laneB2), carry: machine.carryB === true },
-  ];
-  for (const lane of lanes) {
-    boxes.push({ key: `lane${lane.id}1`, pos: [laneX(lane.lead), BELT_Y, lane.z] });
-    boxes.push({ key: `lane${lane.id}2`, pos: [laneX(lane.next), BELT_Y, lane.z] });
-    if (lane.carry) {
-      // riding the 2-pack plate up the step onto the deck
-      boxes.push({ key: `carry${lane.id}`, pos: [p2x + 0.51, BELT_Y + push2 * (DECK_Y - BELT_Y), lane.z] });
-    }
-  }
-  // Section 2: pairs staged in two steps (newest nearest the belt).
-  const sec2 = numOf(machine.sec2);
-  for (let pair = 0; pair < Math.min(2, Math.floor(sec2 / 2)); pair++) {
-    boxes.push({ key: `s2p${pair}a`, pos: [SEC2_X[pair], DECK_Y, LANE_Z.A] });
-    boxes.push({ key: `s2p${pair}b`, pos: [SEC2_X[pair], DECK_Y, LANE_Z.B] });
-  }
-  // 4-pack riding the 4-pack plate toward the flipper.
-  const carry4 = Math.min(4, numOf(machine.carry4));
-  for (let i = 0; i < carry4; i++) {
-    boxes.push({
-      key: `c4${i}`,
-      pos: [SEC2_X[i % 2], DECK_Y + push4 * 0.12, p4z - 0.51 - 0.85 * Math.floor(i / 2)],
-    });
-  }
-  // Section 3 grid, also used (x-shifted) for the pack riding 16-pack-1.
-  const sec3 = Math.min(16, numOf(machine.sec3));
-  for (let i = 0; i < sec3; i++) {
-    boxes.push({ key: `s3${i}`, pos: [SEC3_COLS[i % 4], DECK_Y, SEC_ROWS[Math.floor(i / 4)]] });
-  }
-  const carry16a = Math.min(16, numOf(machine.carry16a));
-  for (let i = 0; i < carry16a; i++) {
-    boxes.push({
-      key: `c16a${i}`,
-      pos: [SEC3_COLS[i % 4] + push16a * 4.5, DECK_Y, SEC_ROWS[Math.floor(i / 4)]],
-    });
-  }
-  // Section 4 grid, and the pack riding 16-pack-2 down to the out-feed.
-  const sec4 = Math.min(16, numOf(machine.sec4));
-  for (let i = 0; i < sec4; i++) {
-    boxes.push({ key: `s4${i}`, pos: [SEC3_COLS[i % 4] + 4.5, DECK_Y, SEC_ROWS[Math.floor(i / 4)]] });
-  }
-  const carry16b = Math.min(16, numOf(machine.carry16b));
-  for (let i = 0; i < carry16b; i++) {
-    boxes.push({
-      key: `c16b${i}`,
-      pos: [
-        SEC3_COLS[i % 4] + 4.5,
-        DECK_Y - push16b * (DECK_Y - BELT_Y),
-        SEC_ROWS[Math.floor(i / 4)] + push16b * SHIP_TRAVEL,
+  const refs = useMemo<DriveRefs>(() => {
+    enableShadows(scene);
+    const grid = (prefix: string) =>
+      Array.from({ length: 4 }, (_, c) =>
+        Array.from({ length: 4 }, (_, r) => scene.getObjectByName(`${prefix}_${c}_${r}`)),
+      );
+    return {
+      push2: scene.getObjectByName('Push2Carriage') ?? undefined,
+      push4: scene.getObjectByName('Push4Carriage') ?? undefined,
+      push16a: scene.getObjectByName('Push16aCarriage') ?? undefined,
+      push16b: scene.getObjectByName('Push16bCarriage') ?? undefined,
+      mothall: scene.getObjectByName('MothallCarriage') ?? undefined,
+      flipper: scene.getObjectByName('FlipperPivot') ?? undefined,
+      beltBoxes: [
+        { node: scene.getObjectByName('BeltBoxA1'), lane: 'A', key: 'laneA1' },
+        { node: scene.getObjectByName('BeltBoxA2'), lane: 'A', key: 'laneA2' },
+        { node: scene.getObjectByName('BeltBoxB1'), lane: 'B', key: 'laneB1' },
+        { node: scene.getObjectByName('BeltBoxB2'), lane: 'B', key: 'laneB2' },
       ],
-    });
-  }
-  // Finished station: the last shipped 16-pack rests at the out-feed's end.
-  if (numOf(machine.finished) > 0) {
-    for (let i = 0; i < 16; i++) {
-      boxes.push({
-        key: `fin${i}`,
-        pos: [SEC3_COLS[i % 4] + 4.5, BELT_Y, SEC_ROWS[Math.floor(i / 4)] + SHIP_TRAVEL],
-      });
+      carryA: scene.getObjectByName('CarryBoxA') ?? undefined,
+      carryB: scene.getObjectByName('CarryBoxB') ?? undefined,
+      sec2: Array.from({ length: 4 }, (_, i) => scene.getObjectByName(`Sec2Box_${i}`)),
+      carry4: Array.from({ length: 4 }, (_, i) => scene.getObjectByName(`Carry4Box_${i}`)),
+      lift: Array.from({ length: 4 }, (_, i) => scene.getObjectByName(`LiftBox${i}`)),
+      sec3: grid('Sec3Box'),
+      sec4: grid('Sec4Box'),
+      ship: grid('ShipBox'),
+      done: grid('DoneBox'),
+      beacon: scene.getObjectByName('JamBeacon') as THREE.Mesh | undefined,
+    };
+  }, [scene]);
+
+  /* eslint-disable react-hooks/immutability -- driving the loaded glTF scene graph imperatively is the standard r3f pattern */
+  useFrame(() => {
+    const r = refs;
+    const push2 = clamp01(numOf(machine.push2));
+    const push4 = clamp01(numOf(machine.push4));
+    const lift = clamp01(numOf(machine.lift));
+    const push16a = clamp01(numOf(machine.push16a));
+    const push16b = clamp01(numOf(machine.push16b));
+    const backstop = clamp01(numOf(machine.backstop));
+    const sec2 = numOf(machine.sec2);
+    const sec3 = numOf(machine.sec3);
+    const sec4 = numOf(machine.sec4);
+    const carry4 = numOf(machine.carry4);
+    const carry16a = numOf(machine.carry16a);
+    const carry16b = numOf(machine.carry16b);
+    const liftLoad = numOf(machine.liftLoad);
+    const ship = numOf(machine.ship, 1);
+    const finished = numOf(machine.finished);
+    const carrying = machine.carryA === true || machine.carryB === true;
+    const jam = machine.jam === true;
+
+    // -- actuators -----------------------------------------------------------
+    if (r.push2) r.push2.position.set(0, 0, PUSH2_TRAVEL * push2);
+    if (r.push4) r.push4.position.set(PUSH4_TRAVEL * push4, 0, 0);
+    if (r.push16a) r.push16a.position.set(0, 0, PUSH16A_TRAVEL * push16a);
+    if (r.push16b) r.push16b.position.set(PUSH16B_TRAVEL * push16b, 0, 0);
+    if (r.flipper) r.flipper.rotation.set(0, 0, -FLIP_RAD * lift);
+    if (r.mothall) {
+      // Forward presses flush against however many columns stand in section 3
+      // (leaving one column's landing gap when it is empty); back parks it
+      // clear of the 16-pack-1 plate's sweep.
+      const cols = Math.ceil((carry16a > 0 ? 0 : sec3) / 4);
+      const fwdX = mothallForwardX(cols);
+      const x = MOTHALL_BACK_X + (fwdX - MOTHALL_BACK_X) * backstop;
+      r.mothall.position.set(x - MOTHALL_REST_X, 0, 0);
     }
-  }
-  // Load riding the flipper (local coordinates inside the rotating group).
-  const liftLoad = Math.min(4, numOf(machine.liftLoad));
-  const liftBoxes: { key: string; pos: [number, number, number] }[] = [];
-  for (let i = 0; i < liftLoad; i++) {
-    liftBoxes.push({ key: `lift${i}`, pos: [i % 2 === 0 ? -0.425 : 0.425, 0.43, Math.floor(i / 2) === 0 ? 1.3 : 0.45] });
-  }
 
-  return (
-    <group>
-      {/* base slab */}
-      <mesh position={[0.2, -0.11, -1.2]} receiveShadow>
-        <boxGeometry args={[20, 0.2, 16]} />
-        <meshStandardMaterial color="#2c3138" metalness={0.2} roughness={0.85} />
-      </mesh>
+    // -- infeed lanes --------------------------------------------------------
+    for (const { node, lane, key } of r.beltBoxes) {
+      if (!node) continue;
+      const p = numOf(machine[key], -1);
+      node.visible = p >= 0;
+      node.position.set(laneX(p), BELT_Y, LANE_Z[lane]);
+    }
+    if (r.carryA) r.carryA.visible = machine.carryA === true;
+    if (r.carryB) r.carryB.visible = machine.carryB === true;
 
-      {/* infeed belt with two lanes */}
-      <mesh position={[-6.85, 0.13, 0]} receiveShadow>
-        <boxGeometry args={[8.3, 0.22, 2.3]} />
-        <meshStandardMaterial color="#20252b" roughness={0.9} metalness={0.05} />
-      </mesh>
-      {[1.24, -1.24].map((z) => (
-        <Steel key={`rail${z}`} position={[-6.85, 0.3, z]} size={[8.3, 0.16, 0.1]} />
-      ))}
-      <GuardWall position={[-7.5, 0.46, 0]} size={[7.0, 0.5, 0.07]} />
+    // -- section 2 file (second stroke shoves the staged pair deeper) --------
+    const shove = carrying ? clamp01((push2 - 0.62) / 0.38) : 0;
+    r.sec2.forEach((node, i) => {
+      if (!node) return;
+      node.visible = i < sec2;
+      node.position.set(-0.05, BELT_Y, FILE_Z[i] + shove);
+    });
+    r.carry4.forEach((node, i) => {
+      if (node) node.visible = i < carry4;
+    });
+    r.lift.forEach((node, i) => {
+      if (node) node.visible = i < liftLoad;
+    });
 
-      {/* raised decks: section 2 + flipper (west), sections 3/4 (north) */}
-      <mesh position={[-1.725, 0.21, -0.8]} receiveShadow>
-        <boxGeometry args={[2.75, 0.3, 5.1]} />
-        <meshStandardMaterial color="#4a5158" metalness={0.4} roughness={0.65} />
-      </mesh>
-      <mesh position={[1.2, 0.21, -5.375]} receiveShadow>
-        <boxGeometry args={[8.6, 0.3, 4.05]} />
-        <meshStandardMaterial color="#4a5158" metalness={0.4} roughness={0.65} />
-      </mesh>
+    // -- section 3 stack (doubles as the block riding 16-pack-1) -------------
+    const sec3Count = carry16a > 0 ? carry16a : sec3;
+    const sec3Off = carry16a > 0 ? PUSH16A_TRAVEL * push16a : 0;
+    r.sec3.forEach((col, c) => {
+      col.forEach((node, row) => {
+        if (!node) return;
+        node.visible = c < Math.ceil(sec3Count / 4);
+        node.position.set(SEC3_COL_X(c), UP_Y, FILE_Z[row] + sec3Off);
+      });
+    });
 
-      {/* out-feed belt to the finished station */}
-      <mesh position={[3.425, 0.13, 1.15]} receiveShadow>
-        <boxGeometry args={[2.95, 0.22, 8.9]} />
-        <meshStandardMaterial color="#20252b" roughness={0.9} metalness={0.05} />
-      </mesh>
-      {[1.85, 5.0].map((x) => (
-        <Steel key={`orail${x}`} position={[x, 0.3, 1.15]} size={[0.1, 0.16, 8.9]} />
-      ))}
+    // -- section 4 block (doubles as the block riding 16-pack-2) -------------
+    const sec4Count = carry16b > 0 ? carry16b : sec4;
+    const sec4Off = carry16b > 0 ? PUSH16B_TRAVEL * push16b : 0;
+    r.sec4.forEach((col, c) => {
+      col.forEach((node, row) => {
+        if (!node) return;
+        node.visible = c < Math.ceil(sec4Count / 4);
+        node.position.set(SEC3_COL_X(c) + sec4Off, UP_Y, SEC4_Z[row]);
+      });
+    });
 
-      {/* guard walls: flip-over wall, section 3 back wall, section 4 end stop */}
-      <GuardWall position={[-1.475, 0.66, -3.18]} size={[2.5, 0.6, 0.08]} />
-      <GuardWall position={[-1.075, 0.76, -6.72]} size={[4.1, 0.8, 0.08]} />
-      <GuardWall position={[5.35, 0.76, -5.1]} size={[0.08, 0.8, 3.3]} />
+    // -- out-feed transit and finished station -------------------------------
+    r.ship.forEach((col, c) => {
+      col.forEach((node) => {
+        if (!node) return;
+        node.visible = ship < 1;
+        node.position.x = 8.6 + 0.3 * c + shipOffsetX(ship);
+      });
+    });
+    r.done.forEach((col) => {
+      col.forEach((node) => {
+        if (node) node.visible = finished > 0 && ship >= 1;
+      });
+    });
 
-      {/* 2-pack pusher on its gantry over the belt end */}
-      {[1.7, -1.7].map((z) => (
-        <Steel key={`post${z}`} position={[-3.45, 1.15, z]} size={[0.16, 2.3, 0.16]} />
-      ))}
-      <Steel position={[-3.45, 2.36, 0]} size={[0.2, 0.18, 3.56]} />
-      <Steel position={[-4.45, 1.75, 0]} size={[1.1, 0.5, 0.5]} />
-      <Rod from={-3.9} to={p2x} axis="x" y={1.75} z={0} />
-      <mesh position={[p2x, 1.22, 0]} castShadow>
-        <boxGeometry args={[0.13, 1.1, 0.13]} />
-        <meshStandardMaterial color="#d1d5db" metalness={0.95} roughness={0.2} />
-      </mesh>
-      <Plate position={[p2x, 0.74, 0]} size={[0.12, 0.95, 2.15]} color="#38bdf8" />
+    // -- jam beacon ----------------------------------------------------------
+    const mat = r.beacon?.material as THREE.MeshStandardMaterial | undefined;
+    if (mat) {
+      // Dark albedo even when lit, so the emissive glow dominates (see
+      // ElevatorShaft3D's arrival-light comment).
+      mat.emissiveIntensity = jam ? 1.4 : 0.15;
+      mat.color.set(jam ? '#2a1010' : '#1a0d0d');
+      mat.emissive.set(jam ? '#ff3020' : '#3a0a0a');
+    }
+  });
+  /* eslint-enable react-hooks/immutability */
 
-      {/* 4-pack pusher across the deck onto the flipper */}
-      <Steel position={[-1.475, 0.84, 2.1]} size={[0.9, 0.5, 1.0]} />
-      <Rod from={1.6} to={p4z} axis="z" y={0.84} x={-1.475} />
-      <Plate position={[-1.475, 0.84, p4z]} size={[2.35, 0.95, 0.12]} color="#f59e0b" />
-
-      <Flipper value={lift}>
-        {liftBoxes.map((b) => (
-          <Box key={b.key} position={b.pos} />
-        ))}
-      </Flipper>
-
-      {/* 16-pack pusher 1: section 3 → section 4 */}
-      <Steel position={[-4.5, 0.84, -4.975]} size={[1.0, 0.5, 0.9]} />
-      <Rod from={-3.95} to={p16ax} axis="x" y={0.84} z={-4.975} />
-      <Plate position={[p16ax, 0.84, -4.975]} size={[0.12, 0.95, 3.5]} color="#22c55e" />
-
-      {/* back-stop: rises to guard section 4's open side, sinks to release */}
-      <Plate position={[3.425, -0.15 + backstop * 0.75, -3.25]} size={[3.6, 0.8, 0.12]} color="#fb923c" />
-      <Steel position={[5.55, 0.5, -3.25]} size={[0.16, 1.0, 0.16]} />
-
-      {/* 16-pack pusher 2: ships the pack down the out-feed */}
-      <Steel position={[3.425, 0.84, -7.85]} size={[1.0, 0.5, 0.9]} />
-      <Rod from={-7.35} to={p16bz} axis="z" y={0.84} x={3.425} />
-      <Plate position={[3.425, 0.84, p16bz]} size={[3.6, 0.95, 0.12]} color="#f472b6" />
-
-      {/* jam beacon on the gantry beam */}
-      <mesh position={[-3.45, 2.62, 0]}>
-        <cylinderGeometry args={[0.12, 0.12, 0.35, 16]} />
-        <meshStandardMaterial
-          color={jam ? '#ef4444' : '#57606a'}
-          emissive={jam ? '#ef4444' : '#000000'}
-          emissiveIntensity={jam ? 1.4 : 0}
-        />
-      </mesh>
-
-      {boxes.map((b) => (
-        <Box key={b.key} position={b.pos} />
-      ))}
-    </group>
-  );
+  return <primitive object={scene} />;
 }
 
 export function PackMachine3D({ machine, height = 300 }: { machine: MachineState; height?: number }) {
   return (
     <MachineCanvas
       height={height}
-      cameraPosition={[9.5, 10.5, 12.5]}
-      target={[-0.5, 0.3, -1.2]}
-      minDistance={8}
-      maxDistance={32}
+      cameraPosition={[11, 15, 17]}
+      target={[2.3, 0.6, 2.0]}
+      minDistance={9}
+      maxDistance={45}
     >
       <PackMachineScene machine={machine} />
     </MachineCanvas>
   );
 }
+
+useGLTF.preload(MODEL_URL, DRACO_DECODER_PATH);
