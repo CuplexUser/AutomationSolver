@@ -133,9 +133,10 @@ function packFrontEnd(): Rung[] {
 // Lift/flip cycle: latch a flip request when the 4-pack pusher reaches OUT
 // (the group is on the platform), release it at the top so the lift lowers.
 // The process itself holds the lift down until the 4-pack rod is home again.
-// In pack-full the flip output is additionally gated on the mothåll's
-// bak-window (ship steps M1-M3): a flip landing with the hold away would tip
-// the on-end stack, so the lift waits at the bottom until the window closes.
+// In pack-full the flip output is additionally gated on the retaining
+// bracket's pulled-back window (ship steps M1-M3): a flip landing with the
+// bracket away would tip the on-end stack, so the lift waits at the bottom
+// until the window closes.
 function packFlip(gated = false): Rung[] {
   const flipOut = gated
     ? R('pl2', 1, 5, {
@@ -150,8 +151,8 @@ function packFlip(gated = false): Rung[] {
 }
 
 // Shipping back end: count flips on C1 (K4 = 16 cartons in section 3); once
-// the lift settles back down, run a one-hot step chain M1..M5 — mothåll back,
-// 16-pack-1 full stroke and home (the hold springs forward again as M3
+// the lift settles back down, run a one-hot step chain M1..M5 — bracket back,
+// 16-pack-1 full stroke and home (the bracket springs forward again as M3
 // clears), 16-pack-2 full stroke and home. C1 resets as the chain starts so
 // flips for the NEXT pack count afresh.
 function packShip(): Rung[] {
@@ -167,7 +168,7 @@ function packShip(): Rung[] {
         )
       : R(id, 1, 3, { '0,0': no(m), '0,1': no(sensor), '0,2': rst(m) });
   return [
-    // Mothåll rests FORWARD (the stack needs it), pulled back across M1-M3.
+    // The bracket rests FORWARD (the stack needs it), pulled back across M1-M3.
     R('ps1', 1, 4, { '0,0': nc('M1'), '0,1': nc('M2'), '0,2': nc('M3'), '0,3': out('Y5') }),
     R('ps2', 1, 2, { '0,0': no('X5'), '0,1': counter('C1', 4) }),
     R(

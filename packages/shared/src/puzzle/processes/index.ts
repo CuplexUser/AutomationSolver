@@ -249,17 +249,19 @@ const elevator5: ProcessModel = {
  *                                       section 3, where the cartons stand ON
  *                                       END; four flips build a 16-pack
  *   Y3 16-pack1 push (X6 in / X7 out)   slides the 16-block into section 4 —
- *                                       its plate sweeps across the mothåll's
- *                                       line, so the hold must be BACK first
+ *                                       its plate sweeps across the retaining
+ *                                       bracket's line, so the bracket must be
+ *                                       BACK first
  *   Y4 16-pack2 push (X10 in / X11 out) pushes the pack onto the out-feed
  *                                       belt, which carries it to the
  *                                       finished station
- *   Y5 mothåll       (X12 back / X13 forward) — the counter-hold that backs
- *                                       the tippy on-end stack in section 3.
- *                                       Flips landing without it forward tip
- *                                       the stack (jam). Only enforced when
- *                                       the puzzle wires Y5; earlier puzzles
- *                                       have it parked forward mechanically.
+ *   Y5 retaining bracket (X12 back / X13 forward) — the counter-hold that
+ *                                       backs the tippy on-end stack in
+ *                                       section 3. Flips landing without it
+ *                                       forward tip the stack (jam). Only
+ *                                       enforced when the puzzle wires Y5;
+ *                                       earlier puzzles have it parked
+ *                                       forward mechanically.
  * Box-flow sensors are derived from the modelled lanes (never scenario-set):
  *   X14/X15 box at the stop (near/far lane), X16/X17 box waiting in the queue.
  * X20, when the puzzle wires it, is the belt-run command: boxes advance only
@@ -269,7 +271,7 @@ const elevator5: ProcessModel = {
  * when the stroke COMPLETES (position crosses fully out) — dropping the coil
  * mid-stroke strands the boxes and latches `jam`, as does pushing a lone box,
  * over-filling a section, loading a raised/occupied lift, or running the
- * 16-pack strokes against the mothåll rules above. Scenarios assert `jam`
+ * 16-pack strokes against the bracket rules above. Scenarios assert `jam`
  * stays false. Actuator travels are multiples of both scan cadences (60ms
  * client, 50ms grader) so end sensors trip on the same scan under either.
  * `ship` (0..1, cosmetic) tracks the latest finished pack riding the out-feed
@@ -296,8 +298,8 @@ const PACK_LANES = [
   { lead: 'laneB1', next: 'laneB2', carry: 'carryB', atStop: 'X15', inQueue: 'X17' },
 ] as const;
 
-/** The puzzle wires the mothåll — enforce its interlocks (elevator5-style feature detect). */
-function packHasMothall(devices: PuzzleDevice[]): boolean {
+/** The puzzle wires the retaining bracket — enforce its interlocks (elevator5-style feature detect). */
+function packHasBracket(devices: PuzzleDevice[]): boolean {
   return devices.some((d) => d.address === 'Y5');
 }
 
@@ -338,7 +340,7 @@ const packaging: ProcessModel = {
   step: ({ outputs, inputs, machine, devices, dtMs }) => {
     const m: MachineState = { ...machine };
     let jam = machine.jam === true;
-    const hasMothall = packHasMothall(devices);
+    const hasBracket = packHasBracket(devices);
 
     // -- actuators -----------------------------------------------------------
     const pos: Record<string, { prev: number; next: number }> = {};
@@ -348,9 +350,9 @@ const packaging: ProcessModel = {
       // Physical interlock: the lift cannot leave the bottom while the 4-pack
       // rod is still extended under its platform.
       if (a.key === 'lift' && prev <= PACK_EPS && num(machine.push4) > PACK_EPS) extend = false;
-      // Puzzles that don't wire Y5 have the mothåll parked forward mechanically:
-      // it drives itself out at power-up and stays there.
-      if (a.key === 'backstop' && !hasMothall) extend = true;
+      // Puzzles that don't wire Y5 have the retaining bracket parked forward
+      // mechanically: it drives itself out at power-up and stays there.
+      if (a.key === 'backstop' && !hasBracket) extend = true;
       const next = extend ? Math.min(1, prev + dtMs / a.ms) : Math.max(0, prev - dtMs / a.ms);
       m[a.key] = next;
       pos[a.key] = { prev, next };
@@ -362,7 +364,7 @@ const packaging: ProcessModel = {
     // -- product transfers (downstream stages first) --------------------------
     // 16-pack2: section 4 → out-feed belt, which carries the pack to the
     // finished station (`ship` animates that transit; the count is final at
-    // the stroke's end). The mothåll sits north of section 4 — no interaction.
+    // the stroke's end). The bracket sits north of section 4 — no interaction.
     if (strokeStarts('push16b') && num(m.sec4) > 0) {
       m.carry16b = num(m.sec4);
       m.sec4 = 0;
@@ -372,22 +374,22 @@ const packaging: ProcessModel = {
       m.ship = 0;
       m.carry16b = 0;
     }
-    // 16-pack1: section 3 → section 4. Its plate sweeps across the mothåll's
-    // line, so the hold must be fully BACK — and section 4 must be clear.
+    // 16-pack1: section 3 → section 4. Its plate sweeps across the bracket's
+    // line, so the bracket must be fully BACK — and section 4 must be clear.
     if (strokeStarts('push16a') && num(m.sec3) > 0) {
       m.carry16a = num(m.sec3);
       m.sec3 = 0;
     }
     if (strokeEnds('push16a') && num(m.carry16a) > 0) {
       if (num(m.backstop) <= PACK_EPS && num(m.sec4) === 0) m.sec4 = num(m.carry16a);
-      else jam = true; // plate swept into the mothåll / crashed into the last pack
+      else jam = true; // plate swept into the bracket / crashed into the last pack
       m.carry16a = 0;
     }
     // Lift: flips its load over into section 3 at the top of the stroke. The
-    // on-end cartons tip over unless the mothåll backs the stack (only when
-    // the puzzle wires Y5 — otherwise the hold is parked forward for you).
+    // on-end cartons tip over unless the bracket backs the stack (only when
+    // the puzzle wires Y5 — otherwise it is parked forward for you).
     if (strokeEnds('lift') && num(m.liftLoad) > 0) {
-      if (hasMothall && num(m.backstop) < 1 - PACK_EPS) jam = true;
+      if (hasBracket && num(m.backstop) < 1 - PACK_EPS) jam = true;
       m.sec3 = num(m.sec3) + num(m.liftLoad);
       m.liftLoad = 0;
       if (num(m.sec3) > 16) jam = true;

@@ -42,13 +42,13 @@ const SEC4_Z = [4.85, 5.35, 5.85, 6.35] as const;
 const SEC3_COL_X = (c: number) => 2.1 + 0.3 * c;
 const UP_Y = 1.5; // on-end carton center height
 
-// Mothåll (Y5): the counter-hold plate's rest pose in the glb sits flush with
-// a 2-column stack (Blender x 2.61); the client positions it absolutely —
-// forward = flush against the current stack, back = parked east of the
-// 16-pack-1 plate's sweep.
-const MOTHALL_REST_X = 2.61;
-const MOTHALL_BACK_X = 3.66;
-const mothallForwardX = (cols: number) => 1.95 + 0.3 * Math.max(cols, 1) + 0.06;
+// Retaining bracket (Y5): the counter-hold plate's rest pose in the glb sits
+// flush with a 2-column stack (Blender x 2.61); the client positions it
+// absolutely — forward = flush against the current stack, back = parked east
+// of the 16-pack-1 plate's sweep.
+const BRACKET_REST_X = 2.61;
+const BRACKET_BACK_X = 3.66;
+const bracketForwardX = (cols: number) => 1.95 + 0.3 * Math.max(cols, 1) + 0.06;
 
 // Out-feed transit: the shipped block enters the belt at x 4.85 (per column
 // +0.3c) and rides to the finished station at 12.7; ShipBox rest is at 8.6.
@@ -59,7 +59,7 @@ interface DriveRefs {
   push4?: THREE.Object3D;
   push16a?: THREE.Object3D;
   push16b?: THREE.Object3D;
-  mothall?: THREE.Object3D;
+  bracket?: THREE.Object3D;
   flipper?: THREE.Object3D;
   beltBoxes: { node?: THREE.Object3D; lane: 'A' | 'B'; key: string }[];
   carryA?: THREE.Object3D;
@@ -88,7 +88,7 @@ function PackMachineScene({ machine }: { machine: MachineState }) {
       push4: scene.getObjectByName('Push4Carriage') ?? undefined,
       push16a: scene.getObjectByName('Push16aCarriage') ?? undefined,
       push16b: scene.getObjectByName('Push16bCarriage') ?? undefined,
-      mothall: scene.getObjectByName('MothallCarriage') ?? undefined,
+      bracket: scene.getObjectByName('BracketCarriage') ?? undefined,
       flipper: scene.getObjectByName('FlipperPivot') ?? undefined,
       beltBoxes: [
         { node: scene.getObjectByName('BeltBoxA1'), lane: 'A', key: 'laneA1' },
@@ -136,14 +136,14 @@ function PackMachineScene({ machine }: { machine: MachineState }) {
     if (r.push16a) r.push16a.position.set(0, 0, PUSH16A_TRAVEL * push16a);
     if (r.push16b) r.push16b.position.set(PUSH16B_TRAVEL * push16b, 0, 0);
     if (r.flipper) r.flipper.rotation.set(0, 0, -FLIP_RAD * lift);
-    if (r.mothall) {
+    if (r.bracket) {
       // Forward presses flush against however many columns stand in section 3
       // (leaving one column's landing gap when it is empty); back parks it
       // clear of the 16-pack-1 plate's sweep.
       const cols = Math.ceil((carry16a > 0 ? 0 : sec3) / 4);
-      const fwdX = mothallForwardX(cols);
-      const x = MOTHALL_BACK_X + (fwdX - MOTHALL_BACK_X) * backstop;
-      r.mothall.position.set(x - MOTHALL_REST_X, 0, 0);
+      const fwdX = bracketForwardX(cols);
+      const x = BRACKET_BACK_X + (fwdX - BRACKET_BACK_X) * backstop;
+      r.bracket.position.set(x - BRACKET_REST_X, 0, 0);
     }
 
     // -- infeed lanes --------------------------------------------------------
@@ -229,6 +229,8 @@ export function PackMachine3D({ machine, height = 300 }: { machine: MachineState
       target={[2.3, 0.6, 2.0]}
       minDistance={9}
       maxDistance={45}
+      polarRange={[0.2, 1.35]}
+      panBounds={{ x: [-9, 13], y: [0, 3], z: [-3.5, 8] }}
     >
       <PackMachineScene machine={machine} />
     </MachineCanvas>
