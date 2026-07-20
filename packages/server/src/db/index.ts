@@ -16,6 +16,23 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE,
   password_hash TEXT,
   display_name TEXT NOT NULL,
+  email_verified_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS email_verification_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL
 );
 
@@ -85,8 +102,19 @@ export function getDb(): DatabaseSyncType {
   db.exec('PRAGMA journal_mode = WAL;');
   db.exec('PRAGMA foreign_keys = ON;');
   db.exec(SCHEMA);
+  ensureUsersColumns(db);
   dbInstance = db;
   return db;
+}
+
+// `CREATE TABLE IF NOT EXISTS` above is a no-op once the table already exists,
+// so a pre-existing on-disk DB never picks up new columns from SCHEMA. Guard
+// any such additions here with an ALTER TABLE.
+function ensureUsersColumns(db: DatabaseSyncType): void {
+  const cols = db.prepare('PRAGMA table_info(users)').all() as { name: string }[];
+  if (!cols.some((c) => c.name === 'email_verified_at')) {
+    db.exec('ALTER TABLE users ADD COLUMN email_verified_at INTEGER');
+  }
 }
 
 /** For tests: reset the in-memory singleton. */

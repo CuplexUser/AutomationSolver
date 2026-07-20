@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, authApi } from '../api/client';
 
@@ -11,6 +11,9 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
+  const [resendSent, setResendSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [providers, setProviders] = useState({ google: false, github: false });
 
@@ -25,13 +28,37 @@ export function LoginPage() {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setNotice(null);
+    setUnverifiedEmail(null);
+    setResendSent(false);
     setBusy(true);
     try {
-      if (mode === 'login') await login(email, password);
-      else await register(email, password, displayName || undefined);
-      navigate('/puzzles');
+      if (mode === 'login') {
+        await login(email, password);
+        navigate('/puzzles');
+      } else {
+        const { message } = await register(email, password, displayName || undefined);
+        setNotice(message);
+        setMode('login');
+      }
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Something went wrong');
+      if (err instanceof ApiError) {
+        setError(err.message);
+        if (err.body.code === 'EMAIL_NOT_VERIFIED') setUnverifiedEmail(email);
+      } else {
+        setError('Something went wrong');
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendVerification = async () => {
+    if (!unverifiedEmail) return;
+    setBusy(true);
+    try {
+      await authApi.resendVerification(unverifiedEmail);
+      setResendSent(true);
     } finally {
       setBusy(false);
     }
@@ -42,6 +69,8 @@ export function LoginPage() {
       <div className="auth-card panel">
         <span className="eyebrow">{mode === 'login' ? 'Sign in' : 'Create account'}</span>
         <h2>{mode === 'login' ? 'Back to the bench' : 'Join the bench'}</h2>
+
+        {notice && <p className="auth-success">{notice}</p>}
 
         <form onSubmit={submit} className="auth-form">
           {mode === 'register' && (
@@ -81,6 +110,20 @@ export function LoginPage() {
           </label>
 
           {error && <p className="auth-error">{error}</p>}
+          {unverifiedEmail && resendSent && (
+            <p className="auth-success">Verification email sent — check your inbox.</p>
+          )}
+          {unverifiedEmail && !resendSent && (
+            <button type="button" className="link-btn" onClick={resendVerification} disabled={busy}>
+              Resend verification email
+            </button>
+          )}
+
+          {mode === 'login' && error && (
+            <Link className="link-btn" to="/forgot-password">
+              Forgot password?
+            </Link>
+          )}
 
           <button className="btn btn-primary full" type="submit" disabled={busy}>
             {busy ? 'Working…' : mode === 'login' ? 'Sign in' : 'Create account'}

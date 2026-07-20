@@ -1,3 +1,4 @@
+import './loadEnv.js';
 import { createApp } from './app.js';
 import { config } from './config.js';
 

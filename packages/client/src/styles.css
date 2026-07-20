@@ -233,6 +233,11 @@
   font-size: 13px;
   margin: 0;
 }
+.auth-success {
+  color: var(--live);
+  font-size: 13px;
+  margin: 0;
+}
 .auth-divider {
   text-align: center;
   margin: 20px 0 14px;

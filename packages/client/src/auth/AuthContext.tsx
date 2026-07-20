@@ -5,7 +5,7 @@ interface AuthState {
   user: PublicUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, displayName?: string) => Promise<void>;
+  register: (email: string, password: string, displayName?: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
 }
@@ -44,10 +44,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { user } = await authApi.login(email, password);
         setUser(user);
       },
-      register: async (email, password, displayName) => {
-        const { user } = await authApi.register(email, password, displayName);
-        setUser(user);
-      },
+      register: (email, password, displayName) => authApi.register(email, password, displayName),
       logout: async () => {
         await authApi.logout();
         setUser(null);

@@ -49,6 +49,19 @@ export const registerSchema = z.object({
   displayName: z.string().min(1).max(60).optional(),
 });
 
+export const emailOnlySchema = z.object({
+  email: z.string().email().max(200),
+});
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1).max(256),
+});
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1).max(256),
+  password: z.string().min(8).max(200),
+});
+
 export const settingsSchema = z.object({
   settings: z.record(z.unknown()),
 });

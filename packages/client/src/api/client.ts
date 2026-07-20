@@ -84,11 +84,31 @@ export const authApi = {
       body: JSON.stringify({ email, password }),
     }),
   register: (email: string, password: string, displayName?: string) =>
-    api<{ user: PublicUser }>('/auth/register', {
+    api<{ message: string }>('/auth/register', {
       method: 'POST',
       body: JSON.stringify({ email, password, displayName }),
     }),
   logout: () => api<void>('/auth/logout', { method: 'POST' }),
+  verifyEmail: (token: string) =>
+    api<{ user: PublicUser }>('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+  resendVerification: (email: string) =>
+    api<{ message: string }>('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  forgotPassword: (email: string) =>
+    api<{ message: string }>('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token: string, password: string) =>
+    api<{ user: PublicUser }>('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
 };
 
 export const puzzleApi = {

@@ -32,6 +32,13 @@ export function configurePassport(): void {
         if (!user || !verifyPassword(password, user.password_hash)) {
           return done(null, false, { message: 'Invalid email or password' });
         }
+        if (!user.email_verified_at) {
+          const info = {
+            message: 'Please verify your email before signing in.',
+            code: 'EMAIL_NOT_VERIFIED',
+          };
+          return done(null, false, info);
+        }
         return done(null, user);
       } catch (err) {
         return done(err);

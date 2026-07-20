@@ -5,6 +5,7 @@ export interface UserRow {
   email: string | null;
   password_hash: string | null;
   display_name: string;
+  email_verified_at: number | null;
   created_at: number;
 }
 
@@ -40,13 +41,20 @@ export function createUser(input: {
   email: string | null;
   passwordHash: string | null;
   displayName: string;
+  emailVerifiedAt?: number | null;
 }): UserRow {
   const db = getDb();
   const res = db
     .prepare(
-      'INSERT INTO users (email, password_hash, display_name, created_at) VALUES (?, ?, ?, ?)',
+      'INSERT INTO users (email, password_hash, display_name, email_verified_at, created_at) VALUES (?, ?, ?, ?, ?)',
     )
-    .run(input.email, input.passwordHash, input.displayName, now());
+    .run(
+      input.email,
+      input.passwordHash,
+      input.displayName,
+      input.emailVerifiedAt ?? null,
+      now(),
+    );
   return findUserById(Number(res.lastInsertRowid))!;
 }
 
@@ -58,6 +66,14 @@ export function findUserByEmail(email: string): UserRow | undefined {
   return getDb()
     .prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE')
     .get(email) as UserRow | undefined;
+}
+
+export function markEmailVerified(userId: number): void {
+  getDb().prepare('UPDATE users SET email_verified_at = ? WHERE id = ?').run(now(), userId);
+}
+
+export function updatePasswordHash(userId: number, passwordHash: string): void {
+  getDb().prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, userId);
 }
 
 // --- oauth ----------------------------------------------------------------
@@ -77,12 +93,67 @@ export function findOrCreateOAuthUser(input: {
   let user: UserRow | undefined;
   if (input.email) user = findUserByEmail(input.email);
   if (!user) {
-    user = createUser({ email: input.email, passwordHash: null, displayName: input.displayName });
+    user = createUser({
+      email: input.email,
+      passwordHash: null,
+      displayName: input.displayName,
+      emailVerifiedAt: now(),
+    });
+  } else if (!user.email_verified_at) {
+    // A successful OAuth login is proof of inbox ownership too.
+    markEmailVerified(user.id);
+    user = findUserById(user.id)!;
   }
   db.prepare(
     'INSERT INTO oauth_accounts (user_id, provider, provider_user_id) VALUES (?, ?, ?)',
   ).run(user.id, input.provider, input.providerUserId);
   return user;
+}
+
+// --- email verification tokens ---------------------------------------------
+export function createEmailVerificationToken(
+  userId: number,
+  tokenHash: string,
+  ttlMs: number,
+): void {
+  const db = getDb();
+  db.prepare('DELETE FROM email_verification_tokens WHERE user_id = ?').run(userId);
+  db.prepare(
+    'INSERT INTO email_verification_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)',
+  ).run(userId, tokenHash, now() + ttlMs, now());
+}
+
+export function findValidEmailVerificationToken(
+  tokenHash: string,
+): { user_id: number } | undefined {
+  return getDb()
+    .prepare(
+      'SELECT user_id FROM email_verification_tokens WHERE token_hash = ? AND expires_at > ?',
+    )
+    .get(tokenHash, now()) as { user_id: number } | undefined;
+}
+
+export function consumeEmailVerificationToken(tokenHash: string): void {
+  getDb().prepare('DELETE FROM email_verification_tokens WHERE token_hash = ?').run(tokenHash);
+}
+
+// --- password reset tokens --------------------------------------------------
+export function createPasswordResetToken(userId: number, tokenHash: string, ttlMs: number): void {
+  const db = getDb();
+  db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
+  db.prepare(
+    'INSERT INTO password_reset_tokens (user_id, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?)',
+  ).run(userId, tokenHash, now() + ttlMs, now());
+}
+
+export function findValidPasswordResetToken(tokenHash: string): { user_id: number } | undefined {
+  return getDb()
+    .prepare('SELECT user_id FROM password_reset_tokens WHERE token_hash = ? AND expires_at > ?')
+    .get(tokenHash, now()) as { user_id: number } | undefined;
+}
+
+export function consumePasswordResetToken(tokenHash: string): void {
+  getDb().prepare('DELETE FROM password_reset_tokens WHERE token_hash = ?').run(tokenHash);
 }
 
 // --- progress -------------------------------------------------------------

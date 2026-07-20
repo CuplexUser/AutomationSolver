@@ -8,6 +8,7 @@ const googleClientID = process.env.GOOGLE_CLIENT_ID ?? '';
 const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET ?? '';
 const githubClientID = process.env.GITHUB_CLIENT_ID ?? '';
 const githubClientSecret = process.env.GITHUB_CLIENT_SECRET ?? '';
+const smtpHost = process.env.SMTP_HOST ?? '';
 
 export const config = {
   port: Number(process.env.PORT ?? 4000),
@@ -25,6 +26,14 @@ export const config = {
     clientID: githubClientID,
     clientSecret: githubClientSecret,
     enabled: Boolean(githubClientID && githubClientSecret),
+  },
+  smtp: {
+    host: smtpHost,
+    port: Number(process.env.SMTP_PORT ?? 587),
+    user: process.env.SMTP_USER ?? '',
+    pass: process.env.SMTP_PASS ?? '',
+    from: process.env.SMTP_FROM ?? 'AutomationSolver <no-reply@automationsolver.local>',
+    enabled: Boolean(smtpHost),
   },
   trustProxy: bool(process.env.TRUST_PROXY),
 };
