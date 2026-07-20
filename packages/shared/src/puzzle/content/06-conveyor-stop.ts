@@ -4,7 +4,7 @@ export const conveyorStop: PuzzleSpec = {
   kind: 'ladder',
   slug: 'conveyor-stop',
   title: 'Index to Sensor',
-  difficulty: 'hard',
+  difficulty: 'easy',
   order: 8,
   category: 'stations',
   summary: 'Run a conveyor until a part reaches the sensor, then stop automatically.',

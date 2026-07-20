@@ -4,7 +4,7 @@ export const elevatorAutoReturn: PuzzleSpec = {
   kind: 'ladder',
   slug: 'elevator-auto-return',
   title: 'Elevator — Automatic Descent',
-  difficulty: 'hard',
+  difficulty: 'medium',
   order: 11,
   category: 'elevator',
   summary: 'Drive a 3-floor elevator up on command and auto-return to the ground after 10 s idle.',
