@@ -42,11 +42,13 @@ const SEC4_Z = [4.85, 5.35, 5.85, 6.35] as const;
 const SEC3_COL_X = (c: number) => 2.1 + 0.3 * c;
 const UP_Y = 1.5; // on-end carton center height
 
-// Retaining bracket (Y5): the counter-hold plate's rest pose in the glb sits
-// flush with a 2-column stack (Blender x 2.61); the client positions it
-// absolutely — forward = flush against the current stack, back = parked east
-// of the 16-pack-1 plate's sweep.
-const BRACKET_REST_X = 2.61;
+// Retaining bracket (Y5): unlike the other four carriage empties, which sit
+// at the glb's world origin, BracketCarriage carries its own small baked
+// offset — its plate (Push16aPlateHold) sits 3.4463 further out along local
+// X. BRACKET_REST_X is that local offset, used to cancel it out so the
+// client can drive the plate to an absolute world X: forward = flush against
+// the current stack, back = parked east of the 16-pack-1 plate's sweep.
+const BRACKET_REST_X = 3.4463;
 const BRACKET_BACK_X = 3.66;
 const bracketForwardX = (cols: number) => 1.95 + 0.3 * Math.max(cols, 1) + 0.06;
 

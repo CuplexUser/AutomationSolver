@@ -339,8 +339,16 @@ const packaging: ProcessModel = {
   }),
   step: ({ outputs, inputs, machine, devices, dtMs }) => {
     const m: MachineState = { ...machine };
-    let jam = machine.jam === true;
+    // A jam is a fault the machine can't run through — like a real line, it
+    // freezes solid (actuators, belts, transfers) until something resets it.
+    // Without this, a stuck operator can keep cycling outputs after the jam
+    // (e.g. flipping more boxes into an already-overfull section 3), which
+    // drives section counts — and anything positioned off them, like the
+    // retaining bracket — arbitrarily far past their normal range.
+    const wasJammed = machine.jam === true;
+    let jam = wasJammed;
     const hasBracket = packHasBracket(devices);
+    const dt = wasJammed ? 0 : dtMs;
 
     // -- actuators -----------------------------------------------------------
     const pos: Record<string, { prev: number; next: number }> = {};
@@ -353,7 +361,7 @@ const packaging: ProcessModel = {
       // Puzzles that don't wire Y5 have the retaining bracket parked forward
       // mechanically: it drives itself out at power-up and stays there.
       if (a.key === 'backstop' && !hasBracket) extend = true;
-      const next = extend ? Math.min(1, prev + dtMs / a.ms) : Math.max(0, prev - dtMs / a.ms);
+      const next = extend ? Math.min(1, prev + dt / a.ms) : Math.max(0, prev - dt / a.ms);
       m[a.key] = next;
       pos[a.key] = { prev, next };
     }
@@ -441,7 +449,7 @@ const packaging: ProcessModel = {
     }
 
     // -- feed belt -------------------------------------------------------------
-    const beltOn = inputs['X20'] !== false;
+    const beltOn = inputs['X20'] !== false && !wasJammed;
     if (beltOn) {
       for (const { lead, next } of PACK_LANES) {
         const leadCap = pos.push2.next <= PACK_EPS ? 1 : LANE_BLOCKED_CAP;
@@ -453,7 +461,7 @@ const packaging: ProcessModel = {
     }
 
     // -- out-feed transit (cosmetic; drives the 3D view only) ------------------
-    if (num(m.ship, 1) < 1) m.ship = Math.min(1, num(m.ship) + dtMs / OUTFEED_MS);
+    if (!wasJammed && num(m.ship, 1) < 1) m.ship = Math.min(1, num(m.ship) + dtMs / OUTFEED_MS);
 
     // -- sensors ---------------------------------------------------------------
     const derivedInputs: Record<string, boolean> = {};
