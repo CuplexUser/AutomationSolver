@@ -62,6 +62,15 @@ export const resetPasswordSchema = z.object({
   password: z.string().min(8).max(200),
 });
 
+export const updateProfileSchema = z.object({
+  displayName: z.string().min(1).max(60),
+});
+
+export const changePasswordSchema = z.object({
+  currentPassword: z.string().max(200).optional(),
+  newPassword: z.string().min(8).max(200),
+});
+
 export const settingsSchema = z.object({
   settings: z.record(z.unknown()),
 });

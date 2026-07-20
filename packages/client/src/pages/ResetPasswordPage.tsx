@@ -9,12 +9,17 @@ export function ResetPasswordPage() {
   const navigate = useNavigate();
   const { refresh } = useAuth();
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    if (password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
     setBusy(true);
     try {
       await authApi.resetPassword(token, password);
@@ -46,6 +51,18 @@ export function ResetPasswordPage() {
                 minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+            <label className="auth-field">
+              <span>Confirm new password</span>
+              <input
+                className="field"
+                type="password"
+                required
+                minLength={8}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
                 autoComplete="new-password"
               />
             </label>

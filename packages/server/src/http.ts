@@ -5,10 +5,16 @@ export interface PublicUser {
   id: number;
   email: string | null;
   displayName: string;
+  hasPassword: boolean;
 }
 
 export function publicUser(user: UserRow): PublicUser {
-  return { id: user.id, email: user.email, displayName: user.display_name };
+  return {
+    id: user.id,
+    email: user.email,
+    displayName: user.display_name,
+    hasPassword: user.password_hash != null,
+  };
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {

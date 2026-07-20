@@ -1851,6 +1851,9 @@
   max-width: 640px;
   margin: 0 auto;
   padding: 40px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 .settings-page h1 {
   font-size: 28px;

@@ -76,6 +76,10 @@ export function updatePasswordHash(userId: number, passwordHash: string): void {
   getDb().prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, userId);
 }
 
+export function updateDisplayName(userId: number, displayName: string): void {
+  getDb().prepare('UPDATE users SET display_name = ? WHERE id = ?').run(displayName, userId);
+}
+
 // --- oauth ----------------------------------------------------------------
 export function findOrCreateOAuthUser(input: {
   provider: string;

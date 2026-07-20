@@ -8,6 +8,7 @@ interface AuthState {
   register: (email: string, password: string, displayName?: string) => Promise<{ message: string }>;
   logout: () => Promise<void>;
   refresh: () => Promise<void>;
+  updateProfile: (displayName: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -45,6 +46,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUser(user);
       },
       register: (email, password, displayName) => authApi.register(email, password, displayName),
+      updateProfile: async (displayName) => {
+        const { user } = await authApi.updateProfile(displayName);
+        setUser(user);
+      },
       logout: async () => {
         await authApi.logout();
         setUser(null);

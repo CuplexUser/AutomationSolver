@@ -9,6 +9,7 @@ export function LoginPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -31,6 +32,10 @@ export function LoginPage() {
     setNotice(null);
     setUnverifiedEmail(null);
     setResendSent(false);
+    if (mode === 'register' && password !== confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
     setBusy(true);
     try {
       if (mode === 'login') {
@@ -108,6 +113,20 @@ export function LoginPage() {
               autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
             />
           </label>
+          {mode === 'register' && (
+            <label className="auth-field">
+              <span>Confirm password</span>
+              <input
+                className="field"
+                type="password"
+                required
+                minLength={8}
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </label>
+          )}
 
           {error && <p className="auth-error">{error}</p>}
           {unverifiedEmail && resendSent && (
@@ -155,6 +174,7 @@ export function LoginPage() {
           onClick={() => {
             setMode(mode === 'login' ? 'register' : 'login');
             setError(null);
+            setConfirmPassword('');
           }}
         >
           {mode === 'login' ? 'Need an account? Register' : 'Have an account? Sign in'}

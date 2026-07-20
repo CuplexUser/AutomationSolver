@@ -5,6 +5,7 @@ import {
   findUserByEmail,
   markEmailVerified,
   updatePasswordHash,
+  updateDisplayName,
   createEmailVerificationToken,
   findValidEmailVerificationToken,
   consumeEmailVerificationToken,
@@ -13,16 +14,18 @@ import {
   consumePasswordResetToken,
   findUserById,
 } from '../db/repo.js';
-import { hashPassword } from '../auth/password.js';
+import { hashPassword, verifyPassword } from '../auth/password.js';
 import { generateToken, hashToken } from '../auth/tokens.js';
 import { passport } from '../auth/passport.js';
 import { sendVerificationEmail, sendPasswordResetEmail } from '../email/mailer.js';
-import { asyncHandler, publicUser } from '../http.js';
+import { asyncHandler, publicUser, requireAuth } from '../http.js';
 import {
   registerSchema,
   emailOnlySchema,
   verifyEmailSchema,
   resetPasswordSchema,
+  updateProfileSchema,
+  changePasswordSchema,
 } from '../validation.js';
 
 export const authRouter = Router();
@@ -152,6 +155,42 @@ authRouter.post(
       if (err) return res.status(500).json({ error: 'Login after reset failed' });
       return res.json({ user: publicUser(verifiedUser) });
     });
+  }),
+);
+
+authRouter.patch(
+  '/profile',
+  requireAuth,
+  asyncHandler((req, res) => {
+    const parsed = updateProfileSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid display name' });
+    }
+    updateDisplayName(req.user!.id, parsed.data.displayName.trim());
+    const user = findUserById(req.user!.id)!;
+    return res.json({ user: publicUser(user) });
+  }),
+);
+
+authRouter.post(
+  '/change-password',
+  requireAuth,
+  asyncHandler((req, res) => {
+    const parsed = changePasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'Invalid password' });
+    }
+    const user = req.user!;
+    if (user.password_hash) {
+      if (
+        !parsed.data.currentPassword ||
+        !verifyPassword(parsed.data.currentPassword, user.password_hash)
+      ) {
+        return res.status(401).json({ error: 'Current password is incorrect' });
+      }
+    }
+    updatePasswordHash(user.id, hashPassword(parsed.data.newPassword));
+    return res.json({ message: 'Password updated.' });
   }),
 );
 

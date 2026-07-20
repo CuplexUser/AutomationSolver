@@ -38,6 +38,7 @@ export interface PublicUser {
   id: number;
   email: string | null;
   displayName: string;
+  hasPassword: boolean;
 }
 
 export interface PuzzleListItem {
@@ -108,6 +109,16 @@ export const authApi = {
     api<{ user: PublicUser }>('/auth/reset-password', {
       method: 'POST',
       body: JSON.stringify({ token, password }),
+    }),
+  updateProfile: (displayName: string) =>
+    api<{ user: PublicUser }>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify({ displayName }),
+    }),
+  changePassword: (newPassword: string, currentPassword?: string) =>
+    api<{ message: string }>('/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ newPassword, currentPassword }),
     }),
 };
 

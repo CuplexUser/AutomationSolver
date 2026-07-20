@@ -305,6 +305,82 @@ describe('oauth accounts', () => {
   });
 });
 
+describe('profile', () => {
+  it('updates the display name', async () => {
+    const agent = request.agent(app);
+    await registerAndLogin(agent, 'rename@example.com', 'password123');
+
+    const res = await agent.patch('/api/auth/profile').send({ displayName: 'New Name' });
+    expect(res.status).toBe(200);
+    expect(res.body.user.displayName).toBe('New Name');
+
+    const me = await agent.get('/api/auth/me');
+    expect(me.body.user.displayName).toBe('New Name');
+  });
+
+  it('rejects an empty display name', async () => {
+    const agent = request.agent(app);
+    await registerAndLogin(agent, 'rename-empty@example.com', 'password123');
+    const res = await agent.patch('/api/auth/profile').send({ displayName: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('requires auth', async () => {
+    const res = await request(app).patch('/api/auth/profile').send({ displayName: 'Nope' });
+    expect(res.status).toBe(401);
+  });
+
+  it('changes the password given the correct current password, then rejects the old one', async () => {
+    const agent = request.agent(app);
+    await registerAndLogin(agent, 'change-pw@example.com', 'oldpassword1');
+
+    const res = await agent
+      .post('/api/auth/change-password')
+      .send({ currentPassword: 'oldpassword1', newPassword: 'newpassword2' });
+    expect(res.status).toBe(200);
+
+    await agent.post('/api/auth/logout').expect(204);
+    const oldFails = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'change-pw@example.com', password: 'oldpassword1' });
+    expect(oldFails.status).toBe(401);
+
+    const newWorks = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'change-pw@example.com', password: 'newpassword2' });
+    expect(newWorks.status).toBe(200);
+  });
+
+  it('rejects a password change with the wrong current password', async () => {
+    const agent = request.agent(app);
+    await registerAndLogin(agent, 'change-pw-wrong@example.com', 'oldpassword1');
+
+    const res = await agent
+      .post('/api/auth/change-password')
+      .send({ currentPassword: 'nope', newPassword: 'newpassword2' });
+    expect(res.status).toBe(401);
+  });
+
+  it('lets an account with no password set one without a current password (OAuth-only case)', async () => {
+    const agent = request.agent(app);
+    await registerAndLogin(agent, 'oauth-set-pw@example.com', 'oldpassword1');
+
+    // Simulate an OAuth-only account (no local password) with an active session —
+    // deserializeUser re-reads the row from the DB on every request.
+    getDb()
+      .prepare('UPDATE users SET password_hash = NULL WHERE email = ?')
+      .run('oauth-set-pw@example.com');
+
+    const res = await agent.post('/api/auth/change-password').send({ newPassword: 'firstpassword1' });
+    expect(res.status).toBe(200);
+
+    const login = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'oauth-set-pw@example.com', password: 'firstpassword1' });
+    expect(login.status).toBe(200);
+  });
+});
+
 describe('solutions & grading', () => {
   it('grades a correct submission as solved and records progress', async () => {
     const agent = request.agent(app);
