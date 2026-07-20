@@ -61,6 +61,18 @@ function naturalSize(program: LadderProgram): { w: number; h: number } {
   return { w: Math.max(w, 1), h: Math.max(h, 1) };
 }
 
+/** A boolean editor preference, persisted across sessions and shared by every puzzle. */
+function usePersistedBool(key: string, initial: boolean): [boolean, (v: boolean) => void] {
+  const [value, setValue] = useState(() => {
+    const saved = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
+    return saved === null ? initial : saved === '1';
+  });
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(key, value ? '1' : '0');
+  }, [key, value]);
+  return [value, setValue];
+}
+
 /** Don't hijack keys while the user is typing into a field. */
 function isTypingTarget(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
@@ -104,6 +116,13 @@ export function LadderEditor({
   useEffect(() => {
     if (typeof localStorage !== 'undefined') localStorage.setItem(zoomKey, String(zoom));
   }, [zoomKey, zoom]);
+
+  // Two independent, user-toggleable ways to reach Address/Preset K without
+  // scrolling back to the top of a long program: pin the whole toolbar, and/or
+  // float a small echo of the same fields in the corner. Global (not per-puzzle)
+  // since they're editor preferences, not something a specific puzzle needs.
+  const [stickyPalette, setStickyPalette] = usePersistedBool('ladder.stickyPalette', true);
+  const [floatingEditor, setFloatingEditor] = usePersistedBool('ladder.floatingEditor', false);
 
   /** Scale the ladder so the whole program fills the visible area — big on a short program. */
   const fitZoom = useCallback(() => {
@@ -277,7 +296,7 @@ export function LadderEditor({
 
   return (
     <div className="ladder-editor">
-      <div className="palette panel">
+      <div className={`palette panel${stickyPalette ? ' palette-pinned' : ''}`}>
         <div className="palette-row">
           <button
             className="icon-btn palette-fold"
@@ -306,6 +325,19 @@ export function LadderEditor({
             disabled={!editable}
             aria-label="Timer/counter preset"
           />
+          <div className="editor-prefs" role="group" aria-label="Editor preferences">
+            <label className="pref-toggle" title="Keep this toolbar pinned to the top while scrolling a long program">
+              <input type="checkbox" checked={stickyPalette} onChange={(e) => setStickyPalette(e.target.checked)} />
+              Pin toolbar
+            </label>
+            <label
+              className="pref-toggle"
+              title="Show a floating Address/Preset K editor in the corner, so you can retype a cell without scrolling"
+            >
+              <input type="checkbox" checked={floatingEditor} onChange={(e) => setFloatingEditor(e.target.checked)} />
+              Floating editor
+            </label>
+          </div>
           <div className="dev-quick">
             {[...devices.map((d) => ({ address: d.address, label: d.label })), ...registers].map((d) => (
               <button
@@ -448,6 +480,31 @@ export function LadderEditor({
           )}
         </div>
       </div>
+
+      {floatingEditor && (
+        <div className="cell-float-anchor">
+          <div className="cell-float panel">
+            <span className="eyebrow">Addr</span>
+            <input
+              className="field mono compact"
+              value={address}
+              onChange={(e) => changeAddress(e.target.value)}
+              disabled={!editable}
+              aria-label="Device address (floating editor)"
+            />
+            <span className="eyebrow">K</span>
+            <input
+              className="field mono compact preset"
+              type="number"
+              min={1}
+              value={preset}
+              onChange={(e) => changePreset(Math.max(1, Number(e.target.value)))}
+              disabled={!editable}
+              aria-label="Timer/counter preset (floating editor)"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -855,6 +855,15 @@
   gap: 8px;
   flex: 0 0 auto;
 }
+/* .play-main (not .ladder-scroll) is what actually scrolls once a program's
+   rungs overflow the viewport, so pin the address/preset editor to its top —
+   otherwise it scrolls out of reach on long programs. Opt-out via the
+   "Pin toolbar" preference. */
+.palette.palette-pinned {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
 .palette-row {
   display: flex;
   align-items: center;
@@ -998,6 +1007,48 @@
   width: 38px;
   text-align: center;
 }
+
+.editor-prefs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+}
+.pref-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.pref-toggle input {
+  cursor: pointer;
+}
+
+/* A pinned corner echo of the Address/Preset fields for when the toolbar
+   itself isn't pinned (or is scrolled past on a very long program). Anchored
+   with zero height so it doesn't add to the flow — it just floats in the
+   .play-main scrollport's bottom-right corner. */
+.cell-float-anchor {
+  position: sticky;
+  bottom: 0;
+  height: 0;
+  overflow: visible;
+  z-index: 6;
+}
+.cell-float {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  box-shadow: var(--shadow-lg, var(--shadow));
+}
+
 .ladder-scroll {
   padding: 12px;
   overflow: auto;
