@@ -13,8 +13,8 @@ export const flasher: PuzzleSpec = {
     'second on, one second off, repeating for as long as the switch is held. Turning',
     'the switch off stops the flashing and leaves the beacon dark.',
     '',
-    'A single on-delay timer can only fire once — to make it repeat you cross-couple',
-    'two of them into an oscillator: T0 times the "on" phase, T1 the "off" phase, and',
+    'A single on-delay timer can only fire once. To make it repeat, cross-couple two',
+    'of them into an oscillator: T0 times the "on" phase, T1 the "off" phase, and',
     'each one resets the other. Presets are in units of 100 ms (K10 = 1.0 s).',
   ].join('\n'),
   hints: [

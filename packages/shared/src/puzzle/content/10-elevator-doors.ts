@@ -10,7 +10,7 @@ export const elevatorDoors: PuzzleSpec = {
   summary: 'Add a door that opens on arrival, dwells, and auto-closes — the car cannot move until it does.',
   briefing: [
     'The same 5-floor dispatch car, now with a door. The car physically cannot move',
-    "while the door isn't fully closed (X16) — this is enforced by the machine itself,",
+    "while the door isn't fully closed (X16). This is enforced by the machine itself,",
     'not just graded, so getting the dispatch wiring from the previous puzzle wrong in a',
     'way that tries to move early will simply leave the car sitting still with the door',
     'open rather than doing something unsafe.',

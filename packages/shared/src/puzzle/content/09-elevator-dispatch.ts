@@ -16,9 +16,9 @@ export const elevatorDispatch: PuzzleSpec = {
     'Drive the car UP (Y0) toward any pending call above it, or DOWN (Y1) toward any',
     'pending call below it. If calls are pending on both sides while the car is idle,',
     "prefer UP. Stop exactly at a floor that has a pending call for it (X10-X14 are the",
-    'floor-arrival sensors, floor 1-5) and clear that floor\'s call lamp — even if a',
-    "further call is still pending beyond it, in which case the car should continue on",
-    'in the same direction after clearing the one it just served.',
+    'floor-arrival sensors, floor 1-5) and clear that floor\'s call lamp. If a further',
+    'call is still pending beyond it, continue on in the same direction after',
+    'clearing the one just served.',
   ].join('\n'),
   hints: [
     'Latch each call with a SET on its button (X0-X4 -> SET M0-M4) and RESET it once the',

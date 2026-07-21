@@ -10,7 +10,7 @@ export const elevatorFull: PuzzleSpec = {
   summary: 'The complete 5-story elevator: dispatch, doors, and an automatic return to the lobby when idle.',
   briefing: [
     'The complete 5-floor elevator: per-floor call dispatch, a door that opens on',
-    'arrival and auto-closes, and now AUTOMATIC RETURN — if the car sits idle away',
+    'arrival and auto-closes, and now AUTOMATIC RETURN: if the car sits idle away',
     'from floor 1 with no calls pending anywhere for 10 seconds, it must return to',
     'floor 1 on its own.',
     '',

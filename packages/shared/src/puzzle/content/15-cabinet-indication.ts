@@ -9,7 +9,7 @@ export const cabinetIndication: PuzzleSpec = {
   category: 'control-cabinet',
   summary: 'Add pilot lights to a DOL starter: a run lamp on the coil, a trip lamp on the overload.',
   briefing: [
-    'The DOL starter from the last work order is back — this time the door gets',
+    'The DOL starter from the last work order is back. This time the door gets',
     'two pilot lights so the operator can see what the cabinet is doing.',
     '',
     'Wire the starter as before: all three phases through the contactor',
@@ -19,7 +19,7 @@ export const cabinetIndication: PuzzleSpec = {
     '',
     'Indication: the green RUN lamp H1 must light exactly when K1 is pulled in',
     '(wire it in parallel with the coil). The red TRIP lamp H2 must light while',
-    'the overload is tripped — F1 closes its 97-98 auxiliary contact on a trip.',
+    'the overload is tripped: F1 closes its 97-98 auxiliary contact on a trip.',
   ].join('\n'),
   hints: [
     'Run lamp: H1.X1 to K1.A1 and H1.X2 to K1.A2 — the lamp sees exactly the voltage the coil sees.',

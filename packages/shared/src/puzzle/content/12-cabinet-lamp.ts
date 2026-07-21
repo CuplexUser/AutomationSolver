@@ -18,7 +18,7 @@ export const cabinetLamp: PuzzleSpec = {
     'and back to N.',
     '',
     'Never connect L1 straight to N (or to another phase) without a load in',
-    'between — that is a short circuit and the main breaker will trip.',
+    'between: that is a short circuit, and the main breaker will trip.',
   ].join('\n'),
   hints: [
     'Three wires: L1 → S1.13, S1.14 → H1.X1, H1.X2 → N.',

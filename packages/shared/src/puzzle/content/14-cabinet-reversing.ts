@@ -13,7 +13,7 @@ export const cabinetReversing: PuzzleSpec = {
     'phases straight through (forward); contactor K2 must connect them with two',
     'phases swapped, which reverses the rotating field.',
     '',
-    'If K1 and K2 ever close together they connect phase to phase — a dead short.',
+    'If K1 and K2 ever close together they connect phase to phase: a dead short.',
     'Interlock them electrically: route each coil through the OTHER contactor\'s',
     'NC auxiliary contact (21-22), so pressing REVERSE while running forward does',
     'nothing until STOP is pressed first.',

@@ -11,12 +11,12 @@ export const packBasics: PuzzleSpec = {
   briefing: [
     'Welcome to the box packer. The feed belt runs continuously and the machine',
     'starts empty: boxes enter on TWO lanes and ride to an end stop. The lanes are',
-    'not in step — sensors BOX NEAR (X14) and BOX FAR (X15) tell you when each',
+    'not in step: sensors BOX NEAR (X14) and BOX FAR (X15) tell you when each',
     'lane\'s box has reached the stop.',
     '',
     'The 2-PACK PUSHER (Y0) is a double-acting pneumatic cylinder: energize it and it',
     'EXTENDS, drop it and a spring RETRACTS it. Its end sensors are IN (X0) and OUT',
-    '(X1). One full stroke shoves the matched pair off the belt into section 2 —',
+    '(X1). One full stroke shoves the matched pair off the belt into section 2;',
     'push with only ONE box at the stop and it goes in askew and jams the machine.',
     'While the plate is away, its L-gate blocks the lanes, so arriving boxes hold',
     'short of the stop until the pusher is home again.',
@@ -24,7 +24,7 @@ export const packBasics: PuzzleSpec = {
     'Make the pusher give every matched pair one clean, full stroke: extend only',
     'once BOTH boxes are at the stop, hold the stroke to the OUT sensor, then let',
     'it spring home for the next pair. Boxes leave the sensors the moment the plate',
-    'starts moving, so a bare X14·X15 → Y0 rung lets go mid-stroke — seal the',
+    'starts moving, so a bare X14·X15 → Y0 rung lets go mid-stroke: seal the',
     'stroke in and let OUT (X1) break the seal.',
   ].join('\n'),
   hints: [

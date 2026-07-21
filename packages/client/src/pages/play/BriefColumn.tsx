@@ -35,7 +35,7 @@ export function BriefColumn({
       <div className="brief-card panel">
         <span className="eyebrow">Work Order · {spec.difficulty}</span>
         <h2>{spec.title}</h2>
-        <pre className="briefing">{spec.briefing}</pre>
+        <Briefing text={spec.briefing} />
         {spec.hints && spec.hints.length > 0 && <HintsPanel slug={spec.slug} hints={spec.hints} />}
       </div>
 
@@ -74,6 +74,80 @@ export function BriefColumn({
 
       <ResultsCard slug={spec.slug} result={result} pending={pending} user={user} onReplay={onReplay} />
     </aside>
+  );
+}
+
+interface BriefingListItem {
+  text: string;
+  sub: string[];
+}
+type BriefingBlock = { type: 'p'; text: string } | { type: 'ol'; items: BriefingListItem[] };
+
+const TOP_MARKER = /^\s*\d+\.\s+(.*)$/;
+const SUB_MARKER = /^\s*[a-z]\.\s+(.*)$/;
+
+/**
+ * Puzzle briefing text is authored as hard-wrapped source lines (for readable diffs),
+ * with blank lines marking paragraph breaks. Rendering those verbatim in a <pre> double-wraps
+ * against the panel's actual width, so instead reflow each paragraph to the panel's real width.
+ * A block whose first line starts "1. " is a numbered procedure (optionally with "a. " sub-steps
+ * nested under a step) — those parse into a real <ol> instead of collapsing into a single blob.
+ */
+function parseBriefingBlocks(text: string): BriefingBlock[] {
+  return text
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean)
+    .map((block): BriefingBlock => {
+      const lines = block.split('\n');
+      if (!TOP_MARKER.test(lines[0])) {
+        return { type: 'p', text: lines.join(' ').replace(/\s+/g, ' ').trim() };
+      }
+      const items: BriefingListItem[] = [];
+      for (const line of lines) {
+        const top = TOP_MARKER.exec(line);
+        const sub = top ? null : SUB_MARKER.exec(line);
+        if (top) {
+          items.push({ text: top[1], sub: [] });
+        } else if (sub && items.length > 0) {
+          items[items.length - 1].sub.push(sub[1]);
+        } else if (items.length > 0) {
+          const last = items[items.length - 1];
+          const target = last.sub.length > 0 ? last.sub : null;
+          const text = line.trim();
+          if (target) target[target.length - 1] += ' ' + text;
+          else last.text += ' ' + text;
+        }
+      }
+      return { type: 'ol', items };
+    });
+}
+
+function Briefing({ text }: { text: string }) {
+  const blocks = parseBriefingBlocks(text);
+  return (
+    <div className="briefing">
+      {blocks.map((block, i) =>
+        block.type === 'p' ? (
+          <p key={i}>{block.text}</p>
+        ) : (
+          <ol key={i}>
+            {block.items.map((item, j) => (
+              <li key={j}>
+                {item.text}
+                {item.sub.length > 0 && (
+                  <ol type="a">
+                    {item.sub.map((s, k) => (
+                      <li key={k}>{s}</li>
+                    ))}
+                  </ol>
+                )}
+              </li>
+            ))}
+          </ol>
+        ),
+      )}
+    </div>
   );
 }
 

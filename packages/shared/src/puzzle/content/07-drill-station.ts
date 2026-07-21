@@ -9,8 +9,8 @@ export const drillStation: PuzzleSpec = {
   category: 'stations',
   summary: 'Sequence a clamp, drill feed, warning beacon and eject pusher into one automatic stroke.',
   briefing: [
-    'An automatic drill station runs one full stroke per cycle. On START (X0) — with the',
-    'E-STOP (X1) healthy — the machine must:',
+    'An automatic drill station runs one full stroke per cycle. On START (X0), with',
+    'the E-STOP (X1) healthy, the machine must:',
     '',
     '  1. CLAMP the part (Y0) and hold it for the whole cycle.',
     '  2. Once CLAMPED (X2), run the DRILL feed (Y1) down into the part.',
@@ -21,8 +21,8 @@ export const drillStation: PuzzleSpec = {
     '     stop pushing as soon as it senses EJECTED (X4).',
     '',
     'X2 (Clamped), X3 (At Bottom) and X4 (Ejected) are field sensors driven by the',
-    "machine — you cannot press them. E-STOP is wired normally-closed, so it's ON",
-    'while healthy.',
+    "machine, so you cannot press them. E-STOP is wired normally-closed, so it's",
+    'ON while healthy.',
   ].join('\n'),
   hints: [
     'Rung 1: seal in a RUN bit M0 from (X0 OR M0), in series with X1 (NO) and a',

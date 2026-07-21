@@ -558,11 +558,28 @@
 }
 .briefing {
   font-family: var(--font-body);
-  white-space: pre-wrap;
   color: var(--ink-dim);
   font-size: 13.5px;
   line-height: 1.6;
-  margin: 0;
+}
+.briefing p {
+  margin: 0 0 12px;
+}
+.briefing ol {
+  margin: 0 0 12px;
+  padding-left: 1.4em;
+}
+.briefing ol ol {
+  margin: 4px 0 0;
+}
+.briefing li {
+  margin-bottom: 8px;
+}
+.briefing li:last-child {
+  margin-bottom: 0;
+}
+.briefing > :last-child {
+  margin-bottom: 0;
 }
 .hints {
   margin-top: 14px;

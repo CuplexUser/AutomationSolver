@@ -16,7 +16,7 @@ export const elevatorAutoReturn: PuzzleSpec = {
     'floor 1 (X3 off) with no UP command for 10 seconds, it must drive DOWN (Y1) to',
     'floor 1 and stop there. A new UP command cancels a pending or active descent.',
     '',
-    'Floor sensors X3/X4/X5 are driven by the car — you cannot press them. Timer',
+    'Floor sensors X3/X4/X5 are driven by the car, so you cannot press them. Timer',
     'presets are in 100 ms units, so K100 = 10 s.',
   ].join('\n'),
   hints: [

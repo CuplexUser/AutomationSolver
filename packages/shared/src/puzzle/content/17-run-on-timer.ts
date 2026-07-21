@@ -15,7 +15,7 @@ export const runOnTimer: PuzzleSpec = {
     'START (X0) runs the MOTOR (Y0) and seals it in; STOP (X1) drops it. The',
     'EXTRACTOR (Y1) runs whenever the motor runs AND for 3 seconds after it stops,',
     'then switches off on its own. Before the motor has ever run, the extractor',
-    'must stay off — no fan running at power-up.',
+    'must stay off: no fan running at power-up.',
     '',
     'The engine only has on-delay timers, so build the off-delay yourself: seal the',
     'fan in and let a timer break the seal 3 s after the motor drops. Presets are in',

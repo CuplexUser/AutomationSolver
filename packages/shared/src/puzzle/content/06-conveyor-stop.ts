@@ -13,7 +13,7 @@ export const conveyorStop: PuzzleSpec = {
     'seals in. When the PART SENSOR (X2) sees the part arrive, the belt must stop on',
     'its own. STOP (X1) also stops the belt at any time.',
     '',
-    'The part sensor is a field device driven by the machine — you cannot press it.',
+    'The part sensor is a field device driven by the machine, so you cannot press it.',
     'Break the seal-in when the sensor is made so the belt halts with the part in place.',
   ].join('\n'),
   hints: [
