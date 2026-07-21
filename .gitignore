@@ -15,5 +15,9 @@ test-results/
 .vite/
 _site/
 
+# Claude
+.claude/
+CLAUDE.md
+
 # SQLite database files
 packages/server/data/
