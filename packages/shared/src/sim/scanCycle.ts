@@ -7,16 +7,18 @@ export const TIMER_BASE_MS = 100;
 
 interface TimerState {
   elapsed: number;
+  preset: number;
 }
 interface CounterState {
   count: number;
   prevInput: boolean;
+  preset: number;
 }
 
 export interface SimSnapshot {
   bits: Record<string, boolean>;
-  timers: Record<string, { elapsed: number; done: boolean }>;
-  counters: Record<string, { count: number; done: boolean }>;
+  timers: Record<string, { elapsed: number; preset: number; done: boolean }>;
+  counters: Record<string, { count: number; preset: number; done: boolean }>;
 }
 
 /**
@@ -93,29 +95,36 @@ export class SimEngine {
         if (energized) {
           this.bits.set(el.device, false);
           const ref = parseAddress(el.device);
-          if (ref?.kind === 'T') this.timers.set(el.device, { elapsed: 0 });
+          if (ref?.kind === 'T') {
+            const t = this.timers.get(el.device);
+            this.timers.set(el.device, { elapsed: 0, preset: t?.preset ?? 0 });
+          }
           if (ref?.kind === 'C') {
             const c = this.counters.get(el.device);
             if (c) c.count = 0;
-            else this.counters.set(el.device, { count: 0, prevInput: false });
+            else this.counters.set(el.device, { count: 0, prevInput: false, preset: 0 });
           }
         }
         return;
       case 'timer': {
-        const t = this.timers.get(el.device) ?? { elapsed: 0 };
+        const preset = el.preset ?? 0;
+        const t = this.timers.get(el.device) ?? { elapsed: 0, preset };
         if (energized) t.elapsed += this.currentDt;
         else t.elapsed = 0;
+        t.preset = preset;
         this.timers.set(el.device, t);
-        const done = t.elapsed >= (el.preset ?? 0) * TIMER_BASE_MS;
+        const done = t.elapsed >= preset * TIMER_BASE_MS;
         this.bits.set(el.device, done);
         return;
       }
       case 'counter': {
-        const c = this.counters.get(el.device) ?? { count: 0, prevInput: false };
+        const preset = el.preset ?? 0;
+        const c = this.counters.get(el.device) ?? { count: 0, prevInput: false, preset };
         if (energized && !c.prevInput) c.count += 1;
         c.prevInput = energized;
+        c.preset = preset;
         this.counters.set(el.device, c);
-        const done = c.count >= (el.preset ?? 0);
+        const done = c.count >= preset;
         this.bits.set(el.device, done);
         return;
       }
@@ -145,10 +154,10 @@ export class SimEngine {
   snapshot(): SimSnapshot {
     const bits: Record<string, boolean> = {};
     for (const [k, v] of this.bits) bits[k] = v;
-    const timers: Record<string, { elapsed: number; done: boolean }> = {};
-    for (const [k, v] of this.timers) timers[k] = { elapsed: v.elapsed, done: this.getBit(k) };
-    const counters: Record<string, { count: number; done: boolean }> = {};
-    for (const [k, v] of this.counters) counters[k] = { count: v.count, done: this.getBit(k) };
+    const timers: Record<string, { elapsed: number; preset: number; done: boolean }> = {};
+    for (const [k, v] of this.timers) timers[k] = { elapsed: v.elapsed, preset: v.preset, done: this.getBit(k) };
+    const counters: Record<string, { count: number; preset: number; done: boolean }> = {};
+    for (const [k, v] of this.counters) counters[k] = { count: v.count, preset: v.preset, done: this.getBit(k) };
     return { bits, timers, counters };
   }
 }

@@ -7,6 +7,7 @@ import {
   type LadderPuzzleSpec,
   type MachineState,
   type RungEvalResult,
+  type SimSnapshot,
 } from '@automationsolver/shared';
 
 const DT = 60; // scan interval / dt in ms
@@ -37,6 +38,9 @@ export interface SimRunner extends HmiRunner {
   evalResults: RungEvalResult[];
   /** Rolling scan history for the trace strip, oldest first. */
   history: TraceHistorySample[];
+  /** Live timer/counter state for the working-registers debug view; absent when not tracked (e.g. replay). */
+  timers?: SimSnapshot['timers'];
+  counters?: SimSnapshot['counters'];
 }
 
 export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): SimRunner {
@@ -51,6 +55,8 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
   const [running, setRunning] = useState(false);
   const [inputs, setInputsState] = useState<Record<string, boolean>>(() => defaultInputs(spec.devices));
   const [bits, setBits] = useState<Record<string, boolean>>({});
+  const [timers, setTimers] = useState<SimSnapshot['timers']>({});
+  const [counters, setCounters] = useState<SimSnapshot['counters']>({});
   const [machine, setMachine] = useState<MachineState>({});
   const [evalResults, setEvalResults] = useState<RungEvalResult[]>([]);
   const [history, setHistory] = useState<TraceHistorySample[]>([]);
@@ -66,6 +72,8 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
       tMsRef.current = 0;
       setInputsState(inputsRef.current);
       setBits({});
+      setTimers({});
+      setCounters({});
       setMachine(machineRef.current);
       setEvalResults([]);
       setHistory([]);
@@ -98,14 +106,16 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
     });
     machineRef.current = res.machine;
     derivedRef.current = res.derivedInputs ?? {};
-    const snapshotBits = engine.snapshot().bits;
+    const snap = engine.snapshot();
     tMsRef.current += DT;
-    historyRef.current = [...historyRef.current, { tMs: tMsRef.current, bits: snapshotBits }];
+    historyRef.current = [...historyRef.current, { tMs: tMsRef.current, bits: snap.bits }];
     if (historyRef.current.length > HISTORY_LIMIT) {
       historyRef.current = historyRef.current.slice(historyRef.current.length - HISTORY_LIMIT);
     }
     setEvalResults(engine.lastRungResults.slice());
-    setBits(snapshotBits);
+    setBits(snap.bits);
+    setTimers(snap.timers);
+    setCounters(snap.counters);
     setMachine({ ...machineRef.current });
     setHistory(historyRef.current);
   }, [spec.devices]);
@@ -125,6 +135,8 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
     running,
     inputs,
     bits,
+    timers,
+    counters,
     machine,
     evalResults,
     history,

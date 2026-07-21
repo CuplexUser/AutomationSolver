@@ -1,7 +1,14 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import type { PuzzleSpec } from '@automationsolver/shared';
+import { TIMER_BASE_MS, type PuzzleSpec, type SimSnapshot } from '@automationsolver/shared';
 import { usePuzzles, type useSubmit } from '../../api/queries';
+
+/** Live sim state for lighting up the terminal/register tables; omit for a static (non-running) view. */
+export interface LiveRegisterState {
+  bits: Record<string, boolean>;
+  timers?: SimSnapshot['timers'];
+  counters?: SimSnapshot['counters'];
+}
 
 export function BriefColumn({
   spec,
@@ -9,6 +16,7 @@ export function BriefColumn({
   result,
   pending,
   user,
+  runner,
   onReplay,
 }: {
   spec: PuzzleSpec;
@@ -16,6 +24,8 @@ export function BriefColumn({
   result: ReturnType<typeof useSubmit>['data'];
   pending: boolean;
   user: boolean;
+  /** Live bits/timers/counters to light up the tables below; omitted where there's nothing running (e.g. cabinet puzzles). */
+  runner?: LiveRegisterState;
   /** Omit to hide the per-scenario Replay button (cabinet puzzles, for now). */
   onReplay?: (scenarioName: string) => void;
 }) {
@@ -33,15 +43,18 @@ export function BriefColumn({
         <span className="eyebrow">Terminal Assignment</span>
         <table className="io-table">
           <tbody>
-            {spec.devices.map((d) => (
-              <tr key={d.address}>
-                <td>
-                  <span className={`dev-chip dev-${d.address[0]}`}>{d.address}</span>
-                </td>
-                <td className="io-name">{d.label}</td>
-                <td className="io-kind">{d.io === 'input' ? 'IN' : 'OUT'}</td>
-              </tr>
-            ))}
+            {spec.devices.map((d) => {
+              const on = runner?.bits[d.address] === true;
+              return (
+                <tr key={d.address}>
+                  <td>
+                    <span className={`dev-chip dev-${d.address[0]}${on ? ' on' : ''}`}>{d.address}</span>
+                  </td>
+                  <td className="io-name">{d.label}</td>
+                  <td className="io-kind">{d.io === 'input' ? 'IN' : 'OUT'}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
 
@@ -51,15 +64,7 @@ export function BriefColumn({
             <table className="io-table">
               <tbody>
                 {registers.map((r) => (
-                  <tr key={r.address}>
-                    <td>
-                      <span className={`dev-chip dev-${r.address[0]}`}>{r.address}</span>
-                    </td>
-                    <td className="io-name">
-                      {r.label}
-                      {r.note && <span className="io-note"> · {r.note}</span>}
-                    </td>
-                  </tr>
+                  <RegisterRow key={r.address} register={r} runner={runner} />
                 ))}
               </tbody>
             </table>
@@ -69,6 +74,52 @@ export function BriefColumn({
 
       <ResultsCard slug={spec.slug} result={result} pending={pending} user={user} onReplay={onReplay} />
     </aside>
+  );
+}
+
+function RegisterRow({
+  register: r,
+  runner,
+}: {
+  register: { address: string; label: string; note?: string };
+  runner?: LiveRegisterState;
+}) {
+  const kind = r.address[0];
+  const on = runner?.bits[r.address] === true;
+  const t = kind === 'T' ? runner?.timers?.[r.address] : undefined;
+  const c = kind === 'C' ? runner?.counters?.[r.address] : undefined;
+  return (
+    <tr key={r.address}>
+      <td>
+        <span className={`dev-chip dev-${kind}${on ? ' on' : ''}`}>{r.address}</span>
+      </td>
+      <td className="io-name">
+        {r.label}
+        {r.note && <span className="io-note"> · {r.note}</span>}
+      </td>
+      <td className="io-value">
+        {t && (
+          <MiniProgress
+            value={t.elapsed}
+            max={t.preset * TIMER_BASE_MS}
+            done={t.done}
+            text={`${(t.elapsed / 1000).toFixed(1)}s / ${((t.preset * TIMER_BASE_MS) / 1000).toFixed(1)}s`}
+          />
+        )}
+        {c && <MiniProgress value={c.count} max={c.preset} done={c.done} text={`${c.count} / ${c.preset}`} />}
+      </td>
+    </tr>
+  );
+}
+
+/** Compact fill bar with the value overlaid, used for timer elapsed/preset and counter count/preset. */
+function MiniProgress({ value, max, done, text }: { value: number; max: number; done: boolean; text: string }) {
+  const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+  return (
+    <div className={`mini-bar${done ? ' done' : ''}`} title={text}>
+      <div className="mini-bar-fill" style={{ width: `${pct}%` }} />
+      <span className="mini-bar-text">{text}</span>
+    </div>
   );
 }
 

@@ -604,6 +604,38 @@
   color: var(--muted);
   font-size: 12px;
 }
+.io-value {
+  width: 92px;
+}
+.mini-bar {
+  position: relative;
+  height: 15px;
+  border-radius: 3px;
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  overflow: hidden;
+}
+.mini-bar-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: color-mix(in srgb, var(--live) 55%, transparent);
+  transition: width 0.08s linear;
+}
+.mini-bar.done .mini-bar-fill {
+  background: color-mix(in srgb, var(--run) 60%, transparent);
+}
+.mini-bar-text {
+  position: relative;
+  z-index: 1;
+  display: block;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 15px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
 
 /* Results */
 .results-card.solved {
@@ -1596,7 +1628,7 @@
 
 /* ===================== HMI panel ===================== */
 .hmi {
-  padding: 18px;
+  padding: 14px;
 }
 
 /* Machine visualization (3D drill / elevator shaft) */
@@ -1686,7 +1718,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 .scan-dot {
   font-family: var(--font-mono);
@@ -1716,7 +1748,7 @@
 .hmi-controls {
   display: flex;
   gap: 8px;
-  margin-bottom: 18px;
+  margin-bottom: 14px;
 }
 .hmi-controls .btn {
   flex: 1;
@@ -1725,23 +1757,23 @@
 .hmi-io {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 12px;
 }
 .io-title {
   display: block;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
 }
 .widget-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
 }
 .widget {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 12px;
+  gap: 5px;
+  padding: 8px 5px;
   background: var(--inset);
   border: 1px solid var(--edge);
   border-radius: var(--radius);
@@ -1750,7 +1782,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   text-align: center;
 }
 .widget-chiprow {
@@ -1769,27 +1801,28 @@
   border-radius: 4px;
 }
 .widget-name {
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.2;
   color: var(--ink-dim);
 }
 .widget-state {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 9px;
   color: var(--muted);
 }
 
 /* Lamp */
 .lamp {
-  width: 34px;
-  height: 34px;
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   border: 2px solid currentColor;
   background: transparent;
   opacity: 0.85;
 }
 .lamp.small {
-  width: 24px;
-  height: 24px;
+  width: 18px;
+  height: 18px;
 }
 .lamp:not(.on) {
   opacity: 0.4;
@@ -1805,8 +1838,8 @@
 }
 .push-cap {
   display: block;
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   background: radial-gradient(circle at 40% 35%, #33445a, #1a2530);
   border: 2px solid var(--edge-strong);
@@ -1820,9 +1853,9 @@
 }
 /* Toggle */
 .toggle {
-  width: 46px;
-  height: 26px;
-  border-radius: 14px;
+  width: 38px;
+  height: 21px;
+  border-radius: 12px;
   background: var(--inset);
   border: 1px solid var(--edge-strong);
   position: relative;
@@ -1831,8 +1864,8 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 20px;
-  height: 20px;
+  width: 15px;
+  height: 15px;
   border-radius: 50%;
   background: #4a5a6c;
   transition: all 0.12s ease;
@@ -1842,15 +1875,15 @@
   border-color: var(--live);
 }
 .toggle.on .toggle-knob {
-  left: 22px;
+  left: 19px;
   background: var(--live);
   box-shadow: 0 0 8px var(--live);
 }
 /* E-stop */
 .estop-cap {
   display: block;
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: radial-gradient(circle at 40% 35%, #ff6a70, #b5161c);
   border: 3px solid #7a0f13;
@@ -1862,8 +1895,8 @@
 }
 /* Motor */
 .motor {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   border: 2px solid currentColor;
   position: relative;
@@ -1876,15 +1909,15 @@
   box-shadow: 0 0 14px 1px currentColor;
 }
 .motor-hub {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: currentColor;
   z-index: 1;
 }
 .motor-blades {
   position: absolute;
-  inset: 6px;
+  inset: 5px;
   border-radius: 50%;
   border: 2px dashed currentColor;
 }

@@ -246,6 +246,10 @@ button {
 .dev-M { color: var(--dev-m); }
 .dev-T { color: var(--dev-t); }
 .dev-C { color: var(--dev-c); }
+.dev-chip.on {
+  background: color-mix(in srgb, currentColor 45%, transparent);
+  box-shadow: 0 0 6px currentColor;
+}
 
 /* Difficulty tag */
 .tag {

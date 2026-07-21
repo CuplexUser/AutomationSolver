@@ -81,6 +81,7 @@ export function LadderPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>) 
             result={result}
             pending={submit.isPending}
             user={!!user}
+            runner={activeRunner}
             onReplay={(scenarioName) => {
               if (submit.variables) replay.start(spec, submit.variables as LadderProgram, scenarioName);
             }}
