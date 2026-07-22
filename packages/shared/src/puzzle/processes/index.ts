@@ -479,6 +479,232 @@ const packaging: ProcessModel = {
   },
 };
 
+/**
+ * Pick-and-place robot arm. A single arm swings on a vertical pivot between an
+ * infeed station (0) and up to 4 tray slots (1..slotCount), extends/retracts a
+ * reach axis to pick height, and closes/opens a gripper. Fixed address
+ * convention (fixed for the same reason elevator5's is: too many same-widget
+ * devices to disambiguate dynamically):
+ *   X0      At Infeed (station 0)
+ *   X1-X4   At Slot 1-4 (stations 1..slotCount — slotCount is however many of
+ *           these are wired, elevator5-door-style feature detection widened
+ *           from a boolean to a count)
+ *   X10     Reach Down (fully extended)   X11 Reach Up (fully retracted)
+ *   X12     Gripped — a live confirmation (reach down · gripper closed · a
+ *           part is actually under the fingers, whether about to be picked up
+ *           or already carried and about to be set down), never a latch
+ *   X13     Infeed Ready — feature-detected: absent means a bottomless
+ *           supply, present means a real deplete/refill cycle
+ *   X14-X17 Slot 1-4 Occupied             X18 Tray Full (every wired slot occupied)
+ *   X20     Reset button (only meaningful alongside the Y5 reset coil below)
+ *   Y0/Y1   Swing to Tray / Swing to Infeed        Y2 Reach Down     Y3 Gripper Close
+ *   Y5      Reset Tray — feature-detected like elevator5's door: its mere
+ *           presence in `devices` lets an operator clear tray occupancy
+ *           (never `jam`) while nothing is being carried
+ * Swing travel is 600ms/station: divisible by both the client's 60ms live
+ * scan and the grader's 50ms scan, so a continuous swing lands exactly on
+ * every intermediate station on some scan — needed so a multi-slot sweep can
+ * detect an already-occupied slot in passing without stopping there, the same
+ * exact-common-multiple trick elevator5 uses for its floor stops. The arm
+ * physically cannot swing while reach is extended (it would crash into the
+ * tray guarding) — enforced here, not just graded, exactly like elevator5's
+ * door interlock.
+ * A part is picked the instant reach leaves the bottom with the gripper
+ * closed and nothing already carried (grabs whatever is at the current
+ * station, or silently comes up empty); it's placed the instant the gripper
+ * finishes opening while carrying. Both illegal moves — dropping mid-air, or
+ * placing into an already-occupied slot — latch `jam`, exactly like
+ * packaging's fault latch, and every scenario asserts it stays false.
+ */
+function pickPlaceSlotCount(devices: PuzzleDevice[]): number {
+  return [1, 2, 3, 4].filter((k) => devices.some((d) => d.address === `X${k}`)).length;
+}
+
+function pickPlaceHasInfeedSensor(devices: PuzzleDevice[]): boolean {
+  return devices.some((d) => d.address === 'X13');
+}
+
+function pickPlaceHasReset(devices: PuzzleDevice[]): boolean {
+  return devices.some((d) => d.address === 'Y5');
+}
+
+const PP_SWING_MS = 600;
+const PP_REACH_DOWN_MS = 400;
+const PP_REACH_UP_MS = 300;
+const PP_GRIP_CLOSE_MS = 300;
+const PP_GRIP_OPEN_MS = 250;
+const PP_REFILL_MS = 1500;
+const PP_POS_EPS = 0.02;
+
+function pickPlaceSlotAt(m: MachineState, idx: number): boolean {
+  if (idx === 1) return m.slot1 === true;
+  if (idx === 2) return m.slot2 === true;
+  if (idx === 3) return m.slot3 === true;
+  if (idx === 4) return m.slot4 === true;
+  return false;
+}
+
+function pickPlaceSetSlotAt(m: MachineState, idx: number, value: boolean): void {
+  if (idx === 1) m.slot1 = value;
+  else if (idx === 2) m.slot2 = value;
+  else if (idx === 3) m.slot3 = value;
+  else if (idx === 4) m.slot4 = value;
+}
+
+const pickPlace: ProcessModel = {
+  id: 'pickPlace',
+  init: () => ({
+    station: 0,
+    dir: 0,
+    reach: 0,
+    grip: 0,
+    carrying: false,
+    infeedPart: true,
+    refillT: 0,
+    slot1: false,
+    slot2: false,
+    slot3: false,
+    slot4: false,
+    placed: 0,
+    jam: false,
+  }),
+  step: ({ outputs, devices, machine, dtMs }) => {
+    const m: MachineState = { ...machine };
+    const slotCount = pickPlaceSlotCount(devices);
+    const hasInfeedSensor = pickPlaceHasInfeedSensor(devices);
+    const hasReset = pickPlaceHasReset(devices);
+
+    let jam = machine.jam === true;
+    const dt = jam ? 0 : dtMs;
+
+    // Swing physical interlock: cannot move while reach is extended (would
+    // crash into the tray guarding), exactly like elevator5's door interlock.
+    const prevReach = num(machine.reach);
+    const canSwing = prevReach <= PP_POS_EPS;
+    const swingOut = outputs['Y0'] === true && outputs['Y1'] !== true && canSwing;
+    const swingIn = outputs['Y1'] === true && outputs['Y0'] !== true && canSwing;
+    let station = num(machine.station);
+    let dir = 0;
+    if (swingOut) {
+      station = Math.min(slotCount, station + dt / PP_SWING_MS);
+      dir = 1;
+    } else if (swingIn) {
+      station = Math.max(0, station - dt / PP_SWING_MS);
+      dir = -1;
+    }
+
+    // Reach and gripper: independent travel-fraction actuators, drill-style.
+    const reachCmd = outputs['Y2'] === true;
+    const reach = reachCmd
+      ? Math.min(1, prevReach + dt / PP_REACH_DOWN_MS)
+      : Math.max(0, prevReach - dt / PP_REACH_UP_MS);
+    const prevGrip = num(machine.grip);
+    const gripCmd = outputs['Y3'] === true;
+    const grip = gripCmd
+      ? Math.min(1, prevGrip + dt / PP_GRIP_CLOSE_MS)
+      : Math.max(0, prevGrip - dt / PP_GRIP_OPEN_MS);
+
+    // Infeed supply (feature-detected): absent = bottomless, present = a real
+    // deplete/refill cycle.
+    let infeedPart = machine.infeedPart !== false;
+    let refillT = num(machine.refillT);
+    if (!hasInfeedSensor) {
+      infeedPart = true;
+      refillT = 0;
+    } else if (!infeedPart) {
+      refillT += dt;
+      if (refillT >= PP_REFILL_MS) {
+        infeedPart = true;
+        refillT = 0;
+      }
+    }
+
+    let carrying = machine.carrying === true;
+    let placed = num(machine.placed);
+
+    const partPresentAt = (stationVal: number): boolean => {
+      const idx = Math.round(stationVal);
+      if (Math.abs(stationVal - idx) > PP_POS_EPS) return false;
+      return idx === 0 ? infeedPart : pickPlaceSlotAt(m, idx);
+    };
+
+    // Pick: reach just leaves the bottom while the gripper is still closed and
+    // nothing is already carried — grabs whatever is at the current station,
+    // or silently comes up empty if nothing is there.
+    const justLeftBottom = prevReach >= 1 && reach < 1;
+    if (justLeftBottom && prevGrip >= 1 && !carrying) {
+      if (partPresentAt(station)) {
+        carrying = true;
+        const idx = Math.round(station);
+        if (idx === 0) {
+          infeedPart = false;
+          refillT = 0;
+        } else {
+          pickPlaceSetSlotAt(m, idx, false);
+        }
+      }
+    }
+
+    // Place: the gripper finishes opening while carrying. Dropping mid-air
+    // (reach not down) or placing into an already-occupied slot both jam.
+    const gripJustOpened = prevGrip > 0 && grip <= 0;
+    if (gripJustOpened && carrying) {
+      if (reach < 1) {
+        jam = true;
+      } else {
+        const idx = Math.round(station);
+        if (idx === 0 || pickPlaceSlotAt(m, idx)) {
+          jam = true;
+        } else {
+          pickPlaceSetSlotAt(m, idx, true);
+          placed += 1;
+        }
+      }
+      carrying = false;
+    }
+
+    // Reset (feature-detected): an idempotent "operator unloads the tray"
+    // action — clears occupancy, never jam, only while nothing is carried.
+    if (hasReset && outputs['Y5'] === true && !carrying) {
+      m.slot1 = false;
+      m.slot2 = false;
+      m.slot3 = false;
+      m.slot4 = false;
+      placed = 0;
+    }
+
+    const derivedInputs: Record<string, boolean> = {
+      X0: Math.abs(station) <= PP_POS_EPS,
+      X1: Math.abs(station - 1) <= PP_POS_EPS,
+      X2: Math.abs(station - 2) <= PP_POS_EPS,
+      X3: Math.abs(station - 3) <= PP_POS_EPS,
+      X4: Math.abs(station - 4) <= PP_POS_EPS,
+      X10: reach >= 1,
+      X11: reach <= 0,
+      X12: reach >= 1 && grip >= 1 && (carrying || partPresentAt(station)),
+      X14: m.slot1 === true,
+      X15: m.slot2 === true,
+      X16: m.slot3 === true,
+      X17: m.slot4 === true,
+    };
+    const occupied = [m.slot1, m.slot2, m.slot3, m.slot4].slice(0, slotCount).filter((v) => v === true).length;
+    derivedInputs.X18 = slotCount > 0 && occupied >= slotCount;
+    if (hasInfeedSensor) derivedInputs.X13 = infeedPart;
+
+    m.station = station;
+    m.dir = dir;
+    m.reach = reach;
+    m.grip = grip;
+    m.carrying = carrying;
+    m.infeedPart = infeedPart;
+    m.refillT = refillT;
+    m.placed = placed;
+    m.jam = jam;
+
+    return { machine: m, derivedInputs };
+  },
+};
+
 const registry = new Map<string, ProcessModel>([
   [passthrough.id, passthrough],
   [conveyor.id, conveyor],
@@ -487,6 +713,7 @@ const registry = new Map<string, ProcessModel>([
   [packaging.id, packaging],
   [elevator.id, elevator],
   [elevator5.id, elevator5],
+  [pickPlace.id, pickPlace],
 ]);
 
 export function getProcess(id: string): ProcessModel {

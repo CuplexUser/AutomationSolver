@@ -23,6 +23,10 @@ import { packBasics } from './21-pack-basics.js';
 import { packGroup } from './22-pack-group.js';
 import { packLift } from './23-pack-lift.js';
 import { packFull } from './24-pack-full.js';
+import { pickPlaceCycle } from './25-pick-place-cycle.js';
+import { pickPlaceTray } from './26-pick-place-tray.js';
+import { pickPlaceSupply } from './27-pick-place-supply.js';
+import { pickPlaceFull } from './28-pick-place-full.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -49,6 +53,10 @@ export const PUZZLES: PuzzleSpec[] = [
   packGroup,
   packLift,
   packFull,
+  pickPlaceCycle,
+  pickPlaceTray,
+  pickPlaceSupply,
+  pickPlaceFull,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

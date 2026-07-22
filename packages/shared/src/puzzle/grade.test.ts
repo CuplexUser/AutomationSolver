@@ -188,6 +188,136 @@ function packShip(): Rung[] {
   ];
 }
 
+// Single-slot pick-and-place cycle (pick-place-cycle): a Carrying latch M0
+// (set on rise(X12), reset on rise(X14)) gates reach/gripper at each end —
+// extend+grip at the infeed only while not carrying and the slot is free,
+// extend+release at the slot only while carrying — and the swing coils just
+// need "carrying + retracted" / "not carrying + retracted" to start, since
+// arriving (extending again) always drops the retracted sensor and prevents
+// re-triggering.
+function pickPlaceOneSlot(): Rung[] {
+  return [
+    R('pc1', 1, 2, { '0,0': rise('X12'), '0,1': set('M0') }),
+    R('pc2', 1, 2, { '0,0': rise('X14'), '0,1': rst('M0') }),
+    R(
+      'pc3',
+      2,
+      4,
+      {
+        '0,0': no('X0'), '0,1': nc('M0'), '0,2': nc('X14'), '0,3': set('Y2'),
+        '1,0': no('X1'), '1,1': no('M0'), '1,2': wire, '1,3': set('Y2'),
+      },
+    ),
+    R(
+      'pc4',
+      2,
+      2,
+      { '0,0': rise('X12'), '0,1': rst('Y2'), '1,0': rise('X14'), '1,1': rst('Y2') },
+    ),
+    R('pc5', 1, 5, {
+      '0,0': no('X0'), '0,1': nc('M0'), '0,2': no('X10'), '0,3': nc('X14'), '0,4': set('Y3'),
+    }),
+    R('pc6', 1, 4, { '0,0': no('X1'), '0,1': no('M0'), '0,2': no('X10'), '0,3': rst('Y3') }),
+    R('pc7', 1, 3, { '0,0': no('M0'), '0,1': no('X11'), '0,2': set('Y0') }),
+    R('pc8', 1, 2, { '0,0': no('X1'), '0,1': rst('Y0') }),
+    R('pc9', 1, 3, { '0,0': nc('M0'), '0,1': no('X11'), '0,2': set('Y1') }),
+    R('pc10', 1, 2, { '0,0': no('X0'), '0,1': rst('Y1') }),
+  ];
+}
+
+// 4-slot pick-and-place tray core (pick-place-tray / -supply / -full): same
+// Carrying-latch idea, generalized — a placement pulse M1 (any occupied
+// sensor rising) resets Carrying and drives counter C0 (K4), which gates new
+// picks and lights Y4 once full. The swing-out RESET is an elevator5-style
+// OR-cascade that only stops at the first station whose own occupied sensor
+// is still off, so the arm correctly sails past already-full slots in
+// passing. `gateSupply` adds the X13 (Infeed Ready) condition used from
+// pick-place-supply onward.
+function pickPlaceTrayCore(gateSupply: boolean): Rung[] {
+  const gripConds: Record<string, LadderElement> = gateSupply
+    ? { '0,0': no('X0'), '0,1': nc('M0'), '0,2': nc('C0'), '0,3': no('X13'), '0,4': no('X10') }
+    : { '0,0': no('X0'), '0,1': nc('M0'), '0,2': nc('C0'), '0,3': no('X10') };
+  const gripCoilCol = gateSupply ? 5 : 4;
+
+  // Reach-down (Y2): the infeed branch (pick, gated on supply when required)
+  // ORed with one branch per slot (place while carrying) — every row spans
+  // the full column range, padding the shorter slot branches with explicit
+  // wire cells rather than leaving them empty (an empty cell is an open
+  // circuit, not a conductor).
+  const extendCols = gateSupply ? 5 : 4;
+  const extendCoilCol = extendCols - 1;
+  const extendMap: Record<string, LadderElement> = { '0,0': no('X0'), '0,1': nc('M0'), '0,2': nc('C0') };
+  if (gateSupply) extendMap['0,3'] = no('X13');
+  extendMap[`0,${extendCoilCol}`] = set('Y2');
+  for (let i = 1; i <= 4; i++) {
+    extendMap[`${i},0`] = no(`X${i}`);
+    extendMap[`${i},1`] = no('M0');
+    for (let c = 2; c < extendCoilCol; c++) extendMap[`${i},${c}`] = wire;
+    extendMap[`${i},${extendCoilCol}`] = set('Y2');
+  }
+
+  return [
+    // OUT coils don't OR across independent rows the way SET/RST do (each
+    // row's own energized value would just overwrite the last one written) —
+    // this needs one physical coil plus vlinks merging the branches, exactly
+    // like dispatchCore's Above/Below cascades.
+    R(
+      'pt1',
+      4,
+      2,
+      {
+        '0,0': rise('X14'), '0,1': out('M1'),
+        '1,0': rise('X15'),
+        '2,0': rise('X16'),
+        '3,0': rise('X17'),
+      },
+      [
+        { row: 0, col: 1 },
+        { row: 1, col: 1 },
+        { row: 2, col: 1 },
+      ],
+    ),
+    R('pt2', 1, 2, { '0,0': rise('X12'), '0,1': set('M0') }),
+    R('pt3', 1, 2, { '0,0': no('M1'), '0,1': rst('M0') }),
+    R('pt4', 1, 2, { '0,0': no('M1'), '0,1': counter('C0', 4) }),
+    R('pt5', 1, 2, { '0,0': no('C0'), '0,1': out('Y4') }),
+    R('pt6', 5, extendCols, extendMap),
+    R('pt7', 2, 2, { '0,0': rise('X12'), '0,1': rst('Y2'), '1,0': no('M1'), '1,1': rst('Y2') }),
+    R('pt8', 1, gripCoilCol + 1, { ...gripConds, [`0,${gripCoilCol}`]: set('Y3') }),
+    R('pt9', 4, 4, {
+      '0,0': no('X1'), '0,1': no('M0'), '0,2': no('X10'), '0,3': rst('Y3'),
+      '1,0': no('X2'), '1,1': no('M0'), '1,2': no('X10'), '1,3': rst('Y3'),
+      '2,0': no('X3'), '2,1': no('M0'), '2,2': no('X10'), '2,3': rst('Y3'),
+      '3,0': no('X4'), '3,1': no('M0'), '3,2': no('X10'), '3,3': rst('Y3'),
+    }),
+    R('pt10', 1, 3, { '0,0': no('M0'), '0,1': no('X11'), '0,2': set('Y0') }),
+    R('pt11', 4, 3, {
+      '0,0': no('X1'), '0,1': nc('X14'), '0,2': rst('Y0'),
+      '1,0': no('X2'), '1,1': nc('X15'), '1,2': rst('Y0'),
+      '2,0': no('X3'), '2,1': nc('X16'), '2,2': rst('Y0'),
+      '3,0': no('X4'), '3,1': nc('X17'), '3,2': rst('Y0'),
+    }),
+    R('pt12', 1, 3, { '0,0': nc('M0'), '0,1': no('X11'), '0,2': set('Y1') }),
+    R('pt13', 1, 2, { '0,0': no('X0'), '0,1': rst('Y1') }),
+  ];
+}
+
+// Supply-wait lamp (pick-place-supply onward): lit only while parked at the
+// infeed with no part ready.
+function pickPlaceSupplyLamp(): Rung[] {
+  return [R('pt14', 1, 3, { '0,0': no('X0'), '0,1': nc('X13'), '0,2': out('Y6') })];
+}
+
+// Manual tray reset (pick-place-full): a direct passthrough to the process's
+// Y5 reset coil, plus resetting the ladder's own placement counter so Y4
+// drops in step with the machine actually clearing its slots.
+function pickPlaceReset(): Rung[] {
+  return [
+    R('pt15', 1, 2, { '0,0': no('X20'), '0,1': out('Y5') }),
+    R('pt16', 1, 2, { '0,0': no('X20'), '0,1': rst('C0') }),
+  ];
+}
+
 // --- canonical solutions --------------------------------------------------
 const solutions: Record<string, LadderProgram> = {
   'direct-control': {
@@ -371,6 +501,12 @@ const solutions: Record<string, LadderProgram> = {
   },
   'elevator-5-dispatch': { rungs: dispatchCore() },
   'elevator-doors': { rungs: [...dispatchCore(), ...doorRungs()] },
+  'pick-place-cycle': { rungs: pickPlaceOneSlot() },
+  'pick-place-tray': { rungs: pickPlaceTrayCore(false) },
+  'pick-place-supply': { rungs: [...pickPlaceTrayCore(true), ...pickPlaceSupplyLamp()] },
+  'pick-place-full': {
+    rungs: [...pickPlaceTrayCore(true), ...pickPlaceSupplyLamp(), ...pickPlaceReset()],
+  },
   'elevator-full': {
     rungs: [
       ...dispatchCore(),

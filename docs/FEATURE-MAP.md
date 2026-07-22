@@ -48,8 +48,8 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     fixed `cabinet` component layout instead of ladder fields; the player's "program" is a
     `WiringDoc` (see §3b).
   - Every spec also carries a **`category`** (`basics` / `timers-counters` / `stations` /
-    `elevator` / `control-cabinet` / `packaging`) — the unit of unlock progression and list
-    grouping (`CATEGORY_ORDER` / `CATEGORY_TITLES` / `CATEGORY_BLURBS` in `types.ts`).
+    `elevator` / `control-cabinet` / `packaging` / `pick-place`) — the unit of unlock progression
+    and list grouping (`CATEGORY_ORDER` / `CATEGORY_TITLES` / `CATEGORY_BLURBS` in `types.ts`).
 - **Process models** (`processes/`) — small state machines that react to `Y` outputs and drive
   `X` inputs. Registered via `registerProcess`.
   - `passthrough` — no machine dynamics; the HMI *is* the process.
@@ -90,6 +90,23 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     while the door isn't confirmed closed) is enforced **physically in the process model**, not
     just graded — an incorrect program sees the car visibly refuse to move rather than failing a
     hidden assertion after the fact.
+  - `pickPlace` — a robot arm swinging between an infeed (station 0) and up to 4 tray slots
+    (stations 1..slotCount, the count derived from how many of `X1`-`X4` the puzzle wires — an
+    elevator5-door-style feature detect widened from a boolean to a count). Fixed address
+    convention: `X0` at infeed, `X1`-`X4` at slot 1-4, `X10`/`X11` reach down/up, `X12` Gripped (a
+    live confirmation — `reach>=1 && grip>=1 &&` (carrying or a part is actually at the current
+    station) — never a latch), `X13` Infeed Ready (feature-detected: absent means a bottomless
+    supply, present means a real deplete/refill cycle), `X14`-`X17` slot 1-4 occupied, `Y0`/`Y1`
+    swing to tray/infeed, `Y2` reach down, `Y3` gripper close, `Y5` Reset Tray (feature-detected —
+    an idempotent "operator unloads the tray" action, clearing occupancy but never `jam`, only
+    while nothing is carried). Swing travel is `600ms`/station — the same exact-common-multiple
+    trick as `elevator5`'s `900ms`, needed here so a multi-slot sweep can detect an already-full
+    slot in passing (elevator5-style OR-cascade) without ever stopping there. The arm cannot
+    physically swing while reach is extended (would crash the tray guarding), enforced in the
+    model itself like elevator5's door. A part is picked the instant reach leaves the bottom with
+    the gripper closed and nothing already carried, and placed the instant the gripper finishes
+    opening while carrying; dropping mid-air or placing into an occupied slot both latch a
+    packaging-style `jam` that every scenario asserts stays false.
 - **Validator** (`validate.ts`) — structural checks: instruction allow-list, device kind/role
   match, presets present, every rung drives an output.
 - **Grader** (`grade.ts`) — runs each scenario's scripted input timeline through `SimEngine` +
@@ -156,9 +173,13 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 22 | `pack-group` | medium | count two pair-strokes (C0), load the staged 4-pack onto the lift | packaging |
 | 23 | `pack-lift` | hard | latch the flip cycle: lift up on load, release at the top | packaging |
 | 24 | `pack-full` | hard | capstone: count four flips, then ship the 16-pack via a one-hot step chain | packaging |
+| 25 | `pick-place-cycle` | hard | sequence swing/reach/grip into one repeating cycle, idle instead of overfilling | pickPlace |
+| 26 | `pick-place-tray` | hard | generalize to 4 slots, an elevator5-style sweep + counter (C0) | pickPlace |
+| 27 | `pick-place-supply` | hard | wait on a feature-detected finite infeed sensor | pickPlace |
+| 28 | `pick-place-full` | hard | capstone: latch tray-full, require a manual reset to run again | pickPlace |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 `elevator`,
-15–20 `control-cabinet`, 21–24 `packaging`.
+15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -254,6 +275,15 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 
   - Both scenes share the same silent-failure risk: a node name typo in the `.glb` is a no-op, not
     an error — `scene.getObjectByName(...)` just returns `undefined` and that part of the scene
     stops animating.
+  - **`PickPlaceArm3D.tsx`** (`processId: 'pickPlace'`, `interactive`) — renders the
+    Blender-authored `pick-place-arm.glb` (source: `D:\Code\Claude\Design\PickPlaceArm.blend`;
+    see the pack/elevator entries above — node names are load-bearing the same way).
+    `SwingPivot` carries the boom + rail + `ReachCarriage` hierarchy so one Y-axis rotation
+    swings the whole arm; `ReachCarriage` slides along local Y for reach; `GripperFingerL`/`R`
+    slide along local X for grip; `InfeedPart`/`TraySlotPart_0..3`/`CarriedPart` are pure
+    visibility toggles off `machine.*`; `ReadyBeacon`'s material is mutated red/dark exactly like
+    `JamBeacon` elsewhere. Every transform is still a pure function of `machine.*`, same contract
+    the other Blender-backed scenes follow.
 - **Resizable workspace** (`features/layout/Resizable.tsx`) — the play view is a full-height
   three-column workbench. The brief and operator panels are drag-resizable (widths persisted to
   `localStorage`, arrow keys when the divider is focused, double-click to collapse) and

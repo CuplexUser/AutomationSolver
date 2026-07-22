@@ -13,6 +13,9 @@ const ElevatorShaft3D = lazy(() =>
 const PackMachine3D = lazy(() =>
   import('./PackMachine3D').then((m) => ({ default: m.PackMachine3D })),
 );
+const PickPlaceArm3D = lazy(() =>
+  import('./PickPlaceArm3D').then((m) => ({ default: m.PickPlaceArm3D })),
+);
 
 /** Reserves the scene's footprint while its chunk downloads (no layout shift). */
 const sceneFallback = <div className="machine3d" style={{ height: 300 }} />;
@@ -102,6 +105,29 @@ export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: 
       </div>
     );
   }
+  if (spec.processId === 'pickPlace') {
+    const m = runner.machine;
+    const slotCount = [1, 2, 3, 4].filter((k) => spec.devices.some((d) => d.address === `X${k}`)).length;
+    const occupied = [1, 2, 3, 4].slice(0, slotCount).filter((k) => m[`slot${k}`] === true).length;
+    return (
+      <div className="machine-view panel">
+        <div className="mv-head">
+          <span className="eyebrow">Pick &amp; Place Arm</span>
+          <span className="mv-tag">{pickPlaceTag(m)}</span>
+        </div>
+        <Suspense fallback={sceneFallback}>
+          <PickPlaceArm3D machine={m} height={300} />
+        </Suspense>
+        <div className="mv-readout">
+          <Readout label="Station" value={`${numOf(m.station).toFixed(1)}`} on={numOf(m.dir) !== 0} />
+          <Readout label="Reach" value={pct(numOf(m.reach))} on={numOf(m.reach) >= 1} />
+          <Readout label="Grip" value={pct(numOf(m.grip))} on={numOf(m.grip) >= 1} />
+          <Readout label="Carrying" value={boolOf(m.carrying) ? 'YES' : 'no'} on={boolOf(m.carrying)} />
+          <Readout label="Tray" value={`${occupied}/${slotCount}`} on={occupied >= slotCount && slotCount > 0} />
+        </div>
+      </div>
+    );
+  }
   return null;
 }
 
@@ -142,4 +168,15 @@ function packTag(m: MachineState): string {
 function elevatorTag(m: MachineState): string {
   const dir = numOf(m.dir);
   return dir > 0 ? '▲ up' : dir < 0 ? '▼ down' : 'idle';
+}
+
+// --- Pick & place --------------------------------------------------------------
+
+function pickPlaceTag(m: MachineState): string {
+  if (m.jam === true) return '⚠ jammed';
+  if (numOf(m.dir) !== 0) return '⟳ swinging';
+  if (numOf(m.reach) > 0.01 && numOf(m.reach) < 1) return '⏵ reaching';
+  if (numOf(m.grip) > 0.01 && numOf(m.grip) < 1) return boolOf(m.carrying) ? '✊ gripping' : '✋ releasing';
+  if (boolOf(m.carrying)) return '📦 carrying';
+  return 'idle';
 }

@@ -107,6 +107,24 @@ Remaining ideas:
 2. **Optional: jam-recovery play.** `jam` currently latches forever; a reset input (or HMI
    button) plus scenarios that recover from a provoked jam could make a fifth puzzle.
 
+## Pick-and-place expansion ✅ *shipped* (ahead of the phased plan)
+
+A seventh category, `pick-place`: a robot arm swings between an infeed and up to 4 tray slots,
+extending/retracting to reach and gripping/releasing to transfer parts — reusing two proven
+techniques rather than inventing new engine mechanics: `drill`'s independent travel-fraction
+actuators for the reach/gripper axes, and `elevator5`'s exact-common-multiple swing timing
+(`600ms`/station) so a multi-slot sweep can detect an already-full slot in passing without
+stopping there. Four puzzles teach it stage by stage: `pick-place-cycle` (one repeating cycle,
+idle instead of overfilling a single slot) → `pick-place-tray` (generalize to 4 slots, an
+elevator5-style sweep that sails past occupied slots, counted on `C0`) → `pick-place-supply` (a
+feature-detected finite infeed sensor, `X13`) → `pick-place-full` (capstone: latch tray-full,
+require a manual reset via a feature-detected `Y5`). No new ladder instructions were needed,
+continuing the precedent `elevator5` and `packaging` set. Ships with a Blender-authored
+`pick-place-arm.glb` (source: `D:\Code\Claude\Design\PickPlaceArm.blend`) — a swing pivot on a
+flanged pedestal, a two-rail linear reach carriage, a two-finger gripper, and five pads (infeed
++ 4 tray slots) fanned out at 25° spacing so they never touch — following the same node-name
+contract as the elevator shaft and pack machine.
+
 ## Phase 3 — Content depth
 
 With replay and traces in place, harder content becomes fair rather than frustrating.
@@ -114,9 +132,10 @@ With replay and traces in place, harder content becomes fair rather than frustra
 1. **Instruction set growth**, in dependency order: `MOV` and data registers (`D`), compare
    contacts (`=`, `>`, `<`), then off-delay and retentive timers. Each one needs: engine support,
    validator support, an editor glyph, and at least one puzzle that *requires* it.
-2. **More process models** — traffic light, mixing tank, pick-and-place, palletizer. Each new
-   `ProcessModel` is a small state machine; the 3D `Box3` renderer already accepts arbitrary
-   scenes, so a new machine view is a `drillBoxes()`-style function, not new infrastructure.
+2. **More process models** — traffic light, mixing tank, palletizer (pick-and-place already
+   shipped, see above). Each new `ProcessModel` is a small state machine; the 3D `Box3` renderer
+   already accepts arbitrary scenes, so a new machine view is a `drillBoxes()`-style function, not
+   new infrastructure.
 3. **Fault-injection scenarios** — an overload trips mid-cycle, a sensor sticks. Tests whether a
    program is *robust*, not merely correct on the happy path.
 
