@@ -7,6 +7,7 @@ import { SlotsPanel } from '../slots/SlotsPanel';
 import { useActiveSlot } from '../slots/useActiveSlot';
 import { BriefColumn } from '../../pages/play/BriefColumn';
 import type { PlayProps } from '../../pages/play/LadderPlay';
+import { PuzzleTopNav } from '../../pages/play/PuzzleTopNav';
 import { CabinetEditor } from './CabinetEditor';
 import { useCabinet } from './cabinetStore';
 import { useCabinetSim, type CabinetRunner } from './useCabinetSim';
@@ -76,6 +77,7 @@ export function CabinetPlay({ spec, user, submit }: PlayProps<CabinetPuzzleSpec>
       )}
 
       <main className="play-main">
+        <PuzzleTopNav spec={spec} />
         <div className="play-actions">
           <div className="pa-left">
             <button

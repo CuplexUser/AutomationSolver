@@ -14,6 +14,7 @@ import { useSimRunner } from '../../features/sim/useSimRunner';
 import { SlotsPanel } from '../../features/slots/SlotsPanel';
 import { useActiveSlot } from '../../features/slots/useActiveSlot';
 import { BriefColumn } from './BriefColumn';
+import { PuzzleTopNav } from './PuzzleTopNav';
 
 export type PlayProps<S> = {
   spec: S;
@@ -96,6 +97,7 @@ export function LadderPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>) 
       )}
 
       <main className="play-main">
+        <PuzzleTopNav spec={spec} />
         <div className="play-actions">
           <div className="pa-left">
             <button
