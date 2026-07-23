@@ -17,8 +17,8 @@ export const eStop: PuzzleSpec = {
     'E-Stop is healthy, and cannot restart until it is released.',
   ].join('\n'),
   hints: [
-    'Because the E-Stop is wired normally-closed, use a normally-OPEN X2 contact —',
-    'it conducts while the E-Stop is healthy (X2 = ON).',
+    'Because the E-Stop is wired normally-closed, use a normally-OPEN X2 contact — it ' +
+      'conducts while the E-Stop is healthy (X2 = ON).',
     'Keep the START/STOP seal-in from the previous puzzle and add X2 in series.',
   ],
   devices: [

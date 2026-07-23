@@ -25,13 +25,13 @@ export const drillStation: PuzzleSpec = {
     'ON while healthy.',
   ].join('\n'),
   hints: [
-    'Rung 1: seal in a RUN bit M0 from (X0 OR M0), in series with X1 (NO) and a',
-    'normally-closed X3 so reaching the bottom drops the cycle.',
+    'Rung 1: seal in a RUN bit M0 from (X0 OR M0), in series with X1 (NO) and a ' +
+      'normally-closed X3 so reaching the bottom drops the cycle.',
     'Clamp Y0 follows M0. Drive the drill Y1 from M0 AND X2 (clamped).',
     'Warning Y2 follows the drill. SET Y3 on X3 (bottom) and RESET it on X0.',
-    'SET Y4 on X3 (bottom) to start ejecting, and RESET Y4 on X4 (ejected) to stop —',
-    "triggering off Y3 instead works at first but fights its own reset once X4 senses",
-    'ejected, since Y3 never goes false again until the next start.',
+    'SET Y4 on X3 (bottom) to start ejecting, and RESET Y4 on X4 (ejected) to stop — ' +
+      'triggering off Y3 instead works at first but fights its own reset once X4 ' +
+      'senses ejected, since Y3 never goes false again until the next start.',
   ],
   devices: [
     { address: 'X0', label: 'Start', io: 'input', widget: 'momentary' },

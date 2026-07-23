@@ -114,16 +114,18 @@ extending/retracting to reach and gripping/releasing to transfer parts — reusi
 techniques rather than inventing new engine mechanics: `drill`'s independent travel-fraction
 actuators for the reach/gripper axes, and `elevator5`'s exact-common-multiple swing timing
 (`600ms`/station) so a multi-slot sweep can detect an already-full slot in passing without
-stopping there. Four puzzles teach it stage by stage: `pick-place-cycle` (one repeating cycle,
-idle instead of overfilling a single slot) → `pick-place-tray` (generalize to 4 slots, an
-elevator5-style sweep that sails past occupied slots, counted on `C0`) → `pick-place-supply` (a
-feature-detected finite infeed sensor, `X13`) → `pick-place-full` (capstone: latch tray-full,
-require a manual reset via a feature-detected `Y5`). No new ladder instructions were needed,
-continuing the precedent `elevator5` and `packaging` set. Ships with a Blender-authored
-`pick-place-arm.glb` (source: `D:\Code\Claude\Design\PickPlaceArm.blend`) — a swing pivot on a
-flanged pedestal, a two-rail linear reach carriage, a two-finger gripper, and five pads (infeed
-+ 4 tray slots) fanned out at 25° spacing so they never touch — following the same node-name
-contract as the elevator shaft and pack machine.
+stopping there. Four puzzles teach it stage by stage: `pick-place-cycle` (one transfer to a
+single pad, park instead of overfilling) → `pick-place-tray` (generalize to 4 pads, an
+elevator5-style sweep that sails past occupied pads, `Y4` lamp from the machine's `X18` Tray
+Full sensor) → `pick-place-supply` (a feature-detected finite infeed sensor `X13` + a
+supply-wait lamp) → `pick-place-full` (capstone: a two-tray production order — operator unloads
+via `X20`→`Y5`, completed trays counted on `C0`, `Y7` order-complete lamp, picks blocked once
+the order closes). No new ladder instructions were needed, continuing the precedent `elevator5`
+and `packaging` set. Ships with a Blender-authored `pick-place-arm.glb` (source:
+`D:\Code\Claude\Design\PickPlaceArm.blend`) — a FANUC-style articulated arm (base turret,
+shoulder/elbow links driven by two-link IK in the client, counter-pitching wrist, two-finger
+gripper) over floor-level pads, an infeed conveyor, a signal mast and warning-tape dressing —
+following the same node-name contract as the elevator shaft and pack machine.
 
 ## Phase 3 — Content depth
 

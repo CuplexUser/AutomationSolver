@@ -22,12 +22,14 @@ export const runOnTimer: PuzzleSpec = {
     'units of 100 ms (K30 = 3.0 s).',
   ].join('\n'),
   hints: [
-    'Rung 1: the usual seal-in motor — (X0 OR Y0) in series with normally-closed X1 → Y0.',
-    'Rung 2: seal the fan Y1 from (Y0 OR (Y1 AND normally-closed T0)). It follows the',
-    'motor directly, and once the motor drops it holds itself until the timer finishes.',
-    'Rung 3: run the timer only while the fan is on but the motor is off — Y1 AND',
-    'normally-closed Y0 → T0 (K30). That way it never counts (and never trips the fan)',
-    'until an actual stop, and it resets as soon as the fan drops.',
+    'Rung 1: the usual seal-in motor — (X0 OR Y0) in series with normally-closed X1 → ' +
+      'Y0.',
+    'Rung 2: seal the fan Y1 from (Y0 OR (Y1 AND normally-closed T0)). It follows the ' +
+      'motor directly, and once the motor drops it holds itself until the timer ' +
+      'finishes.',
+    'Rung 3: run the timer only while the fan is on but the motor is off — Y1 AND ' +
+      'normally-closed Y0 → T0 (K30). That way it never counts (and never trips the ' +
+      'fan) until an actual stop, and it resets as soon as the fan drops.',
   ],
   devices: [
     { address: 'X0', label: 'Start', io: 'input', widget: 'momentary' },

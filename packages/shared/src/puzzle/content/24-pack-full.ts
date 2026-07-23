@@ -39,16 +39,16 @@ export const packFull: PuzzleSpec = {
     'count from zero. Ship one finished 16-pack without a jam.',
   ].join('\n'),
   hints: [
-    'Let the bracket rest forward: Y5 = M1(NC) · M2(NC) · M3(NC) — it pulls back',
-    'only across the steps that need it and springs forward again by itself.',
-    'Start the sequence on the lift settling with the count complete: a RISING X4',
-    'contact in series with C1 → SET M1, and reset C1 on the same condition.',
-    'Each hand-off is "step relay AND its end sensor": M1·X12 → SET M2 / RST M1;',
-    'M2·X7 → SET M3 / RST M2; M3·X6 → SET M4 / RST M3; M4·X11 → SET M5 / RST M4;',
-    'M5·X10 → RST M5. The pushers are momentary: Y3 = M2, Y4 = M4.',
-    'The front end keeps flipping while this pack ships — gate the flip output',
-    '(Y2 = M0 · M1(NC) · M2(NC) · M3(NC)) so no flip can land while the bracket is',
-    'away. The lift just waits at the bottom until the window closes.',
+    'Let the bracket rest forward: Y5 = M1(NC) · M2(NC) · M3(NC) — it pulls back only ' +
+      'across the steps that need it and springs forward again by itself.',
+    'Start the sequence on the lift settling with the count complete: a RISING X4 ' +
+      'contact in series with C1 → SET M1, and reset C1 on the same condition.',
+    'Each hand-off is "step relay AND its end sensor": M1·X12 → SET M2 / RST M1; ' +
+      'M2·X7 → SET M3 / RST M2; M3·X6 → SET M4 / RST M3; M4·X11 → SET M5 / RST M4; ' +
+      'M5·X10 → RST M5. The pushers are momentary: Y3 = M2, Y4 = M4.',
+    'The front end keeps flipping while this pack ships — gate the flip output (Y2 = ' +
+      'M0 · M1(NC) · M2(NC) · M3(NC)) so no flip can land while the bracket is away. ' +
+      'The lift just waits at the bottom until the window closes.',
   ],
   devices: [
     { address: 'X14', label: 'Box at Stop (near)', io: 'input', widget: 'sensor' },

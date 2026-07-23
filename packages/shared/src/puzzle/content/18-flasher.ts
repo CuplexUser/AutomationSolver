@@ -20,10 +20,10 @@ export const flasher: PuzzleSpec = {
   hints: [
     'Rung 1: run T0 (K10) from X0 in series with a normally-closed T1 contact.',
     'Rung 2: run T1 (K10) from a normally-open T0 contact.',
-    'When T1 finishes it opens rung 1, which resets T0; that in turn resets T1, and',
-    'the cycle starts over.',
-    'Rung 3: light the beacon while the switch is on but T0 has not finished its phase',
-    '— X0 in series with a normally-closed T0 contact → Y0.',
+    'When T1 finishes it opens rung 1, which resets T0; that in turn resets T1, and ' +
+      'the cycle starts over.',
+    'Rung 3: light the beacon while the switch is on but T0 has not finished its ' +
+      'phase — X0 in series with a normally-closed T0 contact → Y0.',
   ],
   devices: [
     { address: 'X0', label: 'Hazard', io: 'input', widget: 'toggle' },

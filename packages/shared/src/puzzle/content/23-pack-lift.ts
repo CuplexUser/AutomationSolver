@@ -28,13 +28,13 @@ export const packLift: PuzzleSpec = {
     'Let it run: the machine should flip group after group without a jam.',
   ].join('\n'),
   hints: [
-    'Three new rungs on top of the 4-pack solution: X3 → SET M0, then M0 → Y2, then',
-    'X5 → RST M0.',
-    'Latching off X3 matters: it is only true for a moment while the 4-pack pusher is',
-    'out, but the flip takes much longer — an unlatched X3 → Y2 drops the lift the',
-    'moment the pusher springs home.',
-    'No extra interlock is needed for the rise itself: the machine holds the lift at',
-    'the bottom until the 4-pack rod is home, as long as Y2 stays commanded.',
+    'Three new rungs on top of the 4-pack solution: X3 → SET M0, then M0 → Y2, then ' +
+      'X5 → RST M0.',
+    'Latching off X3 matters: it is only true for a moment while the 4-pack pusher is ' +
+      'out, but the flip takes much longer — an unlatched X3 → Y2 drops the lift the ' +
+      'moment the pusher springs home.',
+    'No extra interlock is needed for the rise itself: the machine holds the lift at ' +
+      'the bottom until the 4-pack rod is home, as long as Y2 stays commanded.',
   ],
   devices: [
     { address: 'X14', label: 'Box at Stop (near)', io: 'input', widget: 'sensor' },

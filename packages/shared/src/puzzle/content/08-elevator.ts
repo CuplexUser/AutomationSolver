@@ -20,11 +20,12 @@ export const elevatorAutoReturn: PuzzleSpec = {
     'presets are in 100 ms units, so K100 = 10 s.',
   ].join('\n'),
   hints: [
-    'Drive up: X0 (NO) in series with a normally-closed X5 so the car stops at the top.',
-    'Run an on-delay timer T0 (K100) while the car is away from floor 1 (NC X3) and no',
-    'up command (NC X0). When T0 finishes, seal in a descent bit M0.',
-    'Break the M0 seal-in with NC X3 (reached the bottom) and NC X0 (up cancels it);',
-    'drive the down output Y1 from M0.',
+    'Drive up: X0 (NO) in series with a normally-closed X5 so the car stops at the ' +
+      'top.',
+    'Run an on-delay timer T0 (K100) while the car is away from floor 1 (NC X3) and ' +
+      'no up command (NC X0). When T0 finishes, seal in a descent bit M0.',
+    'Break the M0 seal-in with NC X3 (reached the bottom) and NC X0 (up cancels it); ' +
+      'drive the down output Y1 from M0.',
   ],
   devices: [
     { address: 'X0', label: 'Up Command', io: 'input', widget: 'toggle' },

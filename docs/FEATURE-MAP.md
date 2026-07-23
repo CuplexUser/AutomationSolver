@@ -173,10 +173,10 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 22 | `pack-group` | medium | count two pair-strokes (C0), load the staged 4-pack onto the lift | packaging |
 | 23 | `pack-lift` | hard | latch the flip cycle: lift up on load, release at the top | packaging |
 | 24 | `pack-full` | hard | capstone: count four flips, then ship the 16-pack via a one-hot step chain | packaging |
-| 25 | `pick-place-cycle` | hard | sequence swing/reach/grip into one repeating cycle, idle instead of overfilling | pickPlace |
-| 26 | `pick-place-tray` | hard | generalize to 4 slots, an elevator5-style sweep + counter (C0) | pickPlace |
-| 27 | `pick-place-supply` | hard | wait on a feature-detected finite infeed sensor | pickPlace |
-| 28 | `pick-place-full` | hard | capstone: latch tray-full, require a manual reset to run again | pickPlace |
+| 25 | `pick-place-cycle` | medium | sequence swing/reach/grip into one transfer, park instead of overfilling | pickPlace |
+| 26 | `pick-place-tray` | hard | generalize to 4 pads, an elevator5-style sweep, Y4 lamp from the X18 sensor | pickPlace |
+| 27 | `pick-place-supply` | hard | wait on a feature-detected finite infeed sensor (X13) + supply lamp | pickPlace |
+| 28 | `pick-place-full` | hard | capstone: two-tray order — operator unloads (X20→Y5), tray counter C0, Y7 lamp | pickPlace |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 `elevator`,
 15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`.
@@ -278,12 +278,14 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 
   - **`PickPlaceArm3D.tsx`** (`processId: 'pickPlace'`, `interactive`) — renders the
     Blender-authored `pick-place-arm.glb` (source: `D:\Code\Claude\Design\PickPlaceArm.blend`;
     see the pack/elevator entries above — node names are load-bearing the same way).
-    `SwingPivot` carries the boom + rail + `ReachCarriage` hierarchy so one Y-axis rotation
-    swings the whole arm; `ReachCarriage` slides along local Y for reach; `GripperFingerL`/`R`
-    slide along local X for grip; `InfeedPart`/`TraySlotPart_0..3`/`CarriedPart` are pure
-    visibility toggles off `machine.*`; `ReadyBeacon`'s material is mutated red/dark exactly like
-    `JamBeacon` elsewhere. Every transform is still a pure function of `machine.*`, same contract
-    the other Blender-backed scenes follow.
+    `SwingPivot` (base yaw) carries the articulated `ShoulderPivot` → `ElbowPivot` →
+    `ReachCarriage` chain; reach is a two-link IK move (shoulder/elbow pitch about local X, the
+    carriage counter-pitches by `-(q1+q2)` so the gripper hangs plumb, wrist descending a
+    vertical line over the pad); `GripperFingerL`/`R` slide along local X for grip;
+    `InfeedPart`/`TraySlotPart_0..3`/`CarriedPart` are pure visibility toggles off `machine.*`;
+    `ConveyorPart` lerps along the infeed conveyor whenever a fresh part is due; the mast's
+    `JamLamp`/`TrayFullLamp` materials are mutated red/green. Every transform is still a pure
+    function of `machine.*`, same contract the other Blender-backed scenes follow.
 - **Resizable workspace** (`features/layout/Resizable.tsx`) — the play view is a full-height
   three-column workbench. The brief and operator panels are drag-resizable (widths persisted to
   `localStorage`, arrow keys when the divider is focused, double-click to collapse) and

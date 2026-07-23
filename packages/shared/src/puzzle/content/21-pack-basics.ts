@@ -28,11 +28,11 @@ export const packBasics: PuzzleSpec = {
     'stroke in and let OUT (X1) break the seal.',
   ].join('\n'),
   hints: [
-    'This is the classic seal-in with a twist: start on X14 AND X15, hold via a Y0',
-    'branch, and put a normally-closed X1 in series to end the stroke.',
+    'This is the classic seal-in with a twist: start on X14 AND X15, hold via a Y0 ' +
+      'branch, and put a normally-closed X1 in series to end the stroke.',
     'One rung is enough: (X14·X15 ∥ Y0) · X1(NC) → Y0.',
-    'The machine refeeds itself — after the pusher comes home, the next two boxes',
-    'advance to the stop and the same rung fires again. Two strokes stage a 4-pack.',
+    'The machine refeeds itself — after the pusher comes home, the next two boxes ' +
+      'advance to the stop and the same rung fires again. Two strokes stage a 4-pack.',
   ],
   devices: [
     { address: 'X14', label: 'Box at Stop (near)', io: 'input', widget: 'sensor' },

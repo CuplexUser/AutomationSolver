@@ -21,17 +21,18 @@ export const elevatorDispatch: PuzzleSpec = {
     'clearing the one just served.',
   ].join('\n'),
   hints: [
-    'Latch each call with a SET on its button (X0-X4 -> SET M0-M4) and RESET it once the',
-    'car reaches that floor.',
-    'Build "is a call pending above/below floor N" as a small cascade of OR coils, e.g.',
-    'Above(3) = call(4) OR call(5), Above(2) = call(3) OR Above(3), and so on; mirror it',
-    'downward for Below(N).',
-    'SET an Up latch when parked at a floor with a call pending above it; SET a Down',
-    'latch only when nothing is pending above but something is pending below — that is',
-    'the up-first tie-break. Drive Y0/Y1 straight from those latches.',
-    "Stop by RESETting the latch when the current floor's OWN call bit is still on — test",
-    'it before the rung that clears the call, so a further call beyond this floor cannot',
-    'suppress the stop here.',
+    'Latch each call with a SET on its button (X0-X4 -> SET M0-M4) and RESET it once ' +
+      'the car reaches that floor.',
+    'Build "is a call pending above/below floor N" as a small cascade of OR coils, ' +
+      'e.g.',
+    'Above(3) = call(4) OR call(5), Above(2) = call(3) OR Above(3), and so on; mirror ' +
+      'it downward for Below(N).',
+    'SET an Up latch when parked at a floor with a call pending above it; SET a Down ' +
+      'latch only when nothing is pending above but something is pending below — that ' +
+      'is the up-first tie-break. Drive Y0/Y1 straight from those latches.',
+    'Stop by RESETting the latch when the current floor\'s OWN call bit is still on — ' +
+      'test it before the rung that clears the call, so a further call beyond this ' +
+      'floor cannot suppress the stop here.',
   ],
   devices: [
     { address: 'X0', label: 'Call Floor 1', io: 'input', widget: 'momentary' },

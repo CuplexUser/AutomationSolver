@@ -29,12 +29,12 @@ export const packGroup: PuzzleSpec = {
     'platform. Get one full group staged and loaded without a jam.',
   ].join('\n'),
   hints: [
-    'Extend the pair rung\'s start condition: X14 · X15 · X2 · C0(NC), still sealed',
-    'with Y0 and broken by X1(NC). The C0(NC) contact is what stops a third pair.',
-    'Count the strokes off the OUT sensor: X1 → C0 (K2). The counter steps on each',
-    'rising edge, so one stroke = one count.',
-    'Load the lift with C0 · X4 → Y1. Reset with X3 → RST C0 — dropping the counter',
-    'also drops Y1, which is what lets it spring home.',
+    'Extend the pair rung\'s start condition: X14 · X15 · X2 · C0(NC), still sealed ' +
+      'with Y0 and broken by X1(NC). The C0(NC) contact is what stops a third pair.',
+    'Count the strokes off the OUT sensor: X1 → C0 (K2). The counter steps on each ' +
+      'rising edge, so one stroke = one count.',
+    'Load the lift with C0 · X4 → Y1. Reset with X3 → RST C0 — dropping the counter ' +
+      'also drops Y1, which is what lets it spring home.',
   ],
   devices: [
     { address: 'X14', label: 'Box at Stop (near)', io: 'input', widget: 'sensor' },

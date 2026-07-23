@@ -19,14 +19,14 @@ export const elevatorFull: PuzzleSpec = {
     'have handle the rest, including opening the door once it gets there.',
   ].join('\n'),
   hints: [
-    'Run an on-delay timer (K100 = 10.0 s) gated by NOT at floor 1 AND no call pending',
-    'anywhere (all five call lamps off) AND the Up/Down latches both off (truly idle,',
-    'not mid-trip).',
-    'When it finishes, SET the floor-1 call latch — the same bit the floor-1 call',
-    'button sets. Everything downstream (dispatch, stopping, the door) already knows',
-    'what to do with a pending floor-1 call.',
-    'A fresh call anywhere, or the car already being at floor 1, should hold the timer',
-    'at zero so it never fires needlessly.',
+    'Run an on-delay timer (K100 = 10.0 s) gated by NOT at floor 1 AND no call ' +
+      'pending anywhere (all five call lamps off) AND the Up/Down latches both off ' +
+      '(truly idle, not mid-trip).',
+    'When it finishes, SET the floor-1 call latch — the same bit the floor-1 call ' +
+      'button sets. Everything downstream (dispatch, stopping, the door) already ' +
+      'knows what to do with a pending floor-1 call.',
+    'A fresh call anywhere, or the car already being at floor 1, should hold the ' +
+      'timer at zero so it never fires needlessly.',
   ],
   devices: [
     { address: 'X0', label: 'Call Floor 1', io: 'input', widget: 'momentary' },

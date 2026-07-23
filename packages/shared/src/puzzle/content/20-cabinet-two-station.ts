@@ -23,8 +23,8 @@ export const cabinetTwoStation: PuzzleSpec = {
   ].join('\n'),
   hints: [
     'Stops in series: L1 → S2.21 … S2.22 → S4.21 … S4.22 → (start group).',
-    'Starts in parallel: tie S1.13, S3.13 and the seal K1.13 all to the node after',
-    'the stops (S4.22); tie S1.14, S3.14 and K1.14 all to the coil K1.A1.',
+    'Starts in parallel: tie S1.13, S3.13 and the seal K1.13 all to the node after ' +
+      'the stops (S4.22); tie S1.14, S3.14 and K1.14 all to the coil K1.A1.',
     'Coil return: K1.A2 → F1.95 … F1.96 → N.',
     'Power path per phase: L1 → K1.1, K1.2 → F1.1, F1.2 → U (and 3/4 → V, 5/6 → W).',
   ],

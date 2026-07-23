@@ -25,11 +25,11 @@ export const twoHandPress: PuzzleSpec = {
     'operator panel to press both palms at once.',
   ].join('\n'),
   hints: [
-    'Rung 1: advance Y0 from X0 AND X1 AND X2 (all normally-open) in series with a',
-    'normally-closed done-latch M0 — the latch is what blocks a repeat stroke.',
+    'Rung 1: advance Y0 from X0 AND X1 AND X2 (all normally-open) in series with a ' +
+      'normally-closed done-latch M0 — the latch is what blocks a repeat stroke.',
     'Rung 2: SET M0 when the ram bottoms out (normally-open X3).',
-    'Rung 3: RESET M0 only when both palms are released — normally-closed X0 in series',
-    'with normally-closed X1.',
+    'Rung 3: RESET M0 only when both palms are released — normally-closed X0 in ' +
+      'series with normally-closed X1.',
     'Rung 4: drive the STROKE COMPLETE lamp Y1 from M0.',
   ],
   devices: [

@@ -116,7 +116,7 @@ export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: 
           <span className="mv-tag">{pickPlaceTag(m)}</span>
         </div>
         <Suspense fallback={sceneFallback}>
-          <PickPlaceArm3D machine={m} height={300} />
+          <PickPlaceArm3D machine={m} trayFull={occupied >= slotCount && slotCount > 0} height={300} />
         </Suspense>
         <div className="mv-readout">
           <Readout label="Station" value={`${numOf(m.station).toFixed(1)}`} on={numOf(m.dir) !== 0} />

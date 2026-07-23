@@ -21,15 +21,16 @@ export const elevatorDoors: PuzzleSpec = {
     'through a floor without stopping.',
   ].join('\n'),
   hints: [
-    'Reuse the dispatch/stop logic from the 5-Floor Dispatch puzzle unchanged — the door',
-    'interlock is physical, so it does not need to be wired into the Up/Down latches.',
-    'Open the door on a RISING EDGE of a floor-arrival sensor, gated by the Up and Down',
-    'latches both being off that same scan — that tells a genuine stop apart from a',
-    "pass-through, since a pass-through leaves at least one latch still set. A level",
-    "contact instead of an edge would reopen the door every scan for as long as the",
-    'car sits parked, even after it has already closed once.',
-    'Run an on-delay timer (K30 = 3.0 s) while the door is open (X15); when it finishes,',
-    'clear the door-open latch so the door retracts.',
+    'Reuse the dispatch/stop logic from the 5-Floor Dispatch puzzle unchanged — the ' +
+      'door interlock is physical, so it does not need to be wired into the Up/Down ' +
+      'latches.',
+    'Open the door on a RISING EDGE of a floor-arrival sensor, gated by the Up and ' +
+      'Down latches both being off that same scan — that tells a genuine stop apart ' +
+      'from a pass-through, since a pass-through leaves at least one latch still set. ' +
+      'A level contact instead of an edge would reopen the door every scan for as ' +
+      'long as the car sits parked, even after it has already closed once.',
+    'Run an on-delay timer (K30 = 3.0 s) while the door is open (X15); when it ' +
+      'finishes, clear the door-open latch so the door retracts.',
   ],
   devices: [
     { address: 'X0', label: 'Call Floor 1', io: 'input', widget: 'momentary' },
