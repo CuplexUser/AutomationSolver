@@ -1,0 +1,59 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc"],
+  "env": { "builtin": true },
+  "ignorePatterns": ["**/dist/**", "**/playwright-report/**", "**/test-results/**", "**/*.d.ts"],
+  "rules": {
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-console": ["warn", { "allow": ["warn", "error"] }],
+    "no-unused-vars": [
+      "error",
+      { "argsIgnorePattern": "^_", "varsIgnorePattern": "^_", "caughtErrorsIgnorePattern": "^_" }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["packages/shared/**/*.ts"],
+      "env": { "builtin": true },
+      "rules": {
+        "no-restricted-globals": [
+          "error",
+          { "name": "Date", "message": "The engine must advance by an explicit dt, never wall-clock time." },
+          { "name": "performance", "message": "The engine must advance by an explicit dt, never wall-clock time." },
+          { "name": "window", "message": "packages/shared must not touch the DOM." },
+          { "name": "document", "message": "packages/shared must not touch the DOM." }
+        ],
+        "no-restricted-properties": [
+          "error",
+          { "object": "Math", "property": "random", "message": "The engine must stay deterministic." },
+          { "object": "Date", "property": "now", "message": "The engine must advance by an explicit dt." }
+        ]
+      }
+    },
+    {
+      "files": ["packages/server/**/*.ts"],
+      "env": { "builtin": true, "node": true }
+    },
+    {
+      "files": ["packages/client/**/*.{ts,tsx}"],
+      "plugins": ["typescript", "unicorn", "oxc", "react"],
+      "env": { "builtin": true, "browser": true },
+      "rules": {
+        "react/rules-of-hooks": "error",
+        "react/exhaustive-deps": "warn"
+      }
+    },
+    {
+      "files": [
+        "**/*.test.ts",
+        "**/*.config.ts",
+        "**/tests/**",
+        "scripts/**",
+        "packages/server/src/db/**",
+        "packages/server/src/index.ts"
+      ],
+      "env": { "builtin": true, "node": true },
+      "rules": { "no-console": "off" }
+    }
+  ]
+}

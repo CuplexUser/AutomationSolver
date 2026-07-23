@@ -222,7 +222,7 @@ puzzlesRouter.delete(
  */
 function saveToActiveSlot(userId: number, slug: string, programJson: string, isSubmitted: boolean): void {
   const settings = getSettings(userId);
-  const activeSlotMap = { ...((settings.activeSlot as Record<string, number> | undefined) ?? {}) };
+  const activeSlotMap = { ...(settings.activeSlot as Record<string, number> | undefined) };
   const activeId = activeSlotMap[slug];
   const target = (activeId != null ? getSlot(userId, slug, activeId) : undefined) ?? listSlots(userId, slug)[0];
   const slotId = target

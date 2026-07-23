@@ -63,7 +63,7 @@ function simulateScenario(
 
   const inputs: Record<string, boolean> = {
     ...defaultInputs(spec.devices),
-    ...(scenario.initialInputs ?? {}),
+    ...scenario.initialInputs,
   };
   let derived: Record<string, boolean> = {};
   let tMs = 0;

@@ -77,7 +77,7 @@ function simulateScenario(
   sim.reset();
   const inputs: Record<string, boolean> = {
     ...defaultInputs(spec.devices),
-    ...(scenario.initialInputs ?? {}),
+    ...scenario.initialInputs,
   };
   let tMs = 0;
 

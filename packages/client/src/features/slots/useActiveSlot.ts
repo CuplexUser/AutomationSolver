@@ -27,7 +27,7 @@ export function useActiveSlot(spec: PuzzleSpec) {
 
   const setActive = (id: number) => {
     saveSettings.mutate(
-      { ...(settingsData?.settings ?? {}), activeSlot: { ...activeSlotMap, [spec.slug]: id } },
+      { ...settingsData?.settings, activeSlot: { ...activeSlotMap, [spec.slug]: id } },
       { onSuccess: () => void qc.invalidateQueries({ queryKey: ['slot', spec.slug, id] }) },
     );
   };

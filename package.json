@@ -1,6 +1,6 @@
 {
   "name": "automationsolver",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "workspaces": [
@@ -15,17 +15,16 @@
     "test": "npm run test -w @automationsolver/shared && npm run test -w @automationsolver/server",
     "test:shared": "npm run test -w @automationsolver/shared",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
+    "lint": "oxlint . && eslint .",
+    "lint:fix": "oxlint . --fix && eslint . --fix",
     "seed": "npm run seed -w @automationsolver/server"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.2",
     "concurrently": "^9.1.0",
     "eslint": "^10.7.0",
     "eslint-plugin-react-hooks": "^7.1.1",
-    "globals": "^17.7.0",
+    "oxlint": "^1.75.0",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.63.0"
   }
