@@ -298,45 +298,64 @@ export function LadderEditor({
     <div className="ladder-editor">
       <div className={`palette panel${stickyPalette ? ' palette-pinned' : ''}`}>
         <div className="palette-row">
-          <button
-            className="icon-btn palette-fold"
-            onClick={() => setPaletteOpen((v) => !v)}
-            title={paletteOpen ? 'Collapse the palette' : 'Expand the palette'}
-            aria-expanded={paletteOpen}
-          >
-            {paletteOpen ? '▾' : '▸'}
-          </button>
-          <span className="eyebrow">Address</span>
-          <input
-            ref={addressRef}
-            className="field mono compact"
-            value={address}
-            onChange={(e) => changeAddress(e.target.value)}
-            disabled={!editable}
-            aria-label="Device address"
-          />
-          <span className="eyebrow">Preset K</span>
-          <input
-            className="field mono compact preset"
-            type="number"
-            min={1}
-            value={preset}
-            onChange={(e) => changePreset(Math.max(1, Number(e.target.value)))}
-            disabled={!editable}
-            aria-label="Timer/counter preset"
-          />
-          <div className="editor-prefs" role="group" aria-label="Editor preferences">
-            <label className="pref-toggle" title="Keep this toolbar pinned to the top while scrolling a long program">
-              <input type="checkbox" checked={stickyPalette} onChange={(e) => setStickyPalette(e.target.checked)} />
-              Pin toolbar
-            </label>
-            <label
-              className="pref-toggle"
-              title="Show a floating Address/Preset K editor in the corner, so you can retype a cell without scrolling"
+          <div className="palette-fields">
+            <button
+              className="icon-btn palette-fold"
+              onClick={() => setPaletteOpen((v) => !v)}
+              title={paletteOpen ? 'Collapse the palette' : 'Expand the palette'}
+              aria-expanded={paletteOpen}
             >
-              <input type="checkbox" checked={floatingEditor} onChange={(e) => setFloatingEditor(e.target.checked)} />
-              Floating editor
-            </label>
+              {paletteOpen ? '▾' : '▸'}
+            </button>
+            <span className="eyebrow">Address</span>
+            <input
+              ref={addressRef}
+              className="field mono compact"
+              value={address}
+              onChange={(e) => changeAddress(e.target.value)}
+              disabled={!editable}
+              aria-label="Device address"
+            />
+            <span className="eyebrow">Preset K</span>
+            <input
+              className="field mono compact preset"
+              type="number"
+              min={1}
+              value={preset}
+              onChange={(e) => changePreset(Math.max(1, Number(e.target.value)))}
+              disabled={!editable}
+              aria-label="Timer/counter preset"
+            />
+          </div>
+          <div className="palette-controls">
+            <div className="editor-prefs" role="group" aria-label="Editor preferences">
+              <label className="pref-toggle" title="Keep this toolbar pinned to the top while scrolling a long program">
+                <input type="checkbox" checked={stickyPalette} onChange={(e) => setStickyPalette(e.target.checked)} />
+                Pin toolbar
+              </label>
+              <label
+                className="pref-toggle"
+                title="Show a floating Address/Preset K editor in the corner, so you can retype a cell without scrolling"
+              >
+                <input type="checkbox" checked={floatingEditor} onChange={(e) => setFloatingEditor(e.target.checked)} />
+                Floating editor
+              </label>
+            </div>
+            <div className="zoom-ctl" role="group" aria-label="Ladder zoom">
+              <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z - 0.1))} title="Zoom out (Ctrl −)">
+                −
+              </button>
+              <span className="zoom-val">{Math.round(zoom * 100)}%</span>
+              <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z + 0.1))} title="Zoom in (Ctrl +)">
+                +
+              </button>
+              <button className="icon-btn" onClick={fitZoom} title="Fit the program to the window">
+                Fit
+              </button>
+              <button className="icon-btn" onClick={() => setZoom(1)} title="Reset zoom (Ctrl 0)">
+                100%
+              </button>
+            </div>
           </div>
           <div className="dev-quick">
             {[...devices.map((d) => ({ address: d.address, label: d.label })), ...registers].map((d) => (
@@ -350,21 +369,6 @@ export function LadderEditor({
                 {d.address}
               </button>
             ))}
-          </div>
-          <div className="zoom-ctl" role="group" aria-label="Ladder zoom">
-            <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z - 0.1))} title="Zoom out (Ctrl −)">
-              −
-            </button>
-            <span className="zoom-val">{Math.round(zoom * 100)}%</span>
-            <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z + 0.1))} title="Zoom in (Ctrl +)">
-              +
-            </button>
-            <button className="icon-btn" onClick={fitZoom} title="Fit the program to the window">
-              Fit
-            </button>
-            <button className="icon-btn" onClick={() => setZoom(1)} title="Reset zoom (Ctrl 0)">
-              100%
-            </button>
           </div>
         </div>
 
