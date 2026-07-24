@@ -297,14 +297,10 @@ function ResultsCard({
     );
   }
   if (!result) {
-    return (
-      <div className="results-card panel">
-        <span className="eyebrow">Grading</span>
-        <p className="muted sm">Build your solution, run it to test, then submit for grading.</p>
-        {/* Returning to an already-solved puzzle still offers the next one. */}
-        <NextPuzzleNav slug={slug} onlyIfSolved />
-      </div>
-    );
+    // A fresh, unsubmitted puzzle gets no card at all — an empty "Grading" panel
+    // reads as if something was graded. Returning to an already-solved puzzle is
+    // the one exception: it still offers the next one.
+    return <NextPuzzleNav slug={slug} onlyIfSolved />;
   }
 
   if (!result.validation.valid) {

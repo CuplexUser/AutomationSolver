@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ApiError } from '../api/client';
 import { usePuzzle, useSubmit } from '../api/queries';
@@ -16,6 +16,15 @@ export function PuzzlePlayPage() {
   const { data, isLoading, isError, error } = usePuzzle(slug);
   const { user } = useAuth();
   const submit = useSubmit(slug);
+
+  // The mutation instance is created once per PuzzlePlayPage mount and survives
+  // client-side navigation to a different puzzle slug (e.g. via the "Next" link),
+  // so its stale `data` (and solved banner) would otherwise bleed into a fresh,
+  // unsubmitted puzzle. Clear it whenever the slug changes.
+  const { reset } = submit;
+  useEffect(() => {
+    reset();
+  }, [slug, reset]);
 
   if (isLoading) return <p className="muted pad">Loading puzzle…</p>;
 
