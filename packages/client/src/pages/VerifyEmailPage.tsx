@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, authApi } from '../api/client';
@@ -10,9 +10,12 @@ export function VerifyEmailPage() {
   const { refresh } = useAuth();
   const [status, setStatus] = useState<'pending' | 'success' | 'error'>('pending');
   const [error, setError] = useState<string | null>(null);
+  const attemptedTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!token) return;
+    if (attemptedTokenRef.current === token) return;
+    attemptedTokenRef.current = token;
     let cancelled = false;
     authApi
       .verifyEmail(token)
