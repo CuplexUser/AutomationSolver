@@ -831,6 +831,22 @@
   display: flex;
   gap: 2px;
 }
+.slots-import-export {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.prev-solution-banner {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  flex: 0 0 auto;
+  border-color: color-mix(in srgb, var(--live) 50%, var(--edge));
+}
+.prev-solution-banner p {
+  margin: 0 0 8px;
+}
 
 /* ===================== Replay ===================== */
 .replay-bar {

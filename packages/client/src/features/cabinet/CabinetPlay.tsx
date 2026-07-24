@@ -3,6 +3,7 @@ import type { CabinetPuzzleSpec, WiringDoc } from '@automationsolver/shared';
 import { useCreateSlot, useUpdateSlot } from '../../api/queries';
 import { ResizeHandle, usePersistedWidth } from '../layout/Resizable';
 import { HmiPanel } from '../sim/HmiPanel';
+import { PreviousSolutionBanner } from '../slots/PreviousSolutionBanner';
 import { SlotsPanel } from '../slots/SlotsPanel';
 import { useActiveSlot } from '../slots/useActiveSlot';
 import { BriefColumn } from '../../pages/play/BriefColumn';
@@ -12,7 +13,7 @@ import { CabinetEditor } from './CabinetEditor';
 import { useCabinet } from './cabinetStore';
 import { useCabinetSim, type CabinetRunner } from './useCabinetSim';
 
-export function CabinetPlay({ spec, user, submit }: PlayProps<CabinetPuzzleSpec>) {
+export function CabinetPlay({ spec, user, submit, previousPuzzle }: PlayProps<CabinetPuzzleSpec>) {
   const { wiring, init, dirty, markClean, clearAll } = useCabinet();
   const activeSlot = useActiveSlot(spec);
   const updateSlot = useUpdateSlot(spec.slug);
@@ -147,6 +148,14 @@ export function CabinetPlay({ spec, user, submit }: PlayProps<CabinetPuzzleSpec>
             program={wiring}
             onSelect={(id) => activeSlot.setActive(id)}
             onClose={() => setSlotsOpen(false)}
+          />
+        )}
+
+        {activeSlot.slots.length === 0 && previousPuzzle && (
+          <PreviousSolutionBanner
+            slug={spec.slug}
+            previousPuzzle={previousPuzzle}
+            onCopied={(id) => activeSlot.setActive(id)}
           />
         )}
 

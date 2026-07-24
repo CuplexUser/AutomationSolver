@@ -10,6 +10,7 @@ export function SettingsPage() {
   const save = useSaveSettings();
   const [confirmSubmit, setConfirmSubmit] = useState(true);
   const [devUnlockAll, setDevUnlockAll] = useState(false);
+  const [enableImportExport, setEnableImportExport] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
@@ -30,6 +31,7 @@ export function SettingsPage() {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setConfirmSubmit(data.settings.confirmSubmit !== false);
       setDevUnlockAll(data.settings.devUnlockAll === true);
+      setEnableImportExport(data.settings.enableImportExport === true);
     }
   }, [data]);
 
@@ -107,6 +109,59 @@ export function SettingsPage() {
         </form>
       </div>
 
+      <div className="settings-card panel">
+        <label className="setting-row toggle-row">
+          <div>
+            <strong>Confirm before submitting</strong>
+            <p className="muted sm">Ask for confirmation before grading a solution.</p>
+          </div>
+          <input
+            type="checkbox"
+            checked={confirmSubmit}
+            onChange={(e) => setConfirmSubmit(e.target.checked)}
+          />
+        </label>
+        <label className="setting-row toggle-row">
+          <div>
+            <strong>Enable solution export/import</strong>
+            <p className="muted sm">
+              Adds buttons to download the current program as JSON, or import one from a file.
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={enableImportExport}
+            onChange={(e) => setEnableImportExport(e.target.checked)}
+          />
+        </label>
+        {import.meta.env.DEV && (
+          <label className="setting-row toggle-row">
+            <div>
+              <strong>Developer mode: unlock all puzzles</strong>
+              <p className="muted sm">Bypasses progression gating. Only works in dev — no effect in production.</p>
+            </div>
+            <input
+              type="checkbox"
+              checked={devUnlockAll}
+              onChange={(e) => setDevUnlockAll(e.target.checked)}
+            />
+          </label>
+        )}
+        <button
+          className="btn btn-primary"
+          disabled={save.isPending}
+          onClick={() =>
+            save.mutate(
+              { ...data?.settings, confirmSubmit, devUnlockAll, enableImportExport },
+              { onSuccess: () => setSaved(true) },
+            )
+          }
+        >
+          {save.isPending ? 'Saving…' : 'Save settings'}
+        </button>
+        {saved && <span className="saved-tick">Saved ✓</span>}
+      </div>
+
       {user.email && (
         <div className="settings-card panel">
           <strong>{user.hasPassword ? 'Change password' : 'Set a password'}</strong>
@@ -154,46 +209,6 @@ export function SettingsPage() {
           </form>
         </div>
       )}
-
-      <div className="settings-card panel">
-        <label className="setting-row toggle-row">
-          <div>
-            <strong>Confirm before submitting</strong>
-            <p className="muted sm">Ask for confirmation before grading a solution.</p>
-          </div>
-          <input
-            type="checkbox"
-            checked={confirmSubmit}
-            onChange={(e) => setConfirmSubmit(e.target.checked)}
-          />
-        </label>
-        {import.meta.env.DEV && (
-          <label className="setting-row toggle-row">
-            <div>
-              <strong>Developer mode: unlock all puzzles</strong>
-              <p className="muted sm">Bypasses progression gating. Only works in dev — no effect in production.</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={devUnlockAll}
-              onChange={(e) => setDevUnlockAll(e.target.checked)}
-            />
-          </label>
-        )}
-        <button
-          className="btn btn-primary"
-          disabled={save.isPending}
-          onClick={() =>
-            save.mutate(
-              { confirmSubmit, devUnlockAll },
-              { onSuccess: () => setSaved(true) },
-            )
-          }
-        >
-          {save.isPending ? 'Saving…' : 'Save settings'}
-        </button>
-        {saved && <span className="saved-tick">Saved ✓</span>}
-      </div>
     </div>
   );
 }

@@ -69,6 +69,8 @@ export interface PuzzleDetail {
   puzzle: PuzzleSpec;
   slots: SolutionSlot[];
   progress: { status: string; bestScore: number } | null;
+  /** The category predecessor's slug/title, set only once it's solved (a solution exists to copy). */
+  previousPuzzle: { slug: string; title: string } | null;
 }
 
 export interface SubmitResult {

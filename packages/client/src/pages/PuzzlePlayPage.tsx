@@ -48,9 +48,11 @@ export function PuzzlePlayPage() {
   if (spec.kind === 'cabinet') {
     return (
       <Suspense fallback={<p className="muted pad">Loading cabinet…</p>}>
-        <CabinetPlay key={spec.slug} spec={spec} user={user} submit={submit} />
+        <CabinetPlay key={spec.slug} spec={spec} user={user} submit={submit} previousPuzzle={data.previousPuzzle} />
       </Suspense>
     );
   }
-  return <LadderPlay key={spec.slug} spec={spec} user={user} submit={submit} />;
+  return (
+    <LadderPlay key={spec.slug} spec={spec} user={user} submit={submit} previousPuzzle={data.previousPuzzle} />
+  );
 }

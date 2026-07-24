@@ -11,6 +11,7 @@ import { ReplayBar } from '../../features/sim/ReplayBar';
 import { TraceStrip } from '../../features/sim/TraceStrip';
 import { useReplay } from '../../features/sim/useReplay';
 import { useSimRunner } from '../../features/sim/useSimRunner';
+import { PreviousSolutionBanner } from '../../features/slots/PreviousSolutionBanner';
 import { SlotsPanel } from '../../features/slots/SlotsPanel';
 import { useActiveSlot } from '../../features/slots/useActiveSlot';
 import { BriefColumn } from './BriefColumn';
@@ -20,9 +21,10 @@ export type PlayProps<S> = {
   spec: S;
   user: ReturnType<typeof useAuth>['user'];
   submit: ReturnType<typeof useSubmit>;
+  previousPuzzle: { slug: string; title: string } | null;
 };
 
-export function LadderPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>) {
+export function LadderPlay({ spec, user, submit, previousPuzzle }: PlayProps<LadderPuzzleSpec>) {
   const { program, init, dirty, markClean } = useEditor();
   const activeSlot = useActiveSlot(spec);
   const updateSlot = useUpdateSlot(spec.slug);
@@ -163,6 +165,14 @@ export function LadderPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>) 
             program={program}
             onSelect={(id) => activeSlot.setActive(id)}
             onClose={() => setSlotsOpen(false)}
+          />
+        )}
+
+        {activeSlot.slots.length === 0 && previousPuzzle && (
+          <PreviousSolutionBanner
+            slug={spec.slug}
+            previousPuzzle={previousPuzzle}
+            onCopied={(id) => activeSlot.setActive(id)}
           />
         )}
 

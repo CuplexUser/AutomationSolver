@@ -428,6 +428,10 @@ describe('puzzle-map locking', () => {
     expect(detail.body.error).toBe('locked');
     expect(detail.body.requiresSlug).toBe('direct-control');
 
+    // The category's first puzzle has no predecessor to offer a starting solution from.
+    const first = await agent.get('/api/puzzles/direct-control');
+    expect(first.body.previousPuzzle).toBeNull();
+
     const submit = await agent.post('/api/puzzles/seal-in/submit').send({ program: sealInSolution });
     expect(submit.status).toBe(403);
     expect(submit.body.error).toBe('locked');
@@ -446,6 +450,8 @@ describe('puzzle-map locking', () => {
 
     const detail = await agent.get('/api/puzzles/seal-in');
     expect(detail.status).toBe(200);
+    // Its predecessor is solved, so a starting solution is on offer.
+    expect(detail.body.previousPuzzle).toEqual({ slug: 'direct-control', title: 'Direct Control' });
   });
 
   it('anonymous visitors see exactly the first puzzle of each category unlocked', async () => {

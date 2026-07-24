@@ -56,6 +56,10 @@ interface LockEntry {
   locked: boolean;
   requiresSlug?: string;
   requiresTitle?: string;
+  /** The category predecessor, if any — set regardless of lock state (used to offer "start from its solution"). */
+  prevSlug?: string;
+  prevTitle?: string;
+  prevSolved?: boolean;
 }
 
 /**
@@ -71,19 +75,19 @@ interface LockEntry {
  */
 function lockInfo(userId: number | undefined): Map<string, LockEntry> {
   const map = new Map<string, LockEntry>();
-  if (!config.isProd && userId != null && getSettings(userId).devUnlockAll === true) {
-    for (const p of PUZZLES) map.set(p.slug, { locked: false });
-    return map;
-  }
+  const devUnlock = !config.isProd && userId != null && getSettings(userId).devUnlockAll === true;
   const progress = progressMap(userId);
   const prevByCategory = new Map<PuzzleCategory, { slug: string; title: string; solved: boolean }>();
   for (const p of PUZZLES) {
     const prev = prevByCategory.get(p.category);
     const solved = progress.get(p.slug)?.status === 'solved';
-    const locked = prev != null && !prev.solved && !solved;
+    const locked = !devUnlock && prev != null && !prev.solved && !solved;
+    const prevFields = prev ? { prevSlug: prev.slug, prevTitle: prev.title, prevSolved: prev.solved } : {};
     map.set(
       p.slug,
-      locked ? { locked: true, requiresSlug: prev.slug, requiresTitle: prev.title } : { locked: false },
+      locked
+        ? { locked: true, requiresSlug: prev.slug, requiresTitle: prev.title, ...prevFields }
+        : { locked: false, ...prevFields },
     );
     prevByCategory.set(p.category, { slug: p.slug, title: p.title, solved });
   }
@@ -127,6 +131,7 @@ puzzlesRouter.get('/puzzles/:slug', (req, res) => {
     puzzle: spec,
     slots: slots.map(slotSummary),
     progress: prog ? { status: prog.status, bestScore: prog.score } : null,
+    previousPuzzle: lock?.prevSolved ? { slug: lock.prevSlug!, title: lock.prevTitle! } : null,
   });
 });
 
