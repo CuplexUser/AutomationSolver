@@ -1198,13 +1198,17 @@
   padding: 2px 7px;
   border-radius: 3px;
 }
-.icon-btn:hover {
+.icon-btn:hover:not(:disabled) {
   border-color: var(--live);
   color: var(--ink);
 }
-.icon-btn.danger:hover {
+.icon-btn.danger:hover:not(:disabled) {
   border-color: var(--stop);
   color: var(--stop);
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
 }
 .rung-body {
   display: flex;

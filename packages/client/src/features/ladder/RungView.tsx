@@ -12,6 +12,11 @@ interface Props {
   onToggleVlink: (row: number, col: number) => void;
   onAddRow: () => void;
   onAddCol: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
+  onInsertBelow: () => void;
   onDelete: () => void;
 }
 
@@ -26,6 +31,11 @@ export function RungView({
   onToggleVlink,
   onAddRow,
   onAddCol,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+  onInsertBelow,
   onDelete,
 }: Props) {
   const nodeCols = rung.cols + 1;
@@ -49,6 +59,15 @@ export function RungView({
             </button>
             <button className="icon-btn" title="Add column" onClick={onAddCol}>
               +col
+            </button>
+            <button className="icon-btn" title="Move rung up" disabled={!canMoveUp} onClick={onMoveUp}>
+              ▲
+            </button>
+            <button className="icon-btn" title="Move rung down" disabled={!canMoveDown} onClick={onMoveDown}>
+              ▼
+            </button>
+            <button className="icon-btn" title="Insert a new rung below" onClick={onInsertBelow}>
+              +rung
             </button>
             <button className="icon-btn danger" title="Delete rung" onClick={onDelete}>
               ✕

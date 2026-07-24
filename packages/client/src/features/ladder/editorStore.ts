@@ -27,6 +27,8 @@ interface EditorState {
   patchSelected: (patch: Partial<Pick<LadderElement, 'device' | 'preset'>>) => void;
   toggleVlink: (rung: number, row: number, col: number) => void;
   addRung: () => void;
+  insertRung: (index: number) => void;
+  moveRung: (index: number, direction: -1 | 1) => void;
   removeRung: (index: number) => void;
   addRow: (index: number) => void;
   addCol: (index: number) => void;
@@ -103,6 +105,29 @@ export const useEditor = create<EditorState>((set, get) => ({
       program: { rungs: [...s.program.rungs, makeEmptyRung(nextRungId(), 3, 8)] },
       dirty: true,
     })),
+
+  insertRung: (index) =>
+    set((s) => {
+      const rungs = [...s.program.rungs];
+      rungs.splice(index, 0, makeEmptyRung(nextRungId(), 3, 8));
+      let selected = s.selected;
+      if (selected && selected.rung >= index) selected = { ...selected, rung: selected.rung + 1 };
+      return { program: { rungs }, selected, dirty: true };
+    }),
+
+  moveRung: (index, direction) =>
+    set((s) => {
+      const target = index + direction;
+      if (target < 0 || target >= s.program.rungs.length) return s;
+      const rungs = [...s.program.rungs];
+      [rungs[index], rungs[target]] = [rungs[target], rungs[index]];
+      let selected = s.selected;
+      if (selected) {
+        if (selected.rung === index) selected = { ...selected, rung: target };
+        else if (selected.rung === target) selected = { ...selected, rung: index };
+      }
+      return { program: { rungs }, selected, dirty: true };
+    }),
 
   removeRung: (index) =>
     set((s) => {

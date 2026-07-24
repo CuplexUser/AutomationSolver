@@ -98,6 +98,8 @@ export function LadderEditor({
     setCell,
     toggleVlink,
     addRung,
+    insertRung,
+    moveRung,
     removeRung,
     addRow,
     addCol,
@@ -233,6 +235,9 @@ export function LadderEditor({
         } else if (e.key === '0') {
           e.preventDefault();
           setZoom(1);
+        } else if (editable && selected && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          e.preventDefault();
+          moveRung(selected.rung, e.key === 'ArrowUp' ? -1 : 1);
         }
         return;
       }
@@ -284,6 +289,11 @@ export function LadderEditor({
         addRung();
         return;
       }
+      if (k === 'i') {
+        e.preventDefault();
+        insertRung(selected ? selected.rung + 1 : program.rungs.length);
+        return;
+      }
       const meta = palette.find((i) => i.key === k);
       if (meta && selected) {
         e.preventDefault();
@@ -292,7 +302,22 @@ export function LadderEditor({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [editable, selected, palette, place, moveSelection, setCell, selectCell, toggleVlink, addRung, addRow, addCol]);
+  }, [
+    editable,
+    selected,
+    palette,
+    place,
+    moveSelection,
+    setCell,
+    selectCell,
+    toggleVlink,
+    addRung,
+    insertRung,
+    moveRung,
+    addRow,
+    addCol,
+    program.rungs.length,
+  ]);
 
   return (
     <div className="ladder-editor">
@@ -432,7 +457,15 @@ export function LadderEditor({
                   </div>
                   <div>
                     <dt>A</dt>
-                    <dd>add a rung</dd>
+                    <dd>add a rung at the end</dd>
+                  </div>
+                  <div>
+                    <dt>I</dt>
+                    <dd>insert a rung after the selected one</dd>
+                  </div>
+                  <div>
+                    <dt>Ctrl + ↑ / ↓</dt>
+                    <dd>move the selected rung up / down</dd>
                   </div>
                   <div>
                     <dt>Shift + → / ↓</dt>
@@ -474,6 +507,11 @@ export function LadderEditor({
               onToggleVlink={(row, col) => toggleVlink(i, row, col)}
               onAddRow={() => addRow(i)}
               onAddCol={() => addCol(i)}
+              onMoveUp={() => moveRung(i, -1)}
+              onMoveDown={() => moveRung(i, 1)}
+              canMoveUp={i > 0}
+              canMoveDown={i < program.rungs.length - 1}
+              onInsertBelow={() => insertRung(i + 1)}
               onDelete={() => removeRung(i)}
             />
           ))}
