@@ -4,6 +4,21 @@ import { useSaveSettings, useSettings } from '../api/queries';
 import { useAuth } from '../auth/AuthContext';
 import { ApiError, authApi } from '../api/client';
 
+const OAUTH_PROVIDER_LABELS: Record<string, string> = {
+  google: 'Google',
+  github: 'GitHub',
+};
+
+function accountSummary(user: { email: string | null; oauthProviders: string[] }): string {
+  const providerNames = user.oauthProviders.map(
+    (provider) => OAUTH_PROVIDER_LABELS[provider] ?? provider,
+  );
+  const signedInWith = providerNames.length > 0 ? `Signed in using ${providerNames.join(' & ')}` : null;
+  if (signedInWith && user.email) return `${signedInWith} · ${user.email}`;
+  if (signedInWith) return signedInWith;
+  return user.email ?? '';
+}
+
 export function SettingsPage() {
   const { user, updateProfile } = useAuth();
   const { data } = useSettings();
@@ -24,6 +39,15 @@ export function SettingsPage() {
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [passwordSaved, setPasswordSaved] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+
+  // Hydrate the display name once the user arrives from the session bootstrap
+  // (it's still null on the very first render after a refresh).
+  useEffect(() => {
+    if (user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setDisplayName(user.displayName);
+    }
+  }, [user]);
 
   // Hydrate the form once the saved settings arrive from the server.
   useEffect(() => {
@@ -89,7 +113,7 @@ export function SettingsPage() {
       <span className="eyebrow">Preferences</span>
       <h1>Settings</h1>
       <div className="settings-card panel">
-        <p className="muted sm">{user.email ?? 'OAuth account'}</p>
+        <p className="muted sm">{accountSummary(user)}</p>
         <form onSubmit={saveProfile} className="auth-field">
           <span>Display name</span>
           <input

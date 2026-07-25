@@ -114,6 +114,13 @@ export function findOrCreateOAuthUser(input: {
   return user;
 }
 
+export function getOAuthProviders(userId: number): string[] {
+  const rows = getDb()
+    .prepare('SELECT provider FROM oauth_accounts WHERE user_id = ?')
+    .all(userId) as { provider: string }[];
+  return rows.map((row) => row.provider);
+}
+
 // --- email verification tokens ---------------------------------------------
 export function createEmailVerificationToken(
   userId: number,

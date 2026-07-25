@@ -39,6 +39,7 @@ export interface PublicUser {
   email: string | null;
   displayName: string;
   hasPassword: boolean;
+  oauthProviders: string[];
 }
 
 export interface PuzzleListItem {

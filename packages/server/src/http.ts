@@ -1,11 +1,12 @@
 import type { NextFunction, Request, Response } from 'express';
-import type { UserRow } from './db/repo.js';
+import { getOAuthProviders, type UserRow } from './db/repo.js';
 
 export interface PublicUser {
   id: number;
   email: string | null;
   displayName: string;
   hasPassword: boolean;
+  oauthProviders: string[];
 }
 
 export function publicUser(user: UserRow): PublicUser {
@@ -14,6 +15,7 @@ export function publicUser(user: UserRow): PublicUser {
     email: user.email,
     displayName: user.display_name,
     hasPassword: user.password_hash != null,
+    oauthProviders: getOAuthProviders(user.id),
   };
 }
 
