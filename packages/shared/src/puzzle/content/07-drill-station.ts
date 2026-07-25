@@ -27,11 +27,15 @@ export const drillStation: PuzzleSpec = {
   hints: [
     'Rung 1: seal in a RUN bit M0 from (X0 OR M0), in series with X1 (NO) and a ' +
       'normally-closed X3 so reaching the bottom drops the cycle.',
-    'Clamp Y0 follows M0. Drive the drill Y1 from M0 AND X2 (clamped).',
-    'Warning Y2 follows the drill. SET Y3 on X3 (bottom) and RESET it on X0.',
-    'SET Y4 on X3 (bottom) to start ejecting, and RESET Y4 on X4 (ejected) to stop — ' +
-      'triggering off Y3 instead works at first but fights its own reset once X4 ' +
-      'senses ejected, since Y3 never goes false again until the next start.',
+    'Clamp Y0 follows M0 (a NO contact on M0). Drive the drill Y1 from M0 AND X2 ' +
+      '(clamped) — both NO contacts.',
+    'Warning Y2 follows the drill (a NO contact on Y1). SET Y3 on a NO contact on ' +
+      'X3 (bottom) and RESET it on a NO contact on X0.',
+    'SET Y4 on a NO contact on X3 (bottom) — a SET only needs X3 true for a single ' +
+      'scan, so it is fine that X3 drops again the instant the run latch releases; ' +
+      "no seal-in needed. RESET Y4 on a NO contact on X4 (ejected) to stop it — " +
+      'triggering the SET off Y3 instead works at first but fights its own reset ' +
+      'once X4 senses ejected, since Y3 never goes false again until the next start.',
   ],
   devices: [
     { address: 'X0', label: 'Start', io: 'input', widget: 'momentary' },

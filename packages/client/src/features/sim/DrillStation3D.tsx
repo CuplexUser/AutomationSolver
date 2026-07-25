@@ -65,6 +65,10 @@ type BlockStage = 'platform' | 'ejected' | 'dropping';
 interface BlockAnim {
   stage: BlockStage;
   drop: number; // 0 = up on the feed incline, 1 = landed on the platform
+  // Deepest the bit has reached into the current block. The hole this drives
+  // (via BlockPlug below) must persist once drilled rather than re-filling as
+  // the bit retracts, so this tracks a running max instead of the live feed.
+  maxFeed: number;
 }
 
 interface DriveRefs {
@@ -101,7 +105,7 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     };
   }, [scene]);
 
-  const anim = useRef<BlockAnim>({ stage: 'platform', drop: 1 });
+  const anim = useRef<BlockAnim>({ stage: 'platform', drop: 1, maxFeed: 0 });
 
   // The loaded glTF scene graph and the block-stage tracker are both external-
   // system state (three.js's own object tree, and a plain animation clock) —
@@ -128,7 +132,9 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     if (a.stage === 'ejected' && !done) {
       a.stage = 'dropping';
       a.drop = 0;
+      a.maxFeed = 0; // a fresh block arrives undrilled
     }
+    a.maxFeed = Math.max(a.maxFeed, feed);
     if (a.stage === 'dropping') {
       a.drop = Math.min(1, a.drop + DROP_RATE * dt);
       if (a.drop >= 1) a.stage = 'platform';
@@ -153,8 +159,13 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       const stopOrEjectZ = BLOCK_STOP_Z + (BLOCK_EJECT_Z - BLOCK_STOP_Z) * blockPushProgress;
       r.block.position.z = BLOCK_CHUTE_Z + (stopOrEjectZ - BLOCK_CHUTE_Z) * a.drop;
     }
+    // Only spin while a block is actually riding across them — once ejected,
+    // the block freezes in place (see blockPushProgress above) and push keeps
+    // decaying as the cylinder retracts, so gating on push alone left the
+    // rollers spinning under a block that had already stopped moving.
+    const blockRiding = a.stage === 'platform' && push > 0.01 && push < 1;
     for (const roller of r.rollers) {
-      if (push > 0.01 && push < 1) roller.rotation.x += ROLLER_SPIN_SPEED * dt;
+      if (blockRiding) roller.rotation.x += ROLLER_SPIN_SPEED * dt;
     }
 
     if (r.spindleHead) {
@@ -167,7 +178,9 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       // The plug fills the real (boolean-cut) hole in BlockBody; its far edge
       // recedes from the top face down toward the hole's floor as the bit
       // plunges in, revealing the cavity rather than the block changing shape.
-      const remaining = Math.max(0.02, 1 - feed);
+      // Driven by maxFeed (not the live feed) so the hole stays drilled once
+      // made, instead of visually re-filling as the bit retracts afterward.
+      const remaining = Math.max(0.02, 1 - a.maxFeed);
       r.blockPlug.scale.y = remaining;
       r.blockPlug.position.y = HOLE_BOTTOM_Y + (HOLE_DEPTH * remaining) / 2;
     }
@@ -201,8 +214,8 @@ export function DrillStation3D({ machine, height = 300 }: { machine: MachineStat
   return (
     <MachineCanvas
       height={height}
-      cameraPosition={[8, 5.5, 9]}
-      target={[0, 2, 0]}
+      cameraPosition={[3, 6, 11]}
+      target={[-2, 2.2, -0.5]}
       minDistance={7}
       maxDistance={22}
     >
