@@ -60,46 +60,205 @@ const conveyor: ProcessModel = {
 
 const num = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : fallback);
 
+const DRILL_CLAMP_MS = 400;
+const DRILL_RELEASE_MS = 300;
+const DRILL_FEED_MS = 800;
+const DRILL_RETRACT_MS = 400;
+const DRILL_PUSH_MS = 500;
+const DRILL_PUSH_RETRACT_MS = 300;
+const DRILL_SPINUP_MS = 600;
+const DRILL_COAST_MS = 900;
+const DRILL_GATE_MS = 250;
+/** How long a fresh part takes to reach the fixture once it is clear. */
+const DRILL_INFEED_MS = 700;
 /**
- * Drill station — a sequential machine. Outputs drive a clamp, a drill feed and
- * an eject pusher; the process integrates their travel and reports back position
- * sensors:
- *   Y0 clamp → X2 "Clamped"     (clamp fully closed)
- *   Y1 drill → X3 "At Bottom"   (drill fully advanced)
- *   Y4 eject → X4 "Ejected"     (part pushed clear onto the roller band)
- * Machine state (clamp/drill/push 0..1, spinning, warning, done) drives the 3D view.
+ * Time the bit must spend turning at full depth for the hole to be finished.
+ * Deliberately shorter than the 1.0 s dwell the puzzles ask for (T0 = K10), so a
+ * program that dwells properly has margin while one that retracts on X3 doesn't.
+ */
+const DRILL_DWELL_MS = 800;
+
+/** Deterministic stock sequence for the mixed-material puzzle. */
+const DRILL_STOCK = ['alu', 'steel', 'alu', 'alu', 'steel', 'alu', 'alu', 'steel'] as const;
+
+const drillHas = (devices: PuzzleDevice[], address: string): boolean =>
+  devices.some((d) => d.address === address);
+
+/**
+ * Drill station — a sequential machine, feature-detected off the puzzle's own
+ * device list (elevator5-style) so one model serves the whole difficulty ramp:
+ *
+ *   base           Y0 clamp → X2 "Clamped", Y1 feed → X3 "At Bottom",
+ *                  Y4 eject → X4 "Ejected".
+ *   +spindle (Y5)  a real spin-up/coast-down spindle → X7 "At Speed"; the feed
+ *                  is interlocked (clamped, turning, drillable stock) and a
+ *                  dwell at full depth is what actually finishes the hole.
+ *   +feeder  (X5)  work pieces physically arrive on the fixture → X5 "Part
+ *                  Present", and are counted good/scrap/bad as they are ejected.
+ *   +metal   (X6)  the stock alternates aluminium and hardened steel → X6
+ *                  "Metal Part"; steel cannot be drilled at all.
+ *   +gate    (Y6)  a diverter that routes the ejected part into the scrap bin
+ *                  instead of onto the outfeed belt.
+ *
+ * Violating an interlock latches `jam` and freezes the machine, exactly like the
+ * packaging and pickPlace models, so every scenario can assert `jam: false`.
+ * Machine state (clamp/drill/push/gate 0..1, spinning, warning, done, part,
+ * counters) drives the 3D view.
  */
 const drill: ProcessModel = {
   id: 'drill',
-  init: () => ({ clamp: 0, drill: 0, push: 0, spinning: false, warning: false, done: false }),
-  step: ({ outputs, machine, dtMs }) => {
-    const clampMs = 400;
-    const releaseMs = 300;
-    const drillMs = 800;
-    const retractMs = 400;
-    const pushMs = 500;
-    const pushRetractMs = 300;
-    const clampCmd = outputs['Y0'] === true;
-    const drillCmd = outputs['Y1'] === true;
-    const pushCmd = outputs['Y4'] === true;
-    let clamp = num(machine.clamp);
-    let drill = num(machine.drill);
-    let push = num(machine.push);
-    clamp = clampCmd ? Math.min(1, clamp + dtMs / clampMs) : Math.max(0, clamp - dtMs / releaseMs);
-    // The drill can only advance once the part is clamped.
-    drill = drillCmd ? Math.min(1, drill + dtMs / drillMs) : Math.max(0, drill - dtMs / retractMs);
-    push = pushCmd ? Math.min(1, push + dtMs / pushMs) : Math.max(0, push - dtMs / pushRetractMs);
-    return {
-      machine: {
-        clamp,
-        drill,
-        push,
-        spinning: drillCmd,
-        warning: outputs['Y2'] === true,
-        done: outputs['Y3'] === true,
-      },
-      derivedInputs: { X2: clamp >= 1, X3: drill >= 1, X4: push >= 1 },
+  init: (devices) => {
+    const base: MachineState = {
+      clamp: 0,
+      drill: 0,
+      push: 0,
+      spinning: false,
+      warning: false,
+      done: false,
+      jam: false,
     };
+    if (drillHas(devices, 'Y5')) Object.assign(base, { speed: 0 });
+    if (drillHas(devices, 'Y6')) Object.assign(base, { gate: 0 });
+    if (drillHas(devices, 'X5')) {
+      Object.assign(base, {
+        part: 'none',
+        drilled: false,
+        dwell: 0,
+        feedT: 0,
+        fedIndex: 0,
+        good: 0,
+        scrap: 0,
+        bad: 0,
+      });
+    }
+    return base;
+  },
+  step: ({ outputs, machine, devices, dtMs }) => {
+    const hasSpindle = drillHas(devices, 'Y5');
+    const hasFeeder = drillHas(devices, 'X5');
+    const hasMetal = drillHas(devices, 'X6');
+    const hasGate = drillHas(devices, 'Y6');
+
+    let jam = machine.jam === true;
+    const dt = jam ? 0 : dtMs;
+
+    const clampCmd = outputs['Y0'] === true;
+    const feedCmd = outputs['Y1'] === true;
+    const pushCmd = outputs['Y4'] === true;
+    // Without a spindle output the feed motor and the bit are one and the same.
+    const spinCmd = hasSpindle ? outputs['Y5'] === true : feedCmd;
+    const gateCmd = hasGate && outputs['Y6'] === true;
+
+    const prevClamp = num(machine.clamp);
+    const prevFeed = num(machine.drill);
+    const prevPush = num(machine.push);
+    const clamp = clampCmd
+      ? Math.min(1, prevClamp + dt / DRILL_CLAMP_MS)
+      : Math.max(0, prevClamp - dt / DRILL_RELEASE_MS);
+    const speed = spinCmd
+      ? Math.min(1, num(machine.speed) + dt / DRILL_SPINUP_MS)
+      : Math.max(0, num(machine.speed) - dt / DRILL_COAST_MS);
+
+    let part = typeof machine.part === 'string' ? machine.part : 'none';
+
+    // Feed interlocks, checked against the *new* clamp/speed so a command issued
+    // this same scan counts: commanding the feed together with the clamp or with
+    // the spindle crashes the bit, and so does touching hardened steel.
+    if (hasSpindle && !jam) {
+      const advancing = feedCmd && prevFeed < 1;
+      if (advancing && (clamp < 1 || speed < 1)) jam = true;
+      else if (advancing && hasFeeder && part !== 'alu') jam = true;
+    }
+    const move = jam ? 0 : dt;
+
+    const feed = feedCmd
+      ? Math.min(1, prevFeed + move / DRILL_FEED_MS)
+      : Math.max(0, prevFeed - move / DRILL_RETRACT_MS);
+    // Shoving a fully clamped part sideways would tear the fixture apart, so the
+    // pusher is interlocked mechanically (elevator5-door style: the machine just
+    // refuses to move) rather than jamming — releasing the clamp on the very scan
+    // the pusher starts is normal, and shouldn't be punished as a crash.
+    const pushBlocked = hasSpindle && clamp >= 1;
+    let push = prevPush;
+    if (pushCmd) {
+      // Commanded but interlocked: the rod simply stays put.
+      if (!pushBlocked) push = Math.min(1, prevPush + move / DRILL_PUSH_MS);
+    } else {
+      push = Math.max(0, prevPush - move / DRILL_PUSH_RETRACT_MS);
+    }
+    const gate = gateCmd
+      ? Math.min(1, num(machine.gate) + move / DRILL_GATE_MS)
+      : Math.max(0, num(machine.gate) - move / DRILL_GATE_MS);
+
+    let drilled = machine.drilled === true;
+    let dwell = num(machine.dwell);
+    let feedT = num(machine.feedT);
+    let fedIndex = num(machine.fedIndex);
+    let good = num(machine.good);
+    let scrap = num(machine.scrap);
+    let bad = num(machine.bad);
+
+    if (hasFeeder) {
+      // A fresh part only slides in once the fixture is properly clear.
+      if (part === 'none' && clamp <= 0 && push <= 0) {
+        feedT += move;
+        if (feedT >= DRILL_INFEED_MS) {
+          part = hasMetal ? DRILL_STOCK[fedIndex % DRILL_STOCK.length] : 'alu';
+          fedIndex += 1;
+          feedT = 0;
+          drilled = false;
+          dwell = 0;
+        }
+      } else if (part !== 'none') {
+        feedT = 0;
+      }
+    }
+
+    // The hole is finished by the dwell, not by touching the bottom.
+    if (feed >= 1 && speed >= 1 && (!hasFeeder || part === 'alu')) {
+      dwell += move;
+      if (dwell >= DRILL_DWELL_MS) drilled = true;
+    }
+
+    // The part leaves the fixture the instant the pusher completes its stroke —
+    // down the scrap chute if the diverter is open, onto the outfeed belt if not.
+    if (hasFeeder && prevPush < 1 && push >= 1 && part !== 'none') {
+      if (gateCmd) {
+        if (part === 'steel') scrap += 1;
+        else bad += 1; // threw away good stock
+      } else if (part === 'alu' && drilled) {
+        good += 1;
+      } else {
+        bad += 1; // shipped undrilled stock, or steel, as a finished part
+      }
+      part = 'none';
+      drilled = false;
+      dwell = 0;
+      feedT = 0;
+    }
+
+    const next: MachineState = {
+      clamp,
+      drill: feed,
+      push,
+      spinning: hasSpindle ? speed > 0 : feedCmd,
+      warning: outputs['Y2'] === true,
+      // Whichever completion lamp the puzzle wires drives the green stack light.
+      done: outputs['Y3'] === true || outputs['Y7'] === true,
+      jam,
+    };
+    if (hasSpindle) next.speed = speed;
+    if (hasGate) next.gate = gate;
+    if (hasFeeder) {
+      Object.assign(next, { part, drilled, dwell, feedT, fedIndex, good, scrap, bad });
+    }
+
+    const derivedInputs: Record<string, boolean> = { X2: clamp >= 1, X3: feed >= 1, X4: push >= 1 };
+    if (hasFeeder) derivedInputs.X5 = part !== 'none';
+    if (hasMetal) derivedInputs.X6 = part === 'steel';
+    if (hasSpindle) derivedInputs.X7 = speed >= 1;
+
+    return { machine: next, derivedInputs };
   },
 };
 

@@ -69,6 +69,25 @@ const BLOCK_EJECT_Z = -0.08; // landing point on the outfeed belt
 const DROP_RATE = 1 / 0.5; // seconds for a fresh part to reach the fixture
 const SLIDE_FRACTION = 0.55; // of that, the share spent sliding before the drop
 
+// A rejected blank (the diverter, Y6, open as it is pushed) never reaches the
+// belt. There is no scrap bin in the model, so it slides clear of the belt in +X
+// while dropping away, and is hidden once it is past the belt's edge — enough to
+// read as "this one did not get drilled and did not ship".
+const REJECT_DRIFT = 0.45; // units/s sideways
+const REJECT_FALL = 0.55; // units/s², an accelerating drop
+const REJECT_FLOOR_Y = -0.06; // gone from sight below the belt line
+
+// Hardened steel stock the station cannot drill, versus the machinable blanks it
+// can. Only the material differs — the blank geometry is identical, which is
+// exactly why the machine needs an inductive sensor to tell them apart. These
+// values are the glb's own `steel` material (base color converted from its linear
+// factors to sRGB, metallicFactor defaulting to 1) so a steel blank matches the
+// structural steel already in the scene; fully metallic reads correctly here
+// because MachineCanvas lights with a RoomEnvironment IBL, not lights alone.
+const STEEL_COLOR = new THREE.Color('#9599a0');
+const STEEL_METALNESS = 1;
+const STEEL_ROUGHNESS = 0.49;
+
 type BlockStage = 'fixture' | 'ejected' | 'dropping';
 interface BlockAnim {
   stage: BlockStage;
@@ -78,6 +97,11 @@ interface BlockAnim {
   // retracts, so this tracks a running max instead of the live feed.
   maxFeed: number;
   carry: number; // how far the ejected part has ridden down the outfeed belt
+  fly: number; // seconds since a rejected blank left the fixture
+  // Captured when the part leaves, because the machine state that produced them
+  // (the diverter, the material sensor) has already moved on to the next blank.
+  rejected: boolean;
+  steel: boolean;
   infeed: number; // distance the infeed queue has travelled so far
   infeedTarget: number; // where it is indexing to — one more pitch per part shipped
 }
@@ -93,6 +117,19 @@ interface DriveRefs {
   stackGreen?: THREE.Mesh;
   rollers: THREE.Object3D[];
   infeed: THREE.Object3D[];
+  /** Own clones of the work piece's materials, so re-tinting can't leak. */
+  stockMats: THREE.MeshStandardMaterial[];
+  stockBase?: { color: THREE.Color; metalness: number; roughness: number };
+}
+
+/** Gives a mesh its own copy of its material so it can be tinted in isolation. */
+function ownMaterial(obj: THREE.Object3D | undefined): THREE.MeshStandardMaterial | undefined {
+  const mesh = obj as THREE.Mesh | undefined;
+  const mat = mesh?.material as THREE.MeshStandardMaterial | undefined;
+  if (!mesh || !mat) return undefined;
+  const copy = mat.clone();
+  mesh.material = copy;
+  return copy;
 }
 
 /** Collects `Name_0`, `Name_1`, ... until the first gap. */
@@ -109,7 +146,16 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
   const { scene } = useGLTF(MODEL_URL, DRACO_DECODER_PATH);
   const refs = useMemo<DriveRefs>(() => {
     enableShadows(scene);
+    const stockMats = [
+      ownMaterial(scene.getObjectByName('BlockBody') ?? undefined),
+      ownMaterial(scene.getObjectByName('BlockPlug') ?? undefined),
+    ].filter((m): m is THREE.MeshStandardMaterial => m != null);
+    const first = stockMats[0];
     return {
+      stockMats,
+      stockBase: first
+        ? { color: first.color.clone(), metalness: first.metalness, roughness: first.roughness }
+        : undefined,
       holdRod: scene.getObjectByName('HoldRod') ?? undefined,
       pushRod: scene.getObjectByName('PushRod') ?? undefined,
       block: scene.getObjectByName('Block') ?? undefined,
@@ -128,6 +174,9 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     drop: 1,
     maxFeed: 0,
     carry: 0,
+    fly: 0,
+    rejected: false,
+    steel: false,
     infeed: 0,
     infeedTarget: 0,
   });
@@ -144,6 +193,10 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     const spinning = boolOf(machine.spinning);
     const warning = boolOf(machine.warning);
     const done = boolOf(machine.done);
+    const gate = clamp01(numOf(machine.gate));
+    // Puzzles that model real stock report the fixture's contents; the simpler
+    // ones don't, and fall back to the done-lamp heuristic below.
+    const stock = typeof machine.part === 'string' ? machine.part : undefined;
     const r = refs;
     const a = anim.current;
 
@@ -156,9 +209,15 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     if (a.stage === 'fixture' && push >= 1) {
       a.stage = 'ejected';
       a.carry = 0;
-      a.infeedTarget += INFEED_PITCH; // a part shipped, so index the queue up by one
+      a.fly = 0;
+      a.rejected = gate > 0.5; // the diverter was open, so this one is scrap
+      a.infeedTarget += INFEED_PITCH; // a part consumed, so index the queue up by one
     }
-    if (a.stage === 'ejected' && !done) {
+    if (a.stage !== 'ejected' && stock != null) a.steel = stock === 'steel';
+    // A fresh blank is on its way: the stock-aware puzzles say so outright, the
+    // rest infer it from the cycle-done lamp clearing.
+    const freshPart = stock != null ? stock !== 'none' : !done;
+    if (a.stage === 'ejected' && freshPart) {
       a.stage = 'dropping';
       a.drop = 0;
       a.maxFeed = 0; // a fresh part arrives undrilled
@@ -168,7 +227,10 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       a.drop = Math.min(1, a.drop + DROP_RATE * dt);
       if (a.drop >= 1) a.stage = 'fixture';
     }
-    if (a.stage === 'ejected') a.carry += BELT_SPEED * dt;
+    if (a.stage === 'ejected') {
+      a.fly += dt;
+      if (!a.rejected) a.carry += BELT_SPEED * dt;
+    }
     if (a.infeed < a.infeedTarget) {
       a.infeed = Math.min(a.infeedTarget, a.infeed + INFEED_SPEED * dt);
     }
@@ -190,13 +252,28 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       // The belt ride only applies to the part that is actually on the belt —
       // leaving it in once a fresh part has dropped would park that part a whole
       // belt-length downstream (and past BELT_EXIT_Z, so invisible).
-      const beltRide = a.stage === 'ejected' ? a.carry : 0;
-      r.block.position.x = BLOCK_CHUTE.x + (BLOCK_REST.x - BLOCK_CHUTE.x) * slide;
-      r.block.position.y = BLOCK_CHUTE.y + (BLOCK_REST.y - BLOCK_CHUTE.y) * fall;
+      const beltRide = a.stage === 'ejected' && !a.rejected ? a.carry : 0;
+      // A diverted blank leaves sideways and downward instead of riding the belt.
+      const scrapping = a.stage === 'ejected' && a.rejected;
+      const driftX = scrapping ? REJECT_DRIFT * a.fly : 0;
+      const dropY = scrapping ? REJECT_FALL * a.fly * a.fly : 0;
+      r.block.position.x = BLOCK_CHUTE.x + (BLOCK_REST.x - BLOCK_CHUTE.x) * slide + driftX;
+      r.block.position.y = BLOCK_CHUTE.y + (BLOCK_REST.y - BLOCK_CHUTE.y) * fall - dropY;
       r.block.position.z = ejectZ + beltRide;
-      // Once it has ridden off the far end of the belt the part is gone; hiding
-      // it there is also what keeps the jump back up to the chute out of sight.
-      r.block.visible = r.block.position.z < BELT_EXIT_Z;
+      // Once it has ridden off the far end of the belt (or dropped past its edge
+      // into the scrap bin) the part is gone; hiding it there is also what keeps
+      // the jump back up to the chute out of sight.
+      r.block.visible =
+        r.block.position.z < BELT_EXIT_Z && r.block.position.y > REJECT_FLOOR_Y;
+    }
+
+    // Hardened stock reads as steel: same blank, different material.
+    if (r.stockBase) {
+      for (const mat of r.stockMats) {
+        mat.color.copy(a.steel ? STEEL_COLOR : r.stockBase.color);
+        mat.metalness = a.steel ? STEEL_METALNESS : r.stockBase.metalness;
+        mat.roughness = a.steel ? STEEL_ROUGHNESS : r.stockBase.roughness;
+      }
     }
 
     // Infeed queue. Both the parts and the rollers are driven straight off the

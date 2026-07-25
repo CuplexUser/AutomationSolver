@@ -31,6 +31,12 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: SimRunner }) {
   if (spec.processId === 'drill') {
     const m = runner.machine;
+    // Same feature detection the process model does: the readout grows with the
+    // machine the puzzle actually wires.
+    const hasSpindle = spec.devices.some((d) => d.address === 'Y5');
+    const hasStock = typeof m.part === 'string';
+    const hasGate = spec.devices.some((d) => d.address === 'Y6');
+    const speed = numOf(m.speed);
     return (
       <div className="machine-view panel">
         <div className="mv-head">
@@ -43,8 +49,16 @@ export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: 
         <div className="mv-readout">
           <Readout label="Clamp" value={pct(numOf(m.clamp))} on={numOf(m.clamp) >= 1} />
           <Readout label="Feed" value={pct(numOf(m.drill))} on={numOf(m.drill) >= 1} />
-          <Readout label="Spindle" value={boolOf(m.spinning) ? 'RUN' : 'OFF'} on={boolOf(m.spinning)} />
+          <Readout
+            label="Spindle"
+            value={hasSpindle ? spindleValue(speed) : boolOf(m.spinning) ? 'RUN' : 'OFF'}
+            on={hasSpindle ? speed >= 1 : boolOf(m.spinning)}
+          />
+          {hasStock && <Readout label="Stock" value={stockValue(m)} on={m.part === 'steel'} />}
           <Readout label="Eject" value={pct(numOf(m.push))} on={numOf(m.push) >= 1} />
+          {hasStock && <Readout label="Drilled" value={`${numOf(m.good)}`} on={numOf(m.good) > 0} />}
+          {hasGate && <Readout label="Rejected" value={`${numOf(m.scrap)}`} on={numOf(m.scrap) > 0} />}
+          {numOf(m.bad) > 0 && <Readout label="Faults" value={`${numOf(m.bad)}`} on />}
         </div>
       </div>
     );
@@ -144,11 +158,27 @@ function Readout({ label, value, on }: { label: string; value: string; on: boole
 // --- Drill station ----------------------------------------------------------
 
 function drillTag(m: MachineState): string {
-  if (numOf(m.push) > 0 && numOf(m.push) < 1) return '⏵ ejecting';
+  if (m.jam === true) return '⚠ jammed';
+  const pushing = numOf(m.push) > 0 && numOf(m.push) < 1;
+  if (pushing) return numOf(m.gate) > 0.5 ? '⏴ rejecting' : '⏵ ejecting';
   if (boolOf(m.done)) return '✔ cycle done';
-  if (boolOf(m.spinning)) return '⚙ drilling';
+  if (numOf(m.drill) >= 1) return '⚙ dwelling';
+  if (boolOf(m.spinning)) return numOf(m.drill) > 0 ? '⚙ drilling' : '⚙ spindle up';
   if (numOf(m.clamp) > 0) return 'clamping';
+  if (m.part === 'steel') return '⛔ metal blank';
+  if (m.part === 'none') return 'waiting for stock';
   return 'idle';
+}
+
+function spindleValue(speed: number): string {
+  if (speed >= 1) return 'RUN';
+  return speed > 0 ? 'SPIN-UP' : 'OFF';
+}
+
+function stockValue(m: MachineState): string {
+  if (m.part === 'steel') return 'STEEL';
+  if (m.part === 'alu') return boolOf(m.drilled) ? 'ALU ✔' : 'ALU';
+  return '—';
 }
 
 // --- Packaging ---------------------------------------------------------------

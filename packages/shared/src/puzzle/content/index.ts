@@ -27,6 +27,9 @@ import { pickPlaceCycle } from './25-pick-place-cycle.js';
 import { pickPlaceTray } from './26-pick-place-tray.js';
 import { pickPlaceSupply } from './27-pick-place-supply.js';
 import { pickPlaceFull } from './28-pick-place-full.js';
+import { drillClampFeed } from './29-drill-clamp-feed.js';
+import { drillSpindle } from './30-drill-spindle.js';
+import { drillProduction } from './31-drill-production.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -37,7 +40,6 @@ export const PUZZLES: PuzzleSpec[] = [
   runOnTimer,
   flasher,
   conveyorStop,
-  drillStation,
   twoHandPress,
   elevatorAutoReturn,
   elevatorDispatch,
@@ -57,6 +59,10 @@ export const PUZZLES: PuzzleSpec[] = [
   pickPlaceTray,
   pickPlaceSupply,
   pickPlaceFull,
+  drillClampFeed,
+  drillStation,
+  drillSpindle,
+  drillProduction,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

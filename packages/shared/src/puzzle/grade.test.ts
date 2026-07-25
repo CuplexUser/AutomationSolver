@@ -327,6 +327,88 @@ function pickPlaceOrder(): Rung[] {
   ];
 }
 
+// Drill station: the seal-in every puzzle in the category starts from —
+// (X0 OR M0) AND healthy AND NOT at-bottom — with the clamp holding for the
+// whole cycle and the feed gated on the clamped sensor, not on the run latch.
+function drillClampFeedCore(): Rung[] {
+  return [
+    R(
+      'dc1',
+      2,
+      4,
+      { '0,0': no('X0'), '1,0': no('M0'), '0,1': no('X1'), '0,2': nc('X3'), '0,3': out('M0') },
+      [{ row: 0, col: 1 }],
+    ),
+    R('dc2', 1, 2, { '0,0': no('M0'), '0,1': out('Y0') }),
+    R('dc3', 1, 3, { '0,0': no('M0'), '0,1': no('X2'), '0,2': out('Y1') }),
+  ];
+}
+
+// Automatic drilling cycle (drill-spindle / drill-production): two stage relays
+// — M0 "drilling this part", M1 "ejecting it" — started only by a part actually
+// on the fixture. The feed is interlocked on clamped AND spindle-at-speed, and
+// the bottom dwell timer both retracts the feed (via nc(T0), which is why the
+// timer rung sits above the feed rung) and hands over to the eject stage.
+// `mixed` adds drill-production's steel handling: nc(X6)/nc(C0) guards on the
+// drill stage, a third relay M2 for the reject stage driving the diverter, and
+// the batch counter that closes the order down.
+function drillAutoCycle(mixed: boolean): Rung[] {
+  const startConds: LadderElement[] = [no('X0'), no('X1'), no('X5'), nc('M1')];
+  if (mixed) startConds.push(nc('X6'), nc('C0'));
+  const startMap: Record<string, LadderElement> = {};
+  startConds.forEach((el, c) => {
+    startMap[`0,${c}`] = el;
+  });
+  startMap[`0,${startConds.length}`] = set('M0');
+
+  const rungs: Rung[] = [
+    R('ds1', 1, startConds.length + 1, startMap),
+    // Clamp and spindle both follow the drilling stage, so dropping M0 at the end
+    // of the dwell is what stops the rotation between parts.
+    R('ds2', 1, 2, { '0,0': no('M0'), '0,1': out('Y0') }),
+    R('ds3', 1, 2, { '0,0': no('M0'), '0,1': out('Y5') }),
+    R('ds4', 1, 2, { '0,0': no('Y5'), '0,1': out('Y2') }),
+    R('ds5', 1, 2, { '0,0': no('X3'), '0,1': timer('T0', 10) }),
+    R('ds6', 1, 5, {
+      '0,0': no('M0'), '0,1': no('X2'), '0,2': no('X7'), '0,3': nc('T0'), '0,4': out('Y1'),
+    }),
+    R('ds7', 2, 2, { '0,0': no('T0'), '0,1': set('M1'), '1,1': rst('M0') }, [{ row: 0, col: 1 }]),
+    R('ds8', 1, 2, { '0,0': no('M1'), '0,1': out('Y3') }),
+  ];
+  if (!mixed) {
+    rungs.push(
+      R('ds9', 1, 2, { '0,0': no('M1'), '0,1': out('Y4') }),
+      R('ds10', 1, 2, { '0,0': no('X4'), '0,1': rst('M1') }),
+      R('ds11', 2, 2, { '0,0': nc('X1'), '0,1': rst('M0'), '1,1': rst('M1') }, [{ row: 0, col: 1 }]),
+    );
+    return rungs;
+  }
+  rungs.push(
+    // Steel: never clamped, never drilled — divert and push it to the scrap bin.
+    R('dm1', 1, 6, {
+      '0,0': no('X0'), '0,1': no('X1'), '0,2': no('X5'), '0,3': no('X6'), '0,4': nc('C0'),
+      '0,5': set('M2'),
+    }),
+    R('dm2', 1, 2, { '0,0': no('M2'), '0,1': out('Y6') }),
+    // One physical eject coil fed by both stages — an OUT coil doesn't OR across
+    // independent rows, so the merge has to be a vertical link.
+    R('dm3', 2, 2, { '0,0': no('M1'), '0,1': out('Y4'), '1,0': no('M2') }, [{ row: 0, col: 1 }]),
+    // Counting the dwell (one pulse per finished hole) is what keeps rejects out
+    // of the batch; C0 is never reset, so its done bit parks the station.
+    R('dm4', 1, 2, { '0,0': no('T0'), '0,1': counter('C0', 3) }),
+    R('dm5', 1, 2, { '0,0': no('C0'), '0,1': out('Y7') }),
+    R('dm6', 2, 2, { '0,0': no('X4'), '0,1': rst('M1'), '1,1': rst('M2') }, [{ row: 0, col: 1 }]),
+    R(
+      'dm7',
+      3,
+      2,
+      { '0,0': nc('X1'), '0,1': rst('M0'), '1,1': rst('M1'), '2,1': rst('M2') },
+      [{ row: 0, col: 1 }, { row: 1, col: 1 }],
+    ),
+  );
+  return rungs;
+}
+
 // --- canonical solutions --------------------------------------------------
 const solutions: Record<string, LadderProgram> = {
   'direct-control': {
@@ -459,6 +541,9 @@ const solutions: Record<string, LadderProgram> = {
       ),
     ],
   },
+  'drill-clamp-feed': { rungs: drillClampFeedCore() },
+  'drill-spindle': { rungs: drillAutoCycle(false) },
+  'drill-production': { rungs: drillAutoCycle(true) },
   'drill-station': {
     rungs: [
       // Run latch: (X0 OR M0) AND X1(healthy) AND NOT X3(bottom) -> M0
@@ -666,6 +751,97 @@ describe('gradeProgram — plausible wrong elevator programs are rejected', () =
     const result = expectFailsGrading('elevator-full', { rungs: [...dispatchCore(), ...doorRungs()] });
     const failed = result.scenarios.filter((s) => !s.passed).map((s) => s.name);
     expect(failed).toEqual(['Idle away from floor 1 auto-returns after 10 s']);
+  });
+});
+
+describe('gradeProgram — plausible wrong drill-station programs are rejected', () => {
+  function expectFailsGrading(slug: string, rungs: Rung[]): ReturnType<typeof gradeProgram> {
+    const spec = getLadderPuzzle(slug)!;
+    const validation = validateProgram(spec, { rungs });
+    expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+    const result = gradeProgram(spec, { rungs });
+    expect(result.solved).toBe(false);
+    return result;
+  }
+
+  it('feeding straight off the run latch, before CLAMPED, fails the first puzzle', () => {
+    const ungated = drillClampFeedCore().map((r) =>
+      r.id === 'dc3' ? R('dc3', 1, 2, { '0,0': no('M0'), '0,1': out('Y1') }) : r,
+    );
+    expectFailsGrading('drill-clamp-feed', ungated);
+  });
+
+  it('feeding without waiting for spindle-at-speed snaps the bit', () => {
+    const noInterlock = drillAutoCycle(false).map((r) =>
+      r.id === 'ds6'
+        ? R('ds6', 1, 4, { '0,0': no('M0'), '0,1': no('X2'), '0,2': nc('T0'), '0,3': out('Y1') })
+        : r,
+    );
+    const result = expectFailsGrading('drill-spindle', noInterlock);
+    // The crash is physical (a latched jam freezes the machine), so no scenario
+    // that runs a part can pass — this isn't a single missed assertion.
+    expect(result.scenarios.every((s) => !s.passed)).toBe(true);
+  });
+
+  it('retracting on the bottom sensor instead of dwelling leaves an unfinished hole', () => {
+    // The stroke looks right and the part even reaches the belt, but the hole was
+    // never finished, so it lands as scrap and the good count never moves.
+    const noDwell = drillAutoCycle(false)
+      .filter((r) => r.id !== 'ds5')
+      .map((r) => {
+        if (r.id === 'ds6') {
+          return R('ds6', 1, 4, {
+            '0,0': no('M0'), '0,1': no('X2'), '0,2': no('X7'), '0,3': out('Y1'),
+          });
+        }
+        if (r.id === 'ds7') {
+          return R('ds7', 2, 2, { '0,0': no('X3'), '0,1': set('M1'), '1,1': rst('M0') }, [
+            { row: 0, col: 1 },
+          ]);
+        }
+        return r;
+      });
+    const result = expectFailsGrading('drill-spindle', noDwell);
+    expect(result.scenarios[0].steps.some((s) => s.failures.some((f) => f.includes('good')))).toBe(
+      true,
+    );
+  });
+
+  it('leaving the spindle turning between parts fails the production run', () => {
+    const alwaysSpinning = drillAutoCycle(true).map((r) =>
+      r.id === 'ds3' ? R('ds3', 1, 2, { '0,0': no('X0'), '0,1': out('Y5') }) : r,
+    );
+    const result = expectFailsGrading('drill-production', alwaysSpinning);
+    expect(result.scenarios[0].passed).toBe(false);
+  });
+
+  it('counting ejects instead of finished holes closes the batch a part early', () => {
+    // Every stroke counts, including the rejected steel blank, so the station
+    // parks after two good parts instead of three.
+    const countsRejects = drillAutoCycle(true).map((r) =>
+      r.id === 'dm4' ? R('dm4', 1, 2, { '0,0': no('X4'), '0,1': counter('C0', 3) }) : r,
+    );
+    const result = expectFailsGrading('drill-production', countsRejects);
+    expect(result.scenarios[0].steps.some((s) => s.failures.some((f) => f.includes('good')))).toBe(
+      true,
+    );
+  });
+
+  it('treating steel like aluminium jams the production run', () => {
+    // Without the nc(X6) guard the drill stage starts on a metal blank too.
+    const drillsSteel = drillAutoCycle(true).map((r) =>
+      r.id === 'ds1'
+        ? R('ds1', 1, 6, {
+            '0,0': no('X0'), '0,1': no('X1'), '0,2': no('X5'), '0,3': nc('M1'), '0,4': nc('C0'),
+            '0,5': set('M0'),
+          })
+        : r,
+    );
+    const result = expectFailsGrading('drill-production', drillsSteel);
+    const jammed = result.scenarios[0].steps.some((s) =>
+      s.failures.some((f) => f.includes('jam')),
+    );
+    expect(jammed).toBe(true);
   });
 });
 

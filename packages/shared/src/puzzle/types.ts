@@ -10,7 +10,8 @@ export type PuzzleCategory =
   | 'elevator'
   | 'control-cabinet'
   | 'packaging'
-  | 'pick-place';
+  | 'pick-place'
+  | 'drill';
 
 /** Display order of category sections on the puzzle list. */
 export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
@@ -21,6 +22,7 @@ export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
   'control-cabinet',
   'packaging',
   'pick-place',
+  'drill',
 ];
 
 export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
@@ -31,6 +33,7 @@ export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
   'control-cabinet': 'Control Cabinet',
   packaging: 'Packaging Machine',
   'pick-place': 'Pick & Place',
+  drill: 'Drill Station',
 };
 
 /** One-line blurb per category for the puzzle-list section headers / nav. */
@@ -42,6 +45,7 @@ export const CATEGORY_BLURBS: Record<PuzzleCategory, string> = {
   'control-cabinet': 'Wire real 400 V starters terminal to terminal.',
   packaging: 'Group boxes 2 → 4 → 16 with pushers, a flipping lift and an out-feed.',
   'pick-place': 'Index a robot arm between an infeed and a tray, one part at a time.',
+  drill: 'Clamp, spin up, drill and sort mixed stock through one automatic station.',
 };
 
 /** How a device is drawn/driven on the HMI panel. */

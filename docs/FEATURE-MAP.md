@@ -48,14 +48,33 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     fixed `cabinet` component layout instead of ladder fields; the player's "program" is a
     `WiringDoc` (see §3b).
   - Every spec also carries a **`category`** (`basics` / `timers-counters` / `stations` /
-    `elevator` / `control-cabinet` / `packaging` / `pick-place`) — the unit of unlock progression
-    and list grouping (`CATEGORY_ORDER` / `CATEGORY_TITLES` / `CATEGORY_BLURBS` in `types.ts`).
+    `elevator` / `control-cabinet` / `packaging` / `pick-place` / `drill`) — the unit of unlock
+    progression and list grouping (`CATEGORY_ORDER` / `CATEGORY_TITLES` / `CATEGORY_BLURBS` in
+    `types.ts`).
 - **Process models** (`processes/`) — small state machines that react to `Y` outputs and drive
   `X` inputs. Registered via `registerProcess`.
   - `passthrough` — no machine dynamics; the HMI *is* the process.
   - `conveyor` — moves a part and derives a position sensor.
-  - `drill` — clamp travel, drill feed depth, spindle/beacon/done state; derives `X2` (clamped)
-    and `X3` (at bottom).
+  - `drill` — the whole drill station, grown by **feature detection off the puzzle's own device
+    list** (the `elevator5` door trick, widened) so one model serves all four puzzles in the
+    `drill` category and the two easy ones still see the machine they always saw. Base: clamp
+    travel (`Y0`→`X2` Clamped), feed depth (`Y1`→`X3` At Bottom) and the eject pusher
+    (`Y4`→`X4` Ejected). **`Y5` wired** adds a real spindle with spin-up/coast (`600ms`/`900ms`)
+    reporting `X7` At Speed, plus the feed interlocks — advancing the feed unclamped, below
+    speed, or into hardened stock snaps the bit and latches a packaging-style `jam` (frozen
+    machine, asserted `false` by every scenario); pushing a still *fully* clamped part is
+    interlocked mechanically instead (elevator5-door style: the rod simply doesn't move), so
+    releasing the clamp on the same scan the pusher starts isn't punished as a crash. **`X5`
+    wired** adds real work pieces: a blank slides onto a cleared fixture after `700ms`
+    (→ `X5` Part Present), the hole is finished by a **dwell** of `800ms` at full depth with the
+    bit turning — not by touching `X3`, which is what makes the puzzles' 1.0 s `T0` dwell load
+    bearing — and each part is classified as it leaves on a completed stroke: `good` (drilled
+    aluminium to the belt), `scrap` (steel down the reject chute) or `bad` (either routing
+    mistake). **`X6` wired** makes the infeed alternate aluminium and hardened steel from a fixed
+    deterministic sequence (`DRILL_STOCK`) → `X6` Metal Part. **`Y6` wired** adds the diverter
+    that decides belt vs. scrap bin. Machine state (`clamp`/`drill`/`push`/`gate` 0..1, `speed`,
+    `spinning`, `warning`, `done`, `part`, `drilled`, the counters) drives the 3D view; `done`
+    follows whichever completion lamp the puzzle wires (`Y3` or `Y7`).
   - `press` — a single ram (`Y0`) that advances/retracts; derives `X3` (at bottom). Backs the
     two-hand safety press.
   - `packaging` — the two-lane box packer, mirroring the Blender-designed machine
@@ -157,7 +176,6 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 6 | `run-on-timer` | medium | off-delay built from an on-delay timer (fan run-on) | passthrough |
 | 7 | `flasher` | hard | two-timer oscillator, symmetric blink | passthrough |
 | 8 | `conveyor-stop` | medium | reacting to a machine-driven sensor | conveyor |
-| 9 | `drill-station` | hard | multi-step sequence, SET/RST, beacon | drill |
 | 10 | `two-hand-press` | medium | two-hand safety AND-gate, anti-repeat latch | press |
 | 11 | `elevator-auto-return` | hard | timed auto-return, cancelable descent | elevator |
 | 12 | `elevator-5-dispatch` | hard | multi-floor call dispatch, up/down latch + tie-break | elevator5 |
@@ -177,9 +195,13 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 26 | `pick-place-tray` | hard | generalize to 4 pads, an elevator5-style sweep, Y4 lamp from the X18 sensor | pickPlace |
 | 27 | `pick-place-supply` | hard | wait on a feature-detected finite infeed sensor (X13) + supply lamp | pickPlace |
 | 28 | `pick-place-full` | hard | capstone: two-tray order — operator unloads (X20→Y5), tray counter C0, Y7 lamp | pickPlace |
+| 29 | `drill-clamp-feed` | easy | seal one stroke in, feed only once X2 confirms the clamp | drill |
+| 30 | `drill-station` | medium | multi-step sequence, SET/RST, beacon, eject | drill |
+| 31 | `drill-spindle` | hard | spindle Y5 + X7 at-speed interlock, 1.0 s bottom dwell on T0, rotation off between parts | drill |
+| 32 | `drill-production` | hard | capstone: mixed stock — X6 metal diverted undrilled via Y6, C0 counts holes and parks the batch | drill |
 
-Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 `elevator`,
-15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`.
+Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 `elevator`,
+15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`, 29–32 `drill`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -262,7 +284,15 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8–10 `stations`, 11–14 
     elevator's contract, via `OrbitControls` with `enableRotate={false}`), or neither.
   - **`DrillStation3D.tsx`** (`interactive`) — `drill-station.glb`; named nodes
     (`scene.getObjectByName(...)`) looked up once and driven imperatively from `machine.clamp` /
-    `machine.drill` / `machine.spinning` / `machine.push`.
+    `machine.drill` / `machine.spinning` / `machine.push`. The work piece runs through a small
+    stage machine (chute → fixture → ejected) because a shipped part isn't the part that drops in
+    next; the stock-aware puzzles drive those transitions from `machine.part` directly, the
+    simpler ones from the cycle-done lamp. `BlockBody`/`BlockPlug` get **cloned** materials so
+    hardened steel can be re-tinted without leaking into the rest of the scene, and a blank
+    ejected with the diverter open (`machine.gate`) slides off the belt's edge and drops out of
+    sight instead of riding to the far drum. The readout beside the scene grows the same way the
+    process model does — spindle spin-up state, stock material, drilled/rejected/fault counts
+    appear only for the puzzles that wire them.
   - **`ElevatorShaft3D.tsx`** (`zoomable`, fixed angle) — one shared `elevator-shaft.glb` (a
     cylindrical cutaway shaft, one side open, terracotta frame rings + mullions, per-floor plaques)
     authored for the 5-floor case; the 3-floor legacy puzzle (`processId: 'elevator'`) hides the

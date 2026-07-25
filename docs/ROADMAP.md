@@ -127,6 +127,32 @@ shoulder/elbow links driven by two-link IK in the client, counter-pitching wrist
 gripper) over floor-level pads, an infeed conveyor, a signal mast and warning-tape dressing —
 following the same node-name contract as the elevator shaft and pack machine.
 
+## Drill-station expansion ✅ *shipped* (ahead of the phased plan)
+
+An eighth category, `drill`, which promotes the one-off `drill-station` puzzle into a four-step
+ramp on the machine the `drill-station.glb` hero model already showed:
+`drill-clamp-feed` (seal one stroke in, feed only once `X2` Clamped confirms) →
+`drill-station` (the existing full stroke: beacon, done lamp, eject — moved here from `stations`,
+slug untouched so saved slots and progress survive) → `drill-spindle` (the spindle motor `Y5`
+becomes the player's, with an `X7` at-speed interlock, a 1.0 s dwell at full depth on `T0`, and
+the rotation stopped again between parts) → `drill-production` (capstone: mixed stock — an
+inductive `X6` reads hardened steel that must be diverted undrilled through the `Y6` reject gate
+while aluminium is drilled and shipped, with `C0` counting finished holes to close a batch of
+three and park the station).
+
+The `drill` process model grew from three travel fractions into the whole machine, all
+**feature-detected off the puzzle's own device list** (the `elevator5`/`pickPlace` precedent) so
+the two easy puzzles still see exactly the machine they saw before: `Y5` adds a spin-up/coast
+spindle and the feed interlocks, `X5` adds work pieces that physically arrive, are drilled by a
+*dwell* rather than by touching the bottom, and are counted good/scrap/bad as they leave, `X6`
+adds the deterministic aluminium/steel stock sequence, `Y6` adds the diverter. Crashing the bit
+(feeding unclamped, not up to speed, or into steel) latches the packaging-style `jam`; shoving a
+still-clamped part is interlocked mechanically instead, so a one-scan release overlap isn't
+punished. Six discriminating negative tests in `grade.test.ts` cover the mistakes the ramp is
+about: feeding before the clamp, feeding before at-speed, retracting instead of dwelling, leaving
+the spindle turning between parts, counting ejects instead of holes, and drilling steel. No new
+ladder instructions were needed — the fourth category in a row to need none.
+
 ## Phase 3 — Content depth
 
 With replay and traces in place, harder content becomes fair rather than frustrating.

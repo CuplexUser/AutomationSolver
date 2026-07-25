@@ -3,10 +3,10 @@ import type { PuzzleSpec } from '../types.js';
 export const drillStation: PuzzleSpec = {
   kind: 'ladder',
   slug: 'drill-station',
-  title: 'Drill Station Cycle',
-  difficulty: 'hard',
-  order: 9,
-  category: 'stations',
+  title: 'Drill Station: Full Stroke',
+  difficulty: 'medium',
+  order: 30,
+  category: 'drill',
   summary: 'Sequence a clamp, drill feed, warning beacon and eject pusher into one automatic stroke.',
   briefing: [
     'An automatic drill station runs one full stroke per cycle. On START (X0), with',
