@@ -11,64 +11,75 @@ const numOf = (v: unknown, f = 0): number => (typeof v === 'number' ? v : f);
 const boolOf = (v: unknown): boolean => v === true;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
-// Rest-pose coordinates read from the exported glb (see drill-station.glb node
-// transforms) plus hand-picked travel ranges/targets measured against the
-// block/rod geometry — kept here rather than re-derived from the scene graph
-// each frame so the drive logic reads as plain arithmetic.
-const PART_TOP = 0.95;
-const HEAD_Y = { retracted: 3.4, extended: 2.15 };
-const SPIN_SPEED = 22; // rad/s
-const ROLLER_SPIN_SPEED = 10; // rad/s, while the eject cylinder is engaged
+// Every coordinate below is in the glb's own units: the station is modelled at
+// roughly 1 m across and its exported root scales x10, so these numbers stay in
+// the model's local space while the scene ends up the same size as the other
+// machines. Rest poses were read off the exported node transforms; travel
+// distances were measured against the fixture, cylinder and belt geometry.
+const HEAD_Y = { retracted: 0.41, extended: 0.325 };
+const HOLD_X = { open: 0.382, closed: 0.36 };
+const PUSH_Z = { home: -0.314, ejected: -0.194 };
+const SPIN_SPEED = 26; // rad/s
+
+// Infeed roller conveyor. The queue indexes forward by exactly one part each
+// time a finished part leaves the machine — a conveyor that ran continuously
+// would keep pushing parts into a station that isn't asking for them. Positions
+// wrap over INFEED_SPAN so the queue never runs dry. The rollers turn at the
+// matching surface speed (radius 0.014); their axis runs along Z and a part on
+// top travels +X, which is a *negative* turn about that axis.
+const INFEED_SPEED = 0.055; // units/s while indexing
+const INFEED_ROLLER_TURN = -1 / 0.014; // radians of roller per unit of queue travel
+const INFEED_START_X = -0.62;
+const INFEED_SPAN = 0.48;
+const INFEED_PITCH = 0.08;
+const INFEED_VISIBLE = { from: -0.615, to: -0.16 }; // hidden off the roller bed / inside the chute
+
+// Outfeed belt. The belt surface itself is not animated — the drilled part
+// gliding along it is what reads as transport. Fast enough that the part has
+// normally left the far end (and been hidden) before the next cycle recycles it.
+const BELT_SPEED = 0.38; // units/s
+const BELT_EXIT_Z = 0.5; // past the far drum — the part is done travelling
 
 // The bore: BlockBody has a real (boolean-cut) blind hole, and BlockPlug is a
-// separate cylinder of the same material filling it. At drill = 0 the plug
-// fills the hole flush with the top face, reading as solid material; as the
-// bit plunges in, the plug's far (top) edge recedes down toward the hole's
-// floor, revealing the real cavity underneath — the block itself never moves
-// or changes shape, so it never looks like it's sinking through the table.
-const HOLE_TOP_Y = PART_TOP / 2; // 0.475, matches BlockBody/BlockPlug's local origin convention
-const HOLE_DEPTH = 0.8;
-const HOLE_BOTTOM_Y = HOLE_TOP_Y - HOLE_DEPTH;
+// separate cylinder of the same material filling it. At drill = 0 the plug fills
+// the hole flush with the top face, reading as solid material; as the bit
+// plunges in, the plug's top edge recedes toward the hole's floor, revealing the
+// real cavity underneath — the part itself never moves or changes shape. Both
+// values are in Block's local space.
+const HOLE_DEPTH = 0.028;
+const HOLE_BOTTOM_Y = -0.007;
 
-// The mechanism: HOLD (cylinder 1) presses the block, from the X axis, against
-// a FIXED wall. PUSH (cylinder 2) sits 90 degrees away on the Z axis (three.js
-// space — this is the model's Y/depth axis in Blender) and, once ejecting is
-// commanded (Y4), extends to shove the block off the platform onto the roller
-// band; an "Ejected" sensor (X4) stops it once the block is clear. The feed
-// conveyor enters from the opposite end of that same Z axis. A block that has
-// just been ejected is a *different* block from the one that drops in for the
-// next cycle, so a small stage machine (not just a continuous lerp) avoids the
-// ejected block sliding back onto the platform when the push rod itself
-// retracts afterward.
-const BLOCK_HALF_WIDTH = 0.725; // measured from BlockBody geometry
-const BLOCK_HALF_DEPTH = 0.825; // measured from BlockBody geometry
-const BLOCK_STOP_X = -1; // rest X, matches Block's authored translation — never changes now
-const BLOCK_REST_Y = 0.475; // platform height (Block's authored translation.y)
-const BLOCK_CHUTE_Y = 2.75; // height up on the incline feed conveyor
-const BLOCK_STOP_Z = 0; // rest depth (platform), matches Block's authored translation
-const BLOCK_EJECT_Z = -2.0; // resting on the roller band
-const BLOCK_CHUTE_Z = 3.9; // depth offset back at the top of the feed incline
+// The mechanism: HOLD (cylinder 1) presses the part along X against the fixed
+// StationStop. PUSH (cylinder 2) sits 90 degrees away on Z and, once ejecting is
+// commanded (Y4), shoves the part off the fixture onto the outfeed belt; an
+// "Ejected" sensor (X4) stops it once the part is clear. Fresh parts arrive from
+// the opposite direction, sliding out of the gravity chute onto the fixture — so
+// they travel in X and Y while the eject travels in Z. A part that has just been
+// ejected is a *different* part from the one that drops in for the next cycle,
+// so a small stage machine (not just a continuous lerp) keeps the ejected part
+// from sliding back onto the fixture when the push rod itself retracts.
+const BLOCK_REST = { x: 0.27, y: 0.061, z: -0.2 };
+const BLOCK_CHUTE = { x: 0.195, y: 0.112 }; // sitting on the feed tray at the chute mouth
+const BLOCK_EJECT_Z = -0.08; // landing point on the outfeed belt
 
-const HOLD_ROD_BASE_LEN = 1.0;
-const HOLD_BODY_FACE_X = -3.2; // ActuatorBodyL's right face
-const HOLD_RETRACTED_TIP_X = -3.0; // short stub, clamp = 0
-const HOLD_TOUCH_TIP_X = BLOCK_STOP_X - BLOCK_HALF_WIDTH; // touches the block, clamp = 1
+// The feed is a slide then a drop rather than one diagonal: the part rides the
+// feed tray clear across the fixed StationStop first, and only falls the last
+// 50 mm onto the fixture once it is past it. A straight lerp would cut the
+// corner through both the stop and the retracted drill bit.
+const DROP_RATE = 1 / 0.5; // seconds for a fresh part to reach the fixture
+const SLIDE_FRACTION = 0.55; // of that, the share spent sliding before the drop
 
-const PUSH_ROD_BASE_LEN = 1.0;
-const PUSH_BODY_FACE_Z = 2.0; // PushBody's face nearest the platform
-const PUSH_STOP_TIP_Z = BLOCK_STOP_Z + BLOCK_HALF_DEPTH; // touches the block, push = 0
-const PUSH_EJECTED_TIP_Z = BLOCK_EJECT_Z + BLOCK_HALF_DEPTH; // fully shoved out, push = 1
-
-const DROP_RATE = 1 / 0.35; // seconds for a fresh block to drop into place
-
-type BlockStage = 'platform' | 'ejected' | 'dropping';
+type BlockStage = 'fixture' | 'ejected' | 'dropping';
 interface BlockAnim {
   stage: BlockStage;
-  drop: number; // 0 = up on the feed incline, 1 = landed on the platform
-  // Deepest the bit has reached into the current block. The hole this drives
-  // (via BlockPlug below) must persist once drilled rather than re-filling as
-  // the bit retracts, so this tracks a running max instead of the live feed.
+  drop: number; // 0 = at the chute mouth, 1 = landed on the fixture
+  // Deepest the bit has reached into the current part. The hole this drives (via
+  // BlockPlug below) must persist once drilled rather than re-filling as the bit
+  // retracts, so this tracks a running max instead of the live feed.
   maxFeed: number;
+  carry: number; // how far the ejected part has ridden down the outfeed belt
+  infeed: number; // distance the infeed queue has travelled so far
+  infeedTarget: number; // where it is indexing to — one more pitch per part shipped
 }
 
 interface DriveRefs {
@@ -81,17 +92,23 @@ interface DriveRefs {
   stackRed?: THREE.Mesh;
   stackGreen?: THREE.Mesh;
   rollers: THREE.Object3D[];
+  infeed: THREE.Object3D[];
+}
+
+/** Collects `Name_0`, `Name_1`, ... until the first gap. */
+function series(scene: THREE.Object3D, prefix: string): THREE.Object3D[] {
+  const found: THREE.Object3D[] = [];
+  for (let i = 0; ; i++) {
+    const obj = scene.getObjectByName(`${prefix}${i}`);
+    if (!obj) return found;
+    found.push(obj);
+  }
 }
 
 function DrillStationScene({ machine }: { machine: MachineState }) {
   const { scene } = useGLTF(MODEL_URL, DRACO_DECODER_PATH);
   const refs = useMemo<DriveRefs>(() => {
     enableShadows(scene);
-    const rollers: THREE.Object3D[] = [];
-    for (let i = 0; i < 6; i++) {
-      const roller = scene.getObjectByName(`Roller_${i}`);
-      if (roller) rollers.push(roller);
-    }
     return {
       holdRod: scene.getObjectByName('HoldRod') ?? undefined,
       pushRod: scene.getObjectByName('PushRod') ?? undefined,
@@ -101,11 +118,19 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       blockPlug: scene.getObjectByName('BlockPlug') ?? undefined,
       stackRed: scene.getObjectByName('StackLightRed') as THREE.Mesh | undefined,
       stackGreen: scene.getObjectByName('StackLightGreen') as THREE.Mesh | undefined,
-      rollers,
+      rollers: series(scene, 'Roller_'),
+      infeed: series(scene, 'InfeedPart_'),
     };
   }, [scene]);
 
-  const anim = useRef<BlockAnim>({ stage: 'platform', drop: 1, maxFeed: 0 });
+  const anim = useRef<BlockAnim>({
+    stage: 'fixture',
+    drop: 1,
+    maxFeed: 0,
+    carry: 0,
+    infeed: 0,
+    infeedTarget: 0,
+  });
 
   // The loaded glTF scene graph and the block-stage tracker are both external-
   // system state (three.js's own object tree, and a plain animation clock) —
@@ -122,62 +147,73 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     const r = refs;
     const a = anim.current;
 
-    // Block stage machine: a block that's already ejected is not the same block
-    // that will drop in for the next cycle, so we track discrete stages rather
-    // than a single continuous lerp (see comment on BLOCK_HALF_WIDTH above).
-    // machine.push is now a real, player-controlled (Y4/X4) signal, so the rod
-    // itself is driven straight off it; only the block's own Z needs a stage so
-    // it doesn't slide back when the rod retracts after a full eject.
-    if (a.stage === 'platform' && push >= 1) a.stage = 'ejected';
+    // Part stage machine: a part that's already ejected is not the same part that
+    // will drop in for the next cycle, so we track discrete stages rather than a
+    // single continuous lerp (see the comment on BLOCK_REST above). machine.push
+    // is a real, player-controlled (Y4/X4) signal, so the rod itself is driven
+    // straight off it; only the part's own Z needs a stage so it doesn't slide
+    // back when the rod retracts after a full eject.
+    if (a.stage === 'fixture' && push >= 1) {
+      a.stage = 'ejected';
+      a.carry = 0;
+      a.infeedTarget += INFEED_PITCH; // a part shipped, so index the queue up by one
+    }
     if (a.stage === 'ejected' && !done) {
       a.stage = 'dropping';
       a.drop = 0;
-      a.maxFeed = 0; // a fresh block arrives undrilled
+      a.maxFeed = 0; // a fresh part arrives undrilled
     }
     a.maxFeed = Math.max(a.maxFeed, feed);
     if (a.stage === 'dropping') {
       a.drop = Math.min(1, a.drop + DROP_RATE * dt);
-      if (a.drop >= 1) a.stage = 'platform';
+      if (a.drop >= 1) a.stage = 'fixture';
     }
-    // 0 = at the platform stop, 1 = fully ejected — frozen at 1 once the block
-    // has actually left, 0 once a fresh block is dropping back onto the empty
-    // platform, and tracking the live rod otherwise.
+    if (a.stage === 'ejected') a.carry += BELT_SPEED * dt;
+    if (a.infeed < a.infeedTarget) {
+      a.infeed = Math.min(a.infeedTarget, a.infeed + INFEED_SPEED * dt);
+    }
+    // 0 = at the fixture stop, 1 = fully ejected — frozen at 1 once the part has
+    // actually left, 0 once a fresh one is dropping onto the empty fixture, and
+    // tracking the live rod otherwise.
     const blockPushProgress = a.stage === 'ejected' ? 1 : a.stage === 'dropping' ? 0 : push;
 
-    if (r.holdRod) {
-      const tipX = HOLD_RETRACTED_TIP_X + (HOLD_TOUCH_TIP_X - HOLD_RETRACTED_TIP_X) * clamp;
-      r.holdRod.position.x = (HOLD_BODY_FACE_X + tipX) / 2;
-      r.holdRod.scale.x = Math.max(0.05, tipX - HOLD_BODY_FACE_X) / HOLD_ROD_BASE_LEN;
-    }
-    if (r.pushRod) {
-      const tipZ = PUSH_STOP_TIP_Z + (PUSH_EJECTED_TIP_Z - PUSH_STOP_TIP_Z) * push;
-      r.pushRod.position.z = (PUSH_BODY_FACE_Z + tipZ) / 2;
-      r.pushRod.scale.z = Math.max(0.05, PUSH_BODY_FACE_Z - tipZ) / PUSH_ROD_BASE_LEN;
-    }
+    // Both cylinders are authored with their rods running deep into the barrel,
+    // so the stroke is a plain translation — no stretching needed to keep the rod
+    // through its end cap.
+    if (r.holdRod) r.holdRod.position.x = HOLD_X.open + (HOLD_X.closed - HOLD_X.open) * clamp;
+    if (r.pushRod) r.pushRod.position.z = PUSH_Z.home + (PUSH_Z.ejected - PUSH_Z.home) * push;
+
     if (r.block) {
-      r.block.position.y = BLOCK_CHUTE_Y + (BLOCK_REST_Y - BLOCK_CHUTE_Y) * a.drop;
-      const stopOrEjectZ = BLOCK_STOP_Z + (BLOCK_EJECT_Z - BLOCK_STOP_Z) * blockPushProgress;
-      r.block.position.z = BLOCK_CHUTE_Z + (stopOrEjectZ - BLOCK_CHUTE_Z) * a.drop;
-    }
-    // Only spin while a block is actually riding across them — once ejected,
-    // the block freezes in place (see blockPushProgress above) and push keeps
-    // decaying as the cylinder retracts, so gating on push alone left the
-    // rollers spinning under a block that had already stopped moving.
-    const blockRiding = a.stage === 'platform' && push > 0.01 && push < 1;
-    for (const roller of r.rollers) {
-      if (blockRiding) roller.rotation.x += ROLLER_SPIN_SPEED * dt;
+      const slide = clamp01(a.drop / SLIDE_FRACTION);
+      const fall = clamp01((a.drop - SLIDE_FRACTION) / (1 - SLIDE_FRACTION));
+      const ejectZ = BLOCK_REST.z + (BLOCK_EJECT_Z - BLOCK_REST.z) * blockPushProgress;
+      // The belt ride only applies to the part that is actually on the belt —
+      // leaving it in once a fresh part has dropped would park that part a whole
+      // belt-length downstream (and past BELT_EXIT_Z, so invisible).
+      const beltRide = a.stage === 'ejected' ? a.carry : 0;
+      r.block.position.x = BLOCK_CHUTE.x + (BLOCK_REST.x - BLOCK_CHUTE.x) * slide;
+      r.block.position.y = BLOCK_CHUTE.y + (BLOCK_REST.y - BLOCK_CHUTE.y) * fall;
+      r.block.position.z = ejectZ + beltRide;
+      // Once it has ridden off the far end of the belt the part is gone; hiding
+      // it there is also what keeps the jump back up to the chute out of sight.
+      r.block.visible = r.block.position.z < BELT_EXIT_Z;
     }
 
+    // Infeed queue. Both the parts and the rollers are driven straight off the
+    // travelled distance, so they simply stand still between index moves.
+    for (const roller of r.rollers) roller.rotation.z = a.infeed * INFEED_ROLLER_TURN;
+    r.infeed.forEach((part, i) => {
+      const x = INFEED_START_X + ((i * INFEED_PITCH + a.infeed) % INFEED_SPAN);
+      part.position.x = x;
+      part.visible = x > INFEED_VISIBLE.from && x < INFEED_VISIBLE.to;
+    });
+
     if (r.spindleHead) {
-      const headY = HEAD_Y.retracted + (HEAD_Y.extended - HEAD_Y.retracted) * feed;
-      r.spindleHead.position.y = headY;
+      r.spindleHead.position.y = HEAD_Y.retracted + (HEAD_Y.extended - HEAD_Y.retracted) * feed;
     }
     if (r.bit && spinning) r.bit.rotation.y += SPIN_SPEED * dt;
 
     if (r.blockPlug) {
-      // The plug fills the real (boolean-cut) hole in BlockBody; its far edge
-      // recedes from the top face down toward the hole's floor as the bit
-      // plunges in, revealing the cavity rather than the block changing shape.
       // Driven by maxFeed (not the live feed) so the hole stays drilled once
       // made, instead of visually re-filling as the bit retracts afterward.
       const remaining = Math.max(0.02, 1 - a.maxFeed);
@@ -214,10 +250,11 @@ export function DrillStation3D({ machine, height = 300 }: { machine: MachineStat
   return (
     <MachineCanvas
       height={height}
-      cameraPosition={[3, 6, 11]}
-      target={[-2, 2.2, -0.5]}
-      minDistance={7}
-      maxDistance={22}
+      cameraPosition={[14, 11, 14]}
+      fov={26}
+      target={[0.4, 1.6, -0.4]}
+      minDistance={12}
+      maxDistance={34}
     >
       <DrillStationScene machine={machine} />
     </MachineCanvas>
