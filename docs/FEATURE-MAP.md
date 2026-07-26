@@ -47,6 +47,12 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   - **`CabinetPuzzleSpec`** (`kind: 'cabinet'`) — same base (devices/scenarios/briefing) but a
     fixed `cabinet` component layout instead of ladder fields; the player's "program" is a
     `WiringDoc` (see §3b).
+  - **`briefing`** is written as an instruction manual, not prose: a one-paragraph lead, then
+    `## Section` blocks (`Equipment`, `Sequence of operation`, `Interlocks and safety`,
+    `Field notes`, `Acceptance`; cabinet puzzles use `Power circuit` / `Control circuit` /
+    `Indication` / `Safety rules`). Blocks are separated by blank lines; `1.` (with optional
+    `a.` sub-steps) becomes an `<ol>`, `- ` a `<ul>`, anything else a paragraph. The renderer
+    is `Briefing` in `client/src/pages/play/BriefColumn.tsx`.
   - Every spec also carries a **`category`** (`basics` / `timers-counters` / `stations` /
     `elevator` / `control-cabinet` / `packaging` / `pick-place` / `drill`) — the unit of unlock
     progression and list grouping (`CATEGORY_ORDER` / `CATEGORY_TITLES` / `CATEGORY_BLURBS` in

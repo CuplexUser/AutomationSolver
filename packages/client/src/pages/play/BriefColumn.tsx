@@ -81,17 +81,33 @@ interface BriefingListItem {
   text: string;
   sub: string[];
 }
-type BriefingBlock = { type: 'p'; text: string } | { type: 'ol'; items: BriefingListItem[] };
+type BriefingBody =
+  | { type: 'p'; text: string }
+  | { type: 'ol'; items: BriefingListItem[] }
+  | { type: 'ul'; items: string[] };
+interface BriefingBlock {
+  heading?: string;
+  body?: BriefingBody;
+}
 
+const HEADING_MARKER = /^\s*##\s+(.*)$/;
 const TOP_MARKER = /^\s*\d+\.\s+(.*)$/;
 const SUB_MARKER = /^\s*[a-z]\.\s+(.*)$/;
+const BULLET_MARKER = /^\s*-\s+(.*)$/;
 
 /**
- * Puzzle briefing text is authored as hard-wrapped source lines (for readable diffs),
- * with blank lines marking paragraph breaks. Rendering those verbatim in a <pre> double-wraps
- * against the panel's actual width, so instead reflow each paragraph to the panel's real width.
- * A block whose first line starts "1. " is a numbered procedure (optionally with "a. " sub-steps
- * nested under a step) — those parse into a real <ol> instead of collapsing into a single blob.
+ * Puzzle briefings are authored as an instruction manual: hard-wrapped source lines
+ * (for readable diffs), blank lines between blocks, and each block optionally opening
+ * with a "## Section title" line. Rendering that verbatim in a <pre> double-wraps against
+ * the panel's actual width, so instead reflow every block to the panel's real width and
+ * give each construct real markup:
+ *
+ *   "## Title"  section heading (may stand alone or head the block below it)
+ *   "1. step"   numbered procedure, with optional "a. " sub-steps nested under a step
+ *   "- item"    bullet list (equipment, interlocks, acceptance criteria)
+ *   anything else  a paragraph
+ *
+ * Continuation lines of a list item are indented and simply fold into the item above.
  */
 function parseBriefingBlocks(text: string): BriefingBlock[] {
   return text
@@ -100,54 +116,85 @@ function parseBriefingBlocks(text: string): BriefingBlock[] {
     .filter(Boolean)
     .map((block): BriefingBlock => {
       const lines = block.split('\n');
-      if (!TOP_MARKER.test(lines[0])) {
-        return { type: 'p', text: lines.join(' ').replace(/\s+/g, ' ').trim() };
-      }
-      const items: BriefingListItem[] = [];
-      for (const line of lines) {
-        const top = TOP_MARKER.exec(line);
-        const sub = top ? null : SUB_MARKER.exec(line);
-        if (top) {
-          items.push({ text: top[1], sub: [] });
-        } else if (sub && items.length > 0) {
-          items[items.length - 1].sub.push(sub[1]);
-        } else if (items.length > 0) {
-          const last = items[items.length - 1];
-          const target = last.sub.length > 0 ? last.sub : null;
-          const text = line.trim();
-          if (target) target[target.length - 1] += ' ' + text;
-          else last.text += ' ' + text;
-        }
-      }
-      return { type: 'ol', items };
+      const head = HEADING_MARKER.exec(lines[0]);
+      const heading = head ? head[1].trim() : undefined;
+      const rest = head ? lines.slice(1) : lines;
+      return { heading, body: parseBriefingBody(rest) };
     });
+}
+
+function parseBriefingBody(lines: string[]): BriefingBody | undefined {
+  if (lines.length === 0) return undefined;
+  if (TOP_MARKER.test(lines[0])) {
+    const items: BriefingListItem[] = [];
+    for (const line of lines) {
+      const top = TOP_MARKER.exec(line);
+      const sub = top ? null : SUB_MARKER.exec(line);
+      if (top) {
+        items.push({ text: top[1], sub: [] });
+      } else if (sub && items.length > 0) {
+        items[items.length - 1].sub.push(sub[1]);
+      } else if (items.length > 0) {
+        const last = items[items.length - 1];
+        const target = last.sub.length > 0 ? last.sub : null;
+        const text = line.trim();
+        if (target) target[target.length - 1] += ' ' + text;
+        else last.text += ' ' + text;
+      }
+    }
+    return { type: 'ol', items };
+  }
+  if (BULLET_MARKER.test(lines[0])) {
+    const items: string[] = [];
+    for (const line of lines) {
+      const bullet = BULLET_MARKER.exec(line);
+      if (bullet) items.push(bullet[1]);
+      else if (items.length > 0) items[items.length - 1] += ' ' + line.trim();
+    }
+    return { type: 'ul', items };
+  }
+  return { type: 'p', text: lines.join(' ').replace(/\s+/g, ' ').trim() };
 }
 
 function Briefing({ text }: { text: string }) {
   const blocks = parseBriefingBlocks(text);
   return (
     <div className="briefing">
-      {blocks.map((block, i) =>
-        block.type === 'p' ? (
-          <p key={i}>{block.text}</p>
-        ) : (
-          <ol key={i}>
-            {block.items.map((item, j) => (
-              <li key={j}>
-                {item.text}
-                {item.sub.length > 0 && (
-                  <ol type="a">
-                    {item.sub.map((s, k) => (
-                      <li key={k}>{s}</li>
-                    ))}
-                  </ol>
-                )}
-              </li>
-            ))}
-          </ol>
-        ),
-      )}
+      {blocks.map((block, i) => (
+        <section key={i}>
+          {block.heading && <h4 className="briefing-head">{block.heading}</h4>}
+          {block.body && <BriefingBodyView body={block.body} />}
+        </section>
+      ))}
     </div>
+  );
+}
+
+function BriefingBodyView({ body }: { body: BriefingBody }) {
+  if (body.type === 'p') return <p>{body.text}</p>;
+  if (body.type === 'ul')
+    return (
+      <ul>
+        {body.items.map((item, i) => (
+          <li key={i}>{item}</li>
+        ))}
+      </ul>
+    );
+  return (
+    <ol>
+      {body.items.map((item, i) => (
+        <li key={i}>
+          {item.text}
+          {item.sub.length > 0 && (
+            <ol type="a">
+              {item.sub.map((s, j) => (
+                <li key={j}>{s}</li>
+              ))}
+            </ol>
+          )}
+        </li>
+      ))}
+    </ol>
   );
 }
 

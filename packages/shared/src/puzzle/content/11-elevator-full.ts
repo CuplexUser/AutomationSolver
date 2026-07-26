@@ -3,26 +3,40 @@ import type { PuzzleSpec } from '../types.js';
 export const elevatorFull: PuzzleSpec = {
   kind: 'ladder',
   slug: 'elevator-full',
-  title: 'Elevator — Fully Functional',
+  title: 'Elevator: Fully Functional',
   difficulty: 'hard',
   order: 14,
   category: 'elevator',
   summary: 'The complete 5-story elevator: dispatch, doors, and an automatic return to the lobby when idle.',
   briefing: [
-    'The complete 5-floor elevator: per-floor call dispatch, a door that opens on',
-    'arrival and auto-closes, and now AUTOMATIC RETURN: if the car sits idle away',
-    'from floor 1 with no calls pending anywhere for 10 seconds, it must return to',
-    'floor 1 on its own.',
+    'Final acceptance test for the elevator: dispatch, doors and now an automatic',
+    'return to the lobby, all running as one machine.',
     '',
-    'You do not need a bespoke descent path for this: treat an idle timeout exactly',
-    'like a call placed at floor 1 and let the dispatch and door logic you already',
-    'have handle the rest, including opening the door once it gets there.',
+    '## Equipment',
+    '- The complete five-floor car from the previous work orders: call buttons, floor',
+    '  sensors, door, and both motor outputs.',
+    '- M21 ANY CALL PENDING and T2 IDLE-RETURN TIMER are new (see Working Registers).',
+    '',
+    '## Sequence of operation',
+    '1. Keep dispatch and the door cycle working exactly as commissioned.',
+    '2. Run the idle timer only while the car is genuinely idle: away from floor 1, no',
+    '   call registered anywhere, and neither direction latch set.',
+    '3. After 10 seconds of that, place a call at floor 1 yourself by setting the same',
+    '   call bit the floor-1 button sets.',
+    '4. From there the machine you already built takes over: it dispatches down, stops',
+    '   at floor 1, clears the call and opens the door.',
+    '5. Any fresh call before the timeout holds the timer at zero, so no return fires.',
+    '',
+    '## Field notes',
+    '- Do not build a separate descent path. Feeding the dispatcher a call is the whole',
+    '  trick, and it gets you the door cycle at floor 1 for free.',
+    '- Timer presets are in units of 100 ms, so K100 = 10.0 s.',
   ].join('\n'),
   hints: [
     'Run an on-delay timer (K100 = 10.0 s) gated by NOT at floor 1 AND no call ' +
       'pending anywhere (all five call lamps off) AND the Up/Down latches both off ' +
       '(truly idle, not mid-trip).',
-    'When it finishes, SET the floor-1 call latch — the same bit the floor-1 call ' +
+    'When it finishes, SET the floor-1 call latch, the same bit the floor-1 call ' +
       'button sets. Everything downstream (dispatch, stopping, the door) already ' +
       'knows what to do with a pending floor-1 call.',
     'A fresh call anywhere, or the car already being at floor 1, should hold the ' +
@@ -73,7 +87,7 @@ export const elevatorFull: PuzzleSpec = {
       steps: [
         { label: 'Press call for floor 3', setInputs: { X2: true }, holdMs: 150, expect: { M2: true } },
         {
-          label: 'Release — car climbs and arrives',
+          label: 'Release: car climbs and arrives',
           setInputs: { X2: false },
           holdMs: 2200,
           expect: { X12: true },
@@ -104,18 +118,18 @@ export const elevatorFull: PuzzleSpec = {
       steps: [
         { label: 'Press call for floor 2', setInputs: { X1: true }, holdMs: 150, expect: { M1: true } },
         {
-          label: 'Release — car climbs and arrives',
+          label: 'Release: car climbs and arrives',
           setInputs: { X1: false },
           holdMs: 1300,
           expect: { X11: true },
         },
         {
-          label: 'Idle for a while — comfortably under the 10 s timeout',
+          label: 'Idle for a while: comfortably under the 10 s timeout',
           holdMs: 6000,
           expect: { M0: false },
         },
         {
-          label: 'A fresh call resets the idle window — no return fires',
+          label: 'A fresh call resets the idle window: no return fires',
           setInputs: { X4: true },
           holdMs: 800,
           expect: { M0: false, Y0: true },

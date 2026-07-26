@@ -576,7 +576,8 @@
 .briefing p {
   margin: 0 0 12px;
 }
-.briefing ol {
+.briefing ol,
+.briefing ul {
   margin: 0 0 12px;
   padding-left: 1.4em;
 }
@@ -589,8 +590,23 @@
 .briefing li:last-child {
   margin-bottom: 0;
 }
-.briefing > :last-child {
+.briefing > :last-child,
+.briefing section > :last-child {
   margin-bottom: 0;
+}
+/* Manual-style section headings: same rule-under-a-label look as the panel eyebrows,
+   but sized to sit inside running text rather than to top a card. */
+.briefing-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--live);
+  margin: 0 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--edge);
+}
+.briefing section + section {
+  margin-top: 16px;
 }
 .hints {
   margin-top: 14px;

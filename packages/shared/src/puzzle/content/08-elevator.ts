@@ -3,21 +3,34 @@ import type { PuzzleSpec } from '../types.js';
 export const elevatorAutoReturn: PuzzleSpec = {
   kind: 'ladder',
   slug: 'elevator-auto-return',
-  title: 'Elevator — Automatic Descent',
+  title: 'Elevator: Automatic Descent',
   difficulty: 'medium',
   order: 11,
   category: 'elevator',
   summary: 'Drive a 3-floor elevator up on command and auto-return to the ground after 10 s idle.',
   briefing: [
-    'A 3-floor passenger elevator. Hold the UP command (X0) to drive the car up (Y0);',
-    'it must stop when it reaches the top floor (X5).',
+    'A three-floor goods elevator. The hoist is driven by a hold-to-run UP command,',
+    'and the feature being commissioned here is the automatic descent that returns',
+    'the empty car to the ground floor.',
     '',
-    'The graded feature is AUTOMATIC DESCENT: whenever the car is parked away from',
-    'floor 1 (X3 off) with no UP command for 10 seconds, it must drive DOWN (Y1) to',
-    'floor 1 and stop there. A new UP command cancels a pending or active descent.',
+    '## Equipment',
+    '- X0 UP COMMAND: maintained switch. Hold it to drive the car up.',
+    '- X3, X4, X5 AT FLOOR 1, 2, 3: car-driven position sensors. You cannot press them.',
+    '- Y0 MOTOR UP and Y1 MOTOR DOWN.',
+    '- T0 and M0: idle timer and descent latch (see Working Registers).',
     '',
-    'Floor sensors X3/X4/X5 are driven by the car, so you cannot press them. Timer',
-    'presets are in 100 ms units, so K100 = 10 s.',
+    '## Sequence of operation',
+    '1. Hold UP. The car climbs while the command is held.',
+    '2. AT FLOOR 3 (X5) stops the climb even if the command stays on. The car must not',
+    '   drive into the top stop.',
+    '3. Whenever the car sits away from floor 1 with no UP command, the idle timer runs.',
+    '4. After 10 seconds of that, the car drives DOWN on its own and parks at floor 1.',
+    '5. A new UP command cancels the descent, whether it is still counting down or the',
+    '   car is already moving.',
+    '',
+    '## Field notes',
+    '- Timer presets are in units of 100 ms, so K100 = 10.0 s.',
+    '- A car already parked at floor 1 must never start a descent.',
   ].join('\n'),
   hints: [
     'Drive up: X0 (NO) in series with a normally-closed X5 so the car stops at the ' +
@@ -47,13 +60,13 @@ export const elevatorAutoReturn: PuzzleSpec = {
       name: 'Auto-returns to ground after 10 s',
       steps: [
         {
-          label: 'Hold Up — car climbs to floor 3',
+          label: 'Hold Up: car climbs to floor 3',
           setInputs: { X0: true },
           holdMs: 2500,
           expect: { X5: true, Y0: false },
         },
         {
-          label: 'Release Up — car waits (under 10 s, no descent)',
+          label: 'Release Up: car waits (under 10 s, no descent)',
           setInputs: { X0: false },
           holdMs: 8000,
           expect: { Y1: false, X5: true },
@@ -69,7 +82,7 @@ export const elevatorAutoReturn: PuzzleSpec = {
       name: 'Stays put at the ground floor',
       steps: [
         {
-          label: 'Car already at floor 1 — never auto-descends',
+          label: 'Car already at floor 1: never auto-descends',
           holdMs: 12000,
           expect: { Y1: false, X3: true },
         },
@@ -80,13 +93,13 @@ export const elevatorAutoReturn: PuzzleSpec = {
       steps: [
         { label: 'Climb to floor 3', setInputs: { X0: true }, holdMs: 2500, expect: { X5: true } },
         {
-          label: 'Wait out the timer — descent begins',
+          label: 'Wait out the timer: descent begins',
           setInputs: { X0: false },
           holdMs: 11000,
           expect: { Y1: true },
         },
         {
-          label: 'Press Up — descent cancels, car climbs again',
+          label: 'Press Up: descent cancels, car climbs again',
           setInputs: { X0: true },
           holdMs: 500,
           expect: { Y1: false, Y0: true },

@@ -3,29 +3,46 @@ import type { PuzzleSpec } from '../types.js';
 export const elevatorDoors: PuzzleSpec = {
   kind: 'ladder',
   slug: 'elevator-doors',
-  title: 'Elevator — Doors',
+  title: 'Elevator: Doors',
   difficulty: 'hard',
   order: 13,
   category: 'elevator',
-  summary: 'Add a door that opens on arrival, dwells, and auto-closes — the car cannot move until it does.',
+  summary: 'Add a door that opens on arrival, dwells, and auto-closes. The car cannot move until it does.',
   briefing: [
-    'The same 5-floor dispatch car, now with a door. The car physically cannot move',
-    "while the door isn't fully closed (X16). This is enforced by the machine itself,",
-    'not just graded, so getting the dispatch wiring from the previous puzzle wrong in a',
-    'way that tries to move early will simply leave the car sitting still with the door',
-    'open rather than doing something unsafe.',
+    'The same five-floor car, now fitted with a powered door. The hoist is interlocked',
+    'in hardware: the car physically cannot move unless DOOR CLOSED (X16) is made, so',
+    'a mistake here parks the car with the door open rather than doing anything unsafe.',
     '',
-    'On arriving at any floor the car is actually stopping at, open the door (Y2) and',
-    'hold it open for 3 seconds (X15 confirms open), then close it automatically so the',
-    'car is free to continue dispatching. Do not open the door while merely passing',
-    'through a floor without stopping.',
+    '## Equipment',
+    '- Everything from the dispatch work order, unchanged.',
+    '- X15 DOOR OPEN and X16 DOOR CLOSED: the door end-of-travel sensors.',
+    '- Y2 DOOR OPEN COMMAND: hold it on to open, drop it to let the door close.',
+    '- M20 and T1: door latch and dwell timer (see Working Registers).',
+    '',
+    '## Sequence of operation',
+    '1. Keep the dispatch logic from the previous work order running as it is.',
+    '2. When the car actually stops at a floor, command the door open. X15 confirms it',
+    '   is fully open.',
+    '3. Hold it open for 3.0 seconds so a passenger can step in or out.',
+    '4. Drop the command when the dwell is done. The door closes, X16 makes, and the',
+    '   car is free to dispatch again.',
+    '5. A call registered while the door is open simply waits, and is served as soon',
+    '   as the door is confirmed closed.',
+    '',
+    '## Interlocks and safety',
+    '- Do not open the door when the car merely passes a floor on the way to a further',
+    '  call. Only a genuine stop opens it.',
+    '- Detect that stop on the rising edge of the arrival sensor with both direction',
+    '  latches off in the same scan. A level contact would re-open the door every scan',
+    '  for as long as the car stands there.',
+    '- Timer presets are in units of 100 ms, so K30 = 3.0 s.',
   ].join('\n'),
   hints: [
-    'Reuse the dispatch/stop logic from the 5-Floor Dispatch puzzle unchanged — the ' +
+    'Reuse the dispatch/stop logic from the 5-Floor Dispatch puzzle unchanged: the ' +
       'door interlock is physical, so it does not need to be wired into the Up/Down ' +
       'latches.',
     'Open the door on a RISING EDGE of a floor-arrival sensor, gated by the Up and ' +
-      'Down latches both being off that same scan — that tells a genuine stop apart ' +
+      'Down latches both being off that same scan. That tells a genuine stop apart ' +
       'from a pass-through, since a pass-through leaves at least one latch still set. ' +
       'A level contact instead of an edge would reopen the door every scan for as ' +
       'long as the car sits parked, even after it has already closed once.',
@@ -75,13 +92,13 @@ export const elevatorDoors: PuzzleSpec = {
       steps: [
         { label: 'Press call for floor 3', setInputs: { X2: true }, holdMs: 150, expect: { M2: true } },
         {
-          label: 'Release — car climbs and arrives',
+          label: 'Release: car climbs and arrives',
           setInputs: { X2: false },
           holdMs: 2200,
           expect: { X12: true, Y0: false },
         },
         { label: 'Door finishes opening', holdMs: 700, expect: { X15: true, X16: false } },
-        { label: 'Door dwells open (well under 3 s) — still open', holdMs: 2000, expect: { X15: true, X16: false } },
+        { label: 'Door dwells open (well under 3 s): still open', holdMs: 2000, expect: { X15: true, X16: false } },
         { label: 'After the dwell the door auto-closes', holdMs: 2200, expect: { X16: true, X15: false } },
       ],
     },
@@ -90,7 +107,7 @@ export const elevatorDoors: PuzzleSpec = {
       steps: [
         { label: 'Press call for floor 4', setInputs: { X3: true }, holdMs: 150, expect: { M3: true } },
         {
-          label: 'Release — car climbs and arrives',
+          label: 'Release: car climbs and arrives',
           setInputs: { X3: false },
           holdMs: 3000,
           expect: { X13: true },
@@ -108,14 +125,14 @@ export const elevatorDoors: PuzzleSpec = {
       steps: [
         { label: 'Press call for floor 3', setInputs: { X2: true }, holdMs: 150, expect: { M2: true } },
         {
-          label: 'Release — car climbs and arrives',
+          label: 'Release: car climbs and arrives',
           setInputs: { X2: false },
           holdMs: 2200,
           expect: { X12: true },
         },
         { label: 'Door finishes opening', holdMs: 700, expect: { X15: true } },
         {
-          label: 'Press call for floor 5 mid-dwell — car still parked at floor 3',
+          label: 'Press call for floor 5 mid-dwell: car still parked at floor 3',
           setInputs: { X4: true },
           holdMs: 1000,
           expect: { X12: true, X15: true },

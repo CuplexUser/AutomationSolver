@@ -9,13 +9,28 @@ export const flasher: PuzzleSpec = {
   category: 'timers-counters',
   summary: 'Blink a hazard beacon ~1 s on / 1 s off with a two-timer oscillator.',
   briefing: [
-    'While the HAZARD switch (X0) is on, the BEACON (Y0) must flash: roughly one',
-    'second on, one second off, repeating for as long as the switch is held. Turning',
-    'the switch off stops the flashing and leaves the beacon dark.',
+    'A hazard beacon over a shared aisle has to blink while the hazard switch is on.',
+    'A single on-delay timer fires only once, so the flash rate comes from two timers',
+    'cross-coupled into an oscillator.',
     '',
-    'A single on-delay timer can only fire once. To make it repeat, cross-couple two',
-    'of them into an oscillator: T0 times the "on" phase, T1 the "off" phase, and',
-    'each one resets the other. Presets are in units of 100 ms (K10 = 1.0 s).',
+    '## Equipment',
+    '- X0 HAZARD: maintained switch.',
+    '- Y0 BEACON: amber lamp.',
+    '- T0 and T1: the on phase and the off phase, preset K10 each (see Working',
+    '  Registers).',
+    '',
+    '## Sequence of operation',
+    '1. Turn the hazard switch on. The beacon lights.',
+    '2. It goes dark about a second later, lights again a second after that, and keeps',
+    '   alternating for as long as the switch is held.',
+    '3. Turn the switch off. The flashing stops at once and the beacon stays dark.',
+    '',
+    '## Field notes',
+    '- Timer presets are in units of 100 ms, so K10 = 1.0 s.',
+    '- The oscillator is two rungs: T0 times one phase and is broken by T1, and T1 is',
+    '  driven by T0. Each timer resetting the other is what makes the pattern repeat.',
+    '- Read the lamp off the oscillator on its own rung, so the switch can black it out',
+    '  instantly without waiting for a phase to finish.',
   ].join('\n'),
   hints: [
     'Rung 1: run T0 (K10) from X0 in series with a normally-closed T1 contact.',
@@ -23,7 +38,7 @@ export const flasher: PuzzleSpec = {
     'When T1 finishes it opens rung 1, which resets T0; that in turn resets T1, and ' +
       'the cycle starts over.',
     'Rung 3: light the beacon while the switch is on but T0 has not finished its ' +
-      'phase — X0 in series with a normally-closed T0 contact → Y0.',
+      'phase: X0 in series with a normally-closed T0 contact → Y0.',
   ],
   devices: [
     { address: 'X0', label: 'Hazard', io: 'input', widget: 'toggle' },
@@ -40,7 +55,7 @@ export const flasher: PuzzleSpec = {
     {
       name: 'Beacon flashes while enabled',
       steps: [
-        { label: 'Switch on — first flash is lit', setInputs: { X0: true }, holdMs: 500, expect: { Y0: true } },
+        { label: 'Switch on: first flash is lit', setInputs: { X0: true }, holdMs: 500, expect: { Y0: true } },
         { label: 'First gap', holdMs: 1000, expect: { Y0: false } },
         { label: 'Second flash', holdMs: 1000, expect: { Y0: true } },
         { label: 'Second gap', holdMs: 1000, expect: { Y0: false } },
@@ -49,9 +64,9 @@ export const flasher: PuzzleSpec = {
     {
       name: 'Disabled beacon stays dark',
       steps: [
-        { label: 'Switch off — dark', holdMs: 1500, expect: { Y0: false } },
-        { label: 'Switch on — starts flashing', setInputs: { X0: true }, holdMs: 500, expect: { Y0: true } },
-        { label: 'Switch off — goes dark at once', setInputs: { X0: false }, holdMs: 400, expect: { Y0: false } },
+        { label: 'Switch off: dark', holdMs: 1500, expect: { Y0: false } },
+        { label: 'Switch on: starts flashing', setInputs: { X0: true }, holdMs: 500, expect: { Y0: true } },
+        { label: 'Switch off: goes dark at once', setInputs: { X0: false }, holdMs: 400, expect: { Y0: false } },
       ],
     },
   ],
