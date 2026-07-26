@@ -749,6 +749,20 @@
   line-height: 1.4;
 }
 
+/* Advisory, not a failure — amber like a caution lamp, never red. */
+.validation-warnings {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--live) 35%, var(--edge));
+}
+.warn-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--live);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* Play main / actions */
 .play-main {
   flex: 1 1 auto;

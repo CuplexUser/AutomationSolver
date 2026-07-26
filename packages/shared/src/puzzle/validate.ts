@@ -11,6 +11,8 @@ import type { LadderPuzzleSpec } from './types.js';
 export interface ValidationResult {
   valid: boolean;
   errors: string[];
+  /** Non-blocking advice: the program still grades, but something looks wrong. */
+  warnings: string[];
 }
 
 /** Device kinds each element role may legally reference. */
@@ -46,6 +48,44 @@ function checkElement(el: LadderElement, where: string, errors: string[]): void 
   }
 }
 
+/**
+ * Output roles where the last write of the scan wins, so driving one device
+ * from two rungs silently discards the earlier one. SET/RST are deliberately
+ * exempt: latching a bit in one rung and clearing it in another is the normal
+ * idiom, not a mistake.
+ */
+const LAST_WRITER_WINS = new Set<ElementType>(['coil-out', 'timer', 'counter']);
+
+/**
+ * Classic "double coil" check. A device is counted once per rung however many
+ * cells reference it, so this only reports the cross-rung case.
+ */
+function duplicateOutputWarnings(program: LadderProgram): string[] {
+  const rungsByDevice = new Map<string, number[]>();
+  program.rungs.forEach((rung, ri) => {
+    const seen = new Set<string>();
+    for (const row of rung.cells) {
+      for (const el of row) {
+        if (!el || !LAST_WRITER_WINS.has(el.type) || seen.has(el.device)) continue;
+        seen.add(el.device);
+        const rungs = rungsByDevice.get(el.device);
+        if (rungs) rungs.push(ri + 1);
+        else rungsByDevice.set(el.device, [ri + 1]);
+      }
+    }
+  });
+
+  const warnings: string[] = [];
+  for (const [device, rungs] of rungsByDevice) {
+    if (rungs.length < 2) continue;
+    warnings.push(
+      `${device} is driven from rungs ${rungs.join(', ')} — only the last one takes effect each ` +
+        `scan. Merge them into one rung (parallel rows joined by vertical links), or use SET/RST.`,
+    );
+  }
+  return warnings;
+}
+
 export function validateProgram(spec: LadderPuzzleSpec, program: LadderProgram): ValidationResult {
   const errors: string[] = [];
   const allowed = new Set<ElementType>(spec.allowedInstructions);
@@ -75,5 +115,9 @@ export function validateProgram(spec: LadderPuzzleSpec, program: LadderProgram):
     if (!hasOutput) errors.push(`rung ${ri + 1} has no output/coil`);
   });
 
-  return { valid: errors.length === 0, errors };
+  return {
+    valid: errors.length === 0,
+    errors,
+    warnings: duplicateOutputWarnings(program),
+  };
 }

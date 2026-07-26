@@ -33,5 +33,5 @@ export function validateWiring(spec: CabinetPuzzleSpec, wiring: WiringDoc): Vali
     seenPairs.add(pair);
   }
 
-  return { valid: errors.length === 0, errors };
+  return { valid: errors.length === 0, errors, warnings: [] };
 }

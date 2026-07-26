@@ -631,6 +631,9 @@ describe('gradeProgram — canonical solutions solve every puzzle', () => {
       expect(spec, `puzzle ${slug} exists`).toBeDefined();
       const validation = validateProgram(spec!, program);
       expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+      // A shipped solution must never trip an advisory either — otherwise the
+      // warning is noise and players learn to ignore it.
+      expect(validation.warnings, JSON.stringify(validation.warnings)).toEqual([]);
       const result = gradeProgram(spec!, program);
       const failed = result.scenarios
         .filter((s) => !s.passed)

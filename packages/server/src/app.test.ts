@@ -411,6 +411,25 @@ describe('solutions & grading', () => {
     const res = await request(app).post('/api/puzzles/seal-in/submit').send({ program: sealInSolution });
     expect(res.status).toBe(401);
   });
+
+  it('accepts a program as long as the most rung-hungry puzzle allows', async () => {
+    // The transport schema used to cap programs at 24 rungs while elevator-doors
+    // and elevator-full advertised 28 and 32 — those puzzles 400'd before ever
+    // reaching the grader. Derive the bound so a new puzzle can't reopen the gap.
+    const { PUZZLES } = await import('@automationsolver/shared');
+    const { programSchema } = await import('./validation.js');
+    const biggest = Math.max(
+      ...PUZZLES.map((p) => (p.kind === 'ladder' ? (p.maxRungs ?? 0) : 0)),
+    );
+    const rungs = Array.from({ length: biggest }, (_, i) => ({
+      id: `r${i + 1}`,
+      rows: 1,
+      cols: 2,
+      cells: grid(1, 2, { '0,0': no('X0'), '0,1': out('Y0') }),
+      vlinks: [],
+    }));
+    expect(programSchema.safeParse({ rungs }).success).toBe(true);
+  });
 });
 
 describe('puzzle-map locking', () => {

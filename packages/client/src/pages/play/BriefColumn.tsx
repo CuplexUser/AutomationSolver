@@ -350,6 +350,19 @@ function ResultsCard({
     return <NextPuzzleNav slug={slug} onlyIfSolved />;
   }
 
+  // Warnings never block grading, so they ride alongside whichever card shows.
+  const warnings = result.validation.warnings ?? [];
+  const warningList = warnings.length > 0 && (
+    <div className="validation-warnings">
+      <span className="eyebrow">Warnings</span>
+      <ul className="warn-list">
+        {warnings.map((w, i) => (
+          <li key={i}>{w}</li>
+        ))}
+      </ul>
+    </div>
+  );
+
   if (!result.validation.valid) {
     return (
       <div className="results-card panel invalid">
@@ -359,6 +372,7 @@ function ResultsCard({
             <li key={i}>{e}</li>
           ))}
         </ul>
+        {warningList}
       </div>
     );
   }
@@ -370,6 +384,7 @@ function ResultsCard({
         <span className="eyebrow">Grading</span>
         <span className={`score${grade.solved ? ' ok' : ''}`}>{grade.score}%</span>
       </div>
+      {warningList}
       {grade.solved && (
         <>
           <p className="solved-banner">✔ Solved — all scenarios pass</p>
