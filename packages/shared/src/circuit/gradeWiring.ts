@@ -1,3 +1,4 @@
+import { describeBitFailure, describeMachineFailure } from '../puzzle/failureText.js';
 import { GRADE_DT, type GradeResult, type ScenarioResult } from '../puzzle/grade.js';
 import { defaultInputs, type CabinetPuzzleSpec, type Scenario } from '../puzzle/types.js';
 import { CabinetSim, type CabinetSimResult } from './solver.js';
@@ -98,14 +99,14 @@ function simulateScenario(
     for (const [addr, expected] of Object.entries(step.expect ?? {})) {
       const actual = sim.getBit(addr);
       if (actual !== expected) {
-        failures.push(`${addr} expected ${expected ? 'ON' : 'OFF'} but was ${actual ? 'ON' : 'OFF'}`);
+        failures.push(describeBitFailure(addr, expected, actual, spec.devices));
       }
     }
     const machine = sim.machine;
     for (const [key, expected] of Object.entries(step.expectMachine ?? {})) {
       const actual = machine[key];
       if (actual !== expected) {
-        failures.push(`machine.${key} expected ${String(expected)} but was ${String(actual)}`);
+        failures.push(describeMachineFailure(key, expected, actual));
       }
     }
     for (const f of stepFaults) if (!failures.includes(f)) failures.push(f);

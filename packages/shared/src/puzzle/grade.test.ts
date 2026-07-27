@@ -846,6 +846,35 @@ describe('gradeProgram — plausible wrong drill-station programs are rejected',
     expect(result.scenarios.every((s) => !s.passed)).toBe(true);
   });
 
+  it('dropping the clamp a scan before the feed rung notices snaps the bit on E-Stop', () => {
+    // Gating the clamp on X1 but not the feed makes Y0 drop the scan the E-Stop
+    // opens, while Y1 hangs on for one more scan (X2 only falls once the clamp
+    // has physically moved). The bit is then driving into an unheld part.
+    const clampOnlyEstop = drillAutoCycle(false).map((r) =>
+      r.id === 'ds2'
+        ? R('ds2', 1, 3, { '0,0': no('M0'), '0,1': no('X1'), '0,2': out('Y0') })
+        : r,
+    );
+    const result = expectFailsGrading('drill-spindle', clampOnlyEstop);
+    const estop = result.scenarios.find((s) => s.name.startsWith('E-Stop'))!;
+    expect(estop.passed).toBe(false);
+    // The jam latches during the E-Stop step but only breaks an assertion in the
+    // step after it, so the message has to name the step that actually caused it.
+    const failures = estop.steps.flatMap((s) => s.failures);
+    expect(failures.some((f) => /jammed [\d.]+ s into the run, back in "Hit E-Stop/.test(f))).toBe(
+      true,
+    );
+    expect(failures.some((f) => f.includes('the clamp was not holding'))).toBe(true);
+    expect(failures.some((f) => f.includes('should have produced 1 good part'))).toBe(true);
+  });
+
+  it('names the field device, not just the address, when an output is wrong', () => {
+    const noBeacon = drillAutoCycle(false).filter((r) => r.id !== 'ds4');
+    const result = expectFailsGrading('drill-spindle', noBeacon);
+    const failures = result.scenarios.flatMap((s) => s.steps.flatMap((st) => st.failures));
+    expect(failures).toContain('Warning Beacon (Y2) should be ON at this point, but it was OFF.');
+  });
+
   it('retracting on the bottom sensor instead of dwelling leaves an unfinished hole', () => {
     // The stroke looks right and the part even reaches the belt, but the hole was
     // never finished, so it lands as scrap and the good count never moves.

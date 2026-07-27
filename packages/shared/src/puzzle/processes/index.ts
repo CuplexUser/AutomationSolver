@@ -145,6 +145,11 @@ const drill: ProcessModel = {
     const hasGate = drillHas(devices, 'Y6');
 
     let jam = machine.jam === true;
+    let jamReason = typeof machine.jamReason === 'string' ? machine.jamReason : '';
+    const trip = (reason: string): void => {
+      if (!jam) jamReason = reason;
+      jam = true;
+    };
     const dt = jam ? 0 : dtMs;
 
     const clampCmd = outputs['Y0'] === true;
@@ -174,15 +179,25 @@ const drill: ProcessModel = {
       const advancing = feedCmd && prevFeed < 1;
       // Driving the bit into a part nothing is holding down is a crash on every
       // drill station, spindle motor or not — this one is never optional.
-      if (advancing && clamp < 1) jam = true;
-      else if (hasSpindle && advancing && speed < 1) jam = true;
-      else if (hasSpindle && advancing && hasFeeder && part !== 'alu') jam = true;
+      if (advancing && clamp < 1) {
+        trip('the feed was driving the bit down into a part the clamp was not holding, so the bit snapped');
+      } else if (hasSpindle && advancing && speed < 1) {
+        trip('the feed was driving the bit down before the spindle was up to full speed, so the bit snapped');
+      } else if (hasSpindle && advancing && hasFeeder && part !== 'alu') {
+        trip(
+          part === 'steel'
+            ? 'the bit was fed into hardened steel, which this machine cannot drill'
+            : 'the bit was fed down onto an empty fixture',
+        );
+      }
       // Shoving the pusher sideways across a head that is still down snaps the
       // bit off at the shank. Only enforced where the puzzle wires the
       // retracted-position sensors: without X10 a program has no way to see
       // "head fully up", and those puzzles legitimately start the pusher on the
       // same scan the feed coil drops.
-      else if (hasHomeSensors && pushCmd && prevFeed > 0) jam = true;
+      else if (hasHomeSensors && pushCmd && prevFeed > 0) {
+        trip('the eject pusher ran across the drill head before it was fully back up, shearing the bit off');
+      }
     }
     const move = jam ? 0 : dt;
 
@@ -256,6 +271,7 @@ const drill: ProcessModel = {
       clamp,
       drill: feed,
       push,
+      jamReason,
       spinning: hasSpindle ? speed > 0 : feedCmd,
       warning: outputs['Y2'] === true,
       // Whichever completion lamp the puzzle wires drives the green stack light.
@@ -464,6 +480,14 @@ const PACK_ACTUATORS = [
   { cmd: 'Y5', inS: 'X12', outS: 'X13', ms: 300, key: 'backstop' },
 ] as const;
 
+/** Player-facing names for the pushers, used when a jam has to be explained. */
+const PACK_PUSHER_NAMES: Record<string, string> = {
+  push2: '2-pack pusher',
+  push4: '4-pack pusher',
+  push16a: '16-pack pusher',
+  push16b: 'out-feed pusher',
+};
+
 const PACK_EPS = 0.02;
 /** Full lane travel time; the queue hold point sits halfway, so queue → stop = 600ms. */
 const LANE_FEED_MS = 1200;
@@ -525,6 +549,11 @@ const packaging: ProcessModel = {
     // retaining bracket — arbitrarily far past their normal range.
     const wasJammed = machine.jam === true;
     let jam = wasJammed;
+    let jamReason = typeof machine.jamReason === 'string' ? machine.jamReason : '';
+    const trip = (reason: string): void => {
+      if (!jam) jamReason = reason;
+      jam = true;
+    };
     const hasBracket = packHasBracket(devices);
     const dt = wasJammed ? 0 : dtMs;
 
@@ -568,17 +597,23 @@ const packaging: ProcessModel = {
     }
     if (strokeEnds('push16a') && num(m.carry16a) > 0) {
       if (num(m.backstop) <= PACK_EPS && num(m.sec4) === 0) m.sec4 = num(m.carry16a);
-      else jam = true; // plate swept into the bracket / crashed into the last pack
+      else if (num(m.backstop) > PACK_EPS) {
+        trip('the 16-pack pusher swept the stack straight into the retaining bracket, which was still forward');
+      } else {
+        trip('the 16-pack pusher drove the stack into the pack still sitting in section 4');
+      }
       m.carry16a = 0;
     }
     // Lift: flips its load over into section 3 at the top of the stroke. The
     // on-end cartons tip over unless the bracket backs the stack (only when
     // the puzzle wires Y5 — otherwise it is parked forward for you).
     if (strokeEnds('lift') && num(m.liftLoad) > 0) {
-      if (hasBracket && num(m.backstop) < 1 - PACK_EPS) jam = true;
+      if (hasBracket && num(m.backstop) < 1 - PACK_EPS) {
+        trip('the lift flipped its cartons over with nothing behind them, because the retaining bracket was not out');
+      }
       m.sec3 = num(m.sec3) + num(m.liftLoad);
       m.liftLoad = 0;
-      if (num(m.sec3) > 16) jam = true;
+      if (num(m.sec3) > 16) trip('more than 16 boxes were flipped into section 3, overfilling the station');
     }
     // 4-pack: section 2 → lift platform, which must be down and empty.
     if (strokeStarts('push4') && num(m.sec2) > 0) {
@@ -587,7 +622,11 @@ const packaging: ProcessModel = {
     }
     if (strokeEnds('push4') && num(m.carry4) > 0) {
       if (pos.lift.next <= PACK_EPS && num(m.liftLoad) === 0) m.liftLoad = num(m.carry4);
-      else jam = true; // boxes dumped against a raised or occupied lift
+      else if (pos.lift.next > PACK_EPS) {
+        trip('the 4-pack pusher dumped its boxes against a lift that was not down at the bottom');
+      } else {
+        trip('the 4-pack pusher dumped its boxes onto a lift that was already loaded');
+      }
       m.carry4 = 0;
     }
     // 2-pack: picks up whatever is at the stop when it sets off …
@@ -603,11 +642,15 @@ const packaging: ProcessModel = {
     // … and lands it in section 2 at full stroke. A lone box goes in askew, a
     // third pair over-fills, and an extended 4-pack rod is in the way.
     if (strokeEnds('push2') && (m.carryA === true || m.carryB === true)) {
-      if (m.carryA !== m.carryB || pos.push4.next > PACK_EPS) {
-        jam = true;
+      if (pos.push4.next > PACK_EPS) {
+        trip('the 2-pack pusher ran while the 4-pack rod was still extended across its path');
+      } else if (m.carryA !== m.carryB) {
+        trip('the 2-pack pusher pushed a single box instead of a pair, so it went into section 2 askew');
       } else {
         m.sec2 = num(m.sec2) + 2;
-        if (num(m.sec2) > 4) jam = true;
+        if (num(m.sec2) > 4) {
+          trip('a third pair of boxes was pushed into section 2, which only holds four');
+        }
       }
       m.carryA = false;
       m.carryB = false;
@@ -616,12 +659,12 @@ const packaging: ProcessModel = {
     for (const k of ['push4', 'push16a', 'push16b'] as const) {
       const carryKey = k === 'push4' ? 'carry4' : k === 'push16a' ? 'carry16a' : 'carry16b';
       if (strokeAborts(k) && num(m[carryKey]) > 0) {
-        jam = true;
+        trip(`the ${PACK_PUSHER_NAMES[k]} was recalled mid stroke and stranded its load between stations`);
         m[carryKey] = 0;
       }
     }
     if (strokeAborts('push2') && (m.carryA === true || m.carryB === true)) {
-      jam = true;
+      trip('the 2-pack pusher was recalled mid stroke and stranded its boxes between stations');
       m.carryA = false;
       m.carryB = false;
     }
@@ -653,6 +696,7 @@ const packaging: ProcessModel = {
     }
 
     m.jam = jam;
+    m.jamReason = jamReason;
     return { machine: m, derivedInputs };
   },
 };
@@ -753,6 +797,11 @@ const pickPlace: ProcessModel = {
     const hasReset = pickPlaceHasReset(devices);
 
     let jam = machine.jam === true;
+    let jamReason = typeof machine.jamReason === 'string' ? machine.jamReason : '';
+    const trip = (reason: string): void => {
+      if (!jam) jamReason = reason;
+      jam = true;
+    };
     const dt = jam ? 0 : dtMs;
 
     // Swing physical interlock: cannot move while reach is extended (would
@@ -828,11 +877,13 @@ const pickPlace: ProcessModel = {
     const gripJustOpened = prevGrip > 0 && grip <= 0;
     if (gripJustOpened && carrying) {
       if (reach < 1) {
-        jam = true;
+        trip('the gripper opened before the arm had reached down, dropping the part in mid air');
       } else {
         const idx = Math.round(station);
-        if (idx === 0 || pickPlaceSlotAt(m, idx)) {
-          jam = true;
+        if (idx === 0) {
+          trip('the part was let go back at the infeed station instead of over a tray slot');
+        } else if (pickPlaceSlotAt(m, idx)) {
+          trip(`the part was placed into tray slot ${idx}, which was already full`);
         } else {
           pickPlaceSetSlotAt(m, idx, true);
           placed += 1;
@@ -878,6 +929,7 @@ const pickPlace: ProcessModel = {
     m.refillT = refillT;
     m.placed = placed;
     m.jam = jam;
+    m.jamReason = jamReason;
 
     return { machine: m, derivedInputs };
   },

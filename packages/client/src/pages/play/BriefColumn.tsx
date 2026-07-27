@@ -404,7 +404,12 @@ function ResultsCard({
                       .filter((st) => !st.passed)
                       .map((st, j) => (
                         <li key={j}>
-                          {st.label}: {st.failures.join('; ')}
+                          <span className="step-fail-label">{st.label}</span>
+                          <ul className="step-fail-reasons">
+                            {st.failures.map((f, k) => (
+                              <li key={k}>{f}</li>
+                            ))}
+                          </ul>
                         </li>
                       ))}
                   </ul>

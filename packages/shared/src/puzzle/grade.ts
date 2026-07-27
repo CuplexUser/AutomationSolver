@@ -2,6 +2,12 @@ import { SimEngine } from '../sim/scanCycle.js';
 import type { RungEvalResult } from '../sim/rungSolver.js';
 import type { LadderProgram } from '../ladder/types.js';
 import { getProcess, type MachineState } from './processes/index.js';
+import {
+  describeBitFailure,
+  describeJamFailure,
+  describeMachineFailure,
+  type JamOnset,
+} from './failureText.js';
 import { defaultInputs, outputDevices, type LadderPuzzleSpec, type Scenario } from './types.js';
 
 export interface StepResult {
@@ -69,6 +75,10 @@ function simulateScenario(
   let tMs = 0;
 
   const stepResults: TraceStep[] = [];
+  // A jam latches and freezes the machine, so it usually surfaces as a failed
+  // assertion one or more steps after the scan that caused it. Remember where it
+  // started so the message can point back at the real cause.
+  let jamOnset: { tMs: number; stepIndex: number; stepLabel: string; reason?: string } | undefined;
 
   scenario.steps.forEach((step, stepIndex) => {
     Object.assign(inputs, step.setInputs ?? {});
@@ -84,6 +94,14 @@ function simulateScenario(
       const res = process.step({ outputs, inputs, machine, devices: spec.devices, dtMs: dt });
       machine = res.machine;
       derived = res.derivedInputs ?? {};
+      if (!jamOnset && machine.jam === true) {
+        jamOnset = {
+          tMs,
+          stepIndex,
+          stepLabel: step.label,
+          reason: typeof machine.jamReason === 'string' ? machine.jamReason : undefined,
+        };
+      }
       if (samples) {
         samples.push({
           tMs,
@@ -99,14 +117,22 @@ function simulateScenario(
     for (const [addr, expected] of Object.entries(step.expect ?? {})) {
       const actual = engine.getBit(addr);
       if (actual !== expected) {
-        failures.push(`${addr} expected ${expected ? 'ON' : 'OFF'} but was ${actual ? 'ON' : 'OFF'}`);
+        failures.push(describeBitFailure(addr, expected, actual, spec.devices));
       }
     }
+    const onset: JamOnset | undefined = jamOnset
+      ? { ...jamOnset, sameStep: jamOnset.stepIndex === stepIndex }
+      : undefined;
     for (const [key, expected] of Object.entries(step.expectMachine ?? {})) {
       const actual = machine[key];
       if (actual !== expected) {
-        failures.push(`machine.${key} expected ${String(expected)} but was ${String(actual)}`);
+        failures.push(describeMachineFailure(key, expected, actual, onset));
       }
+    }
+    // A step that only checks bits still fails for pages after a jam, with no
+    // hint as to why nothing moved. Say it once, at the end of the list.
+    if (failures.length > 0 && onset && !('jam' in (step.expectMachine ?? {}))) {
+      failures.push(describeJamFailure(onset));
     }
     stepResults.push({ label: step.label, startSample, passed: failures.length === 0, failures });
   });

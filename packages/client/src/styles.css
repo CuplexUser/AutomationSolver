@@ -748,6 +748,24 @@
   font-size: 12px;
   line-height: 1.4;
 }
+/* One failing step per block: the step label, then a sentence per broken
+   expectation. Overrides the flex row .scenario-list li sets for the top level. */
+.step-fails > li {
+  display: list-item;
+  font-size: 12px;
+}
+.step-fail-label {
+  color: var(--ink-dim);
+}
+.step-fail-reasons {
+  margin: 2px 0 6px;
+  padding-left: 14px;
+  list-style: disc;
+}
+.step-fails .step-fail-reasons li {
+  display: list-item;
+  font-size: 12px;
+}
 
 /* Advisory, not a failure — amber like a caution lamp, never red. */
 .validation-warnings {
