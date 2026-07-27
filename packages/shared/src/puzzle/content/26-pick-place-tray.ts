@@ -91,7 +91,7 @@ export const pickPlaceTray: PuzzleSpec = {
         },
         {
           label: 'Third part placed on pad 3',
-          holdMs: 7500,
+          holdMs: 5100,
           expectMachine: { placed: 3, jam: false },
           expect: { X16: true },
         },

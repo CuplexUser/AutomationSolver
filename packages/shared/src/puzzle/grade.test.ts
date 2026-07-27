@@ -344,6 +344,42 @@ function drillClampFeedCore(): Rung[] {
   ];
 }
 
+// Drill station full stroke: the clamp/feed core above, extended with the
+// beacon, the latched CYCLE DONE lamp and the eject pusher. Both cylinders
+// report each end of travel here, and the machine enforces it — running the
+// pusher across a head that is not yet fully up (X10) shears the bit off, so
+// the eject cannot simply be fired at the bottom sensor.
+function drillFullStroke(): Rung[] {
+  return [
+    // Run latch: (X0 OR M0) AND X1(healthy) AND X11(rod home) AND NOT X3(bottom).
+    R(
+      'dfs1',
+      2,
+      5,
+      {
+        '0,0': no('X0'),
+        '1,0': no('M0'),
+        '0,1': no('X1'),
+        '0,2': no('X11'),
+        '0,3': nc('X3'),
+        '0,4': out('M0'),
+      },
+      [{ row: 0, col: 1 }],
+    ),
+    R('dfs2', 1, 2, { '0,0': no('M0'), '0,1': out('Y0') }), // clamp whole cycle
+    R('dfs3', 1, 3, { '0,0': no('M0'), '0,1': no('X2'), '0,2': out('Y1') }), // drill once clamped
+    R('dfs4', 1, 2, { '0,0': no('Y1'), '0,1': out('Y2') }), // beacon while drilling
+    R('dfs5', 1, 2, { '0,0': no('X3'), '0,1': set('Y3') }), // latch done at bottom
+    R('dfs6', 1, 2, { '0,0': no('X0'), '0,1': rst('Y3') }), // clear on next start
+    // The eject waits for the head to clear the bore. A rising edge on X10 is
+    // what keeps this a one-shot: X10 and Y3 both stay on after the rod is
+    // recalled, so a level contact would re-SET Y4 the scan after every RESET
+    // and cycle the pusher forever.
+    R('dfs7', 1, 3, { '0,0': rise('X10'), '0,1': no('Y3'), '0,2': set('Y4') }),
+    R('dfs8', 1, 2, { '0,0': no('X4'), '0,1': rst('Y4') }), // stop at the end of the stroke
+  ];
+}
+
 // Automatic drilling cycle (drill-spindle / drill-production): two stage relays
 // — M0 "drilling this part", M1 "ejecting it" — started only by a part actually
 // on the fixture. The feed is interlocked on clamped AND spindle-at-speed, and
@@ -544,34 +580,7 @@ const solutions: Record<string, LadderProgram> = {
   'drill-clamp-feed': { rungs: drillClampFeedCore() },
   'drill-spindle': { rungs: drillAutoCycle(false) },
   'drill-production': { rungs: drillAutoCycle(true) },
-  'drill-station': {
-    rungs: [
-      // Run latch: (X0 OR M0) AND X1(healthy) AND NOT X3(bottom) -> M0
-      R(
-        'r1',
-        2,
-        4,
-        {
-          '0,0': no('X0'),
-          '1,0': no('M0'),
-          '0,1': no('X1'),
-          '0,2': nc('X3'),
-          '0,3': out('M0'),
-        },
-        [{ row: 0, col: 1 }],
-      ),
-      R('r2', 1, 2, { '0,0': no('M0'), '0,1': out('Y0') }), // clamp whole cycle
-      R('r3', 1, 3, { '0,0': no('M0'), '0,1': no('X2'), '0,2': out('Y1') }), // drill once clamped
-      R('r4', 1, 2, { '0,0': no('Y1'), '0,1': out('Y2') }), // beacon while drilling
-      R('r5', 1, 2, { '0,0': no('X3'), '0,1': set('Y3') }), // latch done at bottom
-      R('r6', 1, 2, { '0,0': no('X0'), '0,1': rst('Y3') }), // clear on next start
-      // Triggering off X3 (momentary) rather than Y3 (latched) avoids a SET/RESET
-      // fight: Y3 stays true until the next start, so it would keep re-SETting Y4
-      // every scan even while r8 is trying to RESET it once X4 senses ejected.
-      R('r7', 1, 2, { '0,0': no('X3'), '0,1': set('Y4') }), // start ejecting once bottomed out
-      R('r8', 1, 2, { '0,0': no('X4'), '0,1': rst('Y4') }), // stop once clear of the platform
-    ],
-  },
+  'drill-station': { rungs: drillFullStroke() },
   'elevator-auto-return': {
     rungs: [
       R('r1', 1, 3, { '0,0': no('X0'), '0,1': nc('X5'), '0,2': out('Y0') }), // up while commanded, stop at top
@@ -772,6 +781,57 @@ describe('gradeProgram — plausible wrong drill-station programs are rejected',
       r.id === 'dc3' ? R('dc3', 1, 2, { '0,0': no('M0'), '0,1': out('Y1') }) : r,
     );
     expectFailsGrading('drill-clamp-feed', ungated);
+  });
+
+  it('ejecting off the bottom sensor drives the pusher into a head that is still down', () => {
+    // The pre-revision solution: SET Y4 straight off X3. The rod now sweeps
+    // across a bore the bit is still sitting in, which shears it off.
+    const ejectAtBottom = drillFullStroke().map((r) =>
+      r.id === 'dfs7' ? R('dfs7', 1, 2, { '0,0': no('X3'), '0,1': set('Y4') }) : r,
+    );
+    const result = expectFailsGrading('drill-station', ejectAtBottom);
+    expect(result.scenarios.every((s) => !s.passed)).toBe(false); // the E-Stop abort still passes
+    const jammed = result.scenarios[0].steps.some((s) => s.failures.some((f) => f.includes('jam')));
+    expect(jammed).toBe(true);
+  });
+
+  it('a level contact instead of a rising edge cycles the eject pusher forever', () => {
+    // X10 and Y3 both stay on once the rod is recalled, so the SET re-fires the
+    // scan after every RESET and the pusher never stays home.
+    const levelEject = drillFullStroke().map((r) =>
+      r.id === 'dfs7'
+        ? R('dfs7', 1, 3, { '0,0': no('X10'), '0,1': no('Y3'), '0,2': set('Y4') })
+        : r,
+    );
+    const result = expectFailsGrading('drill-station', levelEject);
+    expect(result.scenarios[0].steps.at(-1)!.passed).toBe(false);
+  });
+
+  it('a full-stroke cycle that ignores the eject-home sensor re-clamps on an extended rod', () => {
+    const noHomeGate = drillFullStroke().map((r) =>
+      r.id === 'dfs1'
+        ? R(
+            'dfs1',
+            2,
+            4,
+            { '0,0': no('X0'), '1,0': no('M0'), '0,1': no('X1'), '0,2': nc('X3'), '0,3': out('M0') },
+            [{ row: 0, col: 1 }],
+          )
+        : r,
+    );
+    const result = expectFailsGrading('drill-station', noHomeGate);
+    const restart = result.scenarios.find(
+      (s) => s.name === 'A new part waits for the eject rod to come home',
+    )!;
+    expect(restart.passed).toBe(false);
+  });
+
+  it('feeding straight off the run latch drives the bit into an unclamped part', () => {
+    const ungated = drillFullStroke().map((r) =>
+      r.id === 'dfs3' ? R('dfs3', 1, 2, { '0,0': no('M0'), '0,1': out('Y1') }) : r,
+    );
+    const result = expectFailsGrading('drill-station', ungated);
+    expect(result.scenarios.every((s) => !s.passed)).toBe(true);
   });
 
   it('feeding without waiting for spindle-at-speed snaps the bit', () => {

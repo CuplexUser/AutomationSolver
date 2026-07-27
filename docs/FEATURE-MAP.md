@@ -65,10 +65,18 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     list** (the `elevator5` door trick, widened) so one model serves all four puzzles in the
     `drill` category and the two easy ones still see the machine they always saw. Base: clamp
     travel (`Y0`→`X2` Clamped), feed depth (`Y1`→`X3` At Bottom) and the eject pusher
-    (`Y4`→`X4` Ejected). **`Y5` wired** adds a real spindle with spin-up/coast (`600ms`/`900ms`)
-    reporting `X7` At Speed, plus the feed interlocks — advancing the feed unclamped, below
-    speed, or into hardened stock snaps the bit and latches a packaging-style `jam` (frozen
-    machine, asserted `false` by every scenario); pushing a still *fully* clamped part is
+    (`Y4`→`X4` Eject Extended), plus the one interlock no drill station can do without —
+    advancing the feed into an unclamped part snaps the bit and latches a packaging-style
+    `jam` (frozen machine, asserted `false` by every scenario). **`X10` wired** instruments
+    the *retracted* end of both strokes as well (`X10` Drill Up = feed fully home, `X11` Eject
+    Home = rod fully home); with the head's position visible, running the pusher across a bore
+    the bit is still in becomes a crash too (`jam`), which is what forces the eject to be
+    fired off `X10` rather than off the bottom sensor. Those two sensors are feature-gated
+    precisely because the older puzzles cannot see "head fully up" and legitimately start the
+    pusher on the same scan the feed coil drops. **`Y5` wired** adds a real spindle with
+    spin-up/coast (`600ms`/`900ms`) reporting `X7` At Speed, plus the remaining feed
+    interlocks — advancing below speed or into hardened stock also snaps the bit; pushing a
+    still *fully* clamped part is
     interlocked mechanically instead (elevator5-door style: the rod simply doesn't move), so
     releasing the clamp on the same scan the pusher starts isn't punished as a crash. **`X5`
     wired** adds real work pieces: a blank slides onto a cleared fixture after `700ms`
@@ -202,7 +210,7 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 27 | `pick-place-supply` | hard | wait on a feature-detected finite infeed sensor (X13) + supply lamp | pickPlace |
 | 28 | `pick-place-full` | hard | capstone: two-tray order — operator unloads (X20→Y5), tray counter C0, Y7 lamp | pickPlace |
 | 29 | `drill-clamp-feed` | easy | seal one stroke in, feed only once X2 confirms the clamp | drill |
-| 30 | `drill-station` | medium | multi-step sequence, SET/RST, beacon, eject | drill |
+| 30 | `drill-station` | medium | multi-step sequence, SET/RST, beacon, both ends of both cylinders (X3/X10, X4/X11), rising-edge one-shot eject | drill |
 | 31 | `drill-spindle` | hard | spindle Y5 + X7 at-speed interlock, 1.0 s bottom dwell on T0, rotation off between parts | drill |
 | 32 | `drill-production` | hard | capstone: mixed stock — X6 metal diverted undrilled via Y6, C0 counts holes and parks the batch | drill |
 

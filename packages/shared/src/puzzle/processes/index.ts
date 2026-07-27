@@ -89,7 +89,11 @@ const drillHas = (devices: PuzzleDevice[], address: string): boolean =>
  * device list (elevator5-style) so one model serves the whole difficulty ramp:
  *
  *   base           Y0 clamp → X2 "Clamped", Y1 feed → X3 "At Bottom",
- *                  Y4 eject → X4 "Ejected".
+ *                  Y4 eject → X4 "Eject Extended". Feeding into an unclamped
+ *                  part snaps the bit on any station, so that one is always on.
+ *   +home    (X10) the retracted end of each stroke is instrumented too → X10
+ *                  "Drill Up", X11 "Eject Home"; with the head's position
+ *                  visible, ejecting before it is fully up shears the bit off.
  *   +spindle (Y5)  a real spin-up/coast-down spindle → X7 "At Speed"; the feed
  *                  is interlocked (clamped, turning, drillable stock) and a
  *                  dwell at full depth is what actually finishes the hole.
@@ -135,6 +139,7 @@ const drill: ProcessModel = {
   },
   step: ({ outputs, machine, devices, dtMs }) => {
     const hasSpindle = drillHas(devices, 'Y5');
+    const hasHomeSensors = drillHas(devices, 'X10');
     const hasFeeder = drillHas(devices, 'X5');
     const hasMetal = drillHas(devices, 'X6');
     const hasGate = drillHas(devices, 'Y6');
@@ -161,13 +166,23 @@ const drill: ProcessModel = {
 
     let part = typeof machine.part === 'string' ? machine.part : 'none';
 
-    // Feed interlocks, checked against the *new* clamp/speed so a command issued
-    // this same scan counts: commanding the feed together with the clamp or with
-    // the spindle crashes the bit, and so does touching hardened steel.
-    if (hasSpindle && !jam) {
+    // Feed / eject interlocks, checked against the *new* clamp and speed so a
+    // command issued this same scan counts: commanding the feed together with
+    // the clamp or with the spindle crashes the bit, and so does touching
+    // hardened steel.
+    if (!jam) {
       const advancing = feedCmd && prevFeed < 1;
-      if (advancing && (clamp < 1 || speed < 1)) jam = true;
-      else if (advancing && hasFeeder && part !== 'alu') jam = true;
+      // Driving the bit into a part nothing is holding down is a crash on every
+      // drill station, spindle motor or not — this one is never optional.
+      if (advancing && clamp < 1) jam = true;
+      else if (hasSpindle && advancing && speed < 1) jam = true;
+      else if (hasSpindle && advancing && hasFeeder && part !== 'alu') jam = true;
+      // Shoving the pusher sideways across a head that is still down snaps the
+      // bit off at the shank. Only enforced where the puzzle wires the
+      // retracted-position sensors: without X10 a program has no way to see
+      // "head fully up", and those puzzles legitimately start the pusher on the
+      // same scan the feed coil drops.
+      else if (hasHomeSensors && pushCmd && prevFeed > 0) jam = true;
     }
     const move = jam ? 0 : dt;
 
@@ -254,6 +269,10 @@ const drill: ProcessModel = {
     }
 
     const derivedInputs: Record<string, boolean> = { X2: clamp >= 1, X3: feed >= 1, X4: push >= 1 };
+    if (hasHomeSensors) {
+      derivedInputs.X10 = feed <= 0;
+      derivedInputs.X11 = push <= 0;
+    }
     if (hasFeeder) derivedInputs.X5 = part !== 'none';
     if (hasMetal) derivedInputs.X6 = part === 'steel';
     if (hasSpindle) derivedInputs.X7 = speed >= 1;
@@ -692,7 +711,7 @@ const PP_REACH_DOWN_MS = 400;
 const PP_REACH_UP_MS = 300;
 const PP_GRIP_CLOSE_MS = 300;
 const PP_GRIP_OPEN_MS = 250;
-const PP_REFILL_MS = 1500;
+const PP_REFILL_MS = 3000;
 const PP_POS_EPS = 0.02;
 
 function pickPlaceSlotAt(m: MachineState, idx: number): boolean {

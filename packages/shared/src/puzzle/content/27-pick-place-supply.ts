@@ -77,14 +77,24 @@ export const pickPlaceSupply: PuzzleSpec = {
           expect: { X13: true, Y6: false },
         },
         {
+          label: 'The first part is grabbed and the pad goes dry: the supply lamp lights',
+          holdMs: 900,
+          expect: { X13: false, Y6: true },
+        },
+        {
+          label: 'Back at the infeed with nothing delivered yet: the arm holds off, not gripping air',
+          holdMs: 2600,
+          expect: { X13: false, Y6: true, Y2: false },
+        },
+        {
           label: 'First pick proceeds and lands on pad 1',
-          holdMs: 4300,
+          holdMs: 800,
           expectMachine: { placed: 1, jam: false },
           expect: { X14: true },
         },
         {
           label: 'Three more deliveries fill the tray despite the refill gaps',
-          holdMs: 22000,
+          holdMs: 20500,
           expectMachine: { placed: 4, jam: false },
           expect: { X17: true, X18: true, Y4: true },
         },

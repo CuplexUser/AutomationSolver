@@ -52,7 +52,8 @@ const HOLE_BOTTOM_Y = -0.007;
 // The mechanism: HOLD (cylinder 1) presses the part along X against the fixed
 // StationStop. PUSH (cylinder 2) sits 90 degrees away on Z and, once ejecting is
 // commanded (Y4), shoves the part off the fixture onto the outfeed belt; an
-// "Ejected" sensor (X4) stops it once the part is clear. Fresh parts arrive from
+// "Eject Extended" sensor (X4) stops it once the part is clear, and the puzzles
+// that wire X11 also see the rod back home. Fresh parts arrive from
 // the opposite direction, sliding out of the gravity chute onto the fixture — so
 // they travel in X and Y while the eject travels in Z. A part that has just been
 // ejected is a *different* part from the one that drops in for the next cycle,
