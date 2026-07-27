@@ -1,0 +1,75 @@
+/* ===================== Save slots ===================== */
+.slots-panel {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  flex: 0 0 auto;
+}
+.slots-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.slots-list {
+  list-style: none;
+  padding: 0;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.slots-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+}
+.slots-list li.active {
+  border-color: color-mix(in srgb, var(--live) 50%, var(--edge));
+  background: color-mix(in srgb, var(--live) 8%, transparent);
+}
+.slot-name {
+  flex: 1 1 auto;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--ink);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.slot-name:hover {
+  color: var(--live);
+}
+.slot-submitted-mark {
+  color: var(--run);
+  font-size: 11px;
+}
+.slot-time {
+  white-space: nowrap;
+}
+.slot-actions {
+  display: flex;
+  gap: 2px;
+}
+.slots-import-export {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.prev-solution-banner {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  flex: 0 0 auto;
+  border-color: color-mix(in srgb, var(--live) 50%, var(--edge));
+}
+.prev-solution-banner p {
+  margin: 0 0 8px;
+}
+

@@ -1,0 +1,92 @@
+/* ===================== Auth ===================== */
+.auth-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 64px 24px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 400px;
+  padding: 32px;
+}
+.auth-card h2 {
+  margin: 6px 0 22px;
+  font-size: 24px;
+}
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.auth-field span {
+  font-size: 12px;
+  color: var(--ink-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.auth-error {
+  color: var(--stop);
+  font-size: 13px;
+  margin: 0;
+}
+.auth-success {
+  color: var(--live);
+  font-size: 13px;
+  margin: 0;
+}
+.auth-divider {
+  text-align: center;
+  margin: 20px 0 14px;
+  position: relative;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 30%;
+  height: 1px;
+  background: var(--edge);
+}
+.auth-divider::before {
+  left: 0;
+}
+.auth-divider::after {
+  right: 0;
+}
+.oauth-row {
+  display: flex;
+  gap: 10px;
+}
+.oauth-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+}
+.oauth-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  margin-top: 18px;
+  font-size: 13px;
+  width: 100%;
+}
+.link-btn:hover {
+  color: var(--live);
+}
+

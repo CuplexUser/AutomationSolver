@@ -1,0 +1,102 @@
+/* ===================== Layout shell ===================== */
+/* The shell is exactly one viewport tall and the body is the scroll container, so
+   the play view can claim all remaining height and scroll its columns internally. */
+.app-shell {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.app-body {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow-y: auto;
+}
+.pad {
+  padding: 32px;
+}
+.muted {
+  color: var(--muted);
+}
+.muted.sm,
+.sm {
+  font-size: 13px;
+}
+.mono {
+  font-family: var(--font-mono);
+}
+.inline-link {
+  color: var(--live);
+  border-bottom: 1px solid color-mix(in srgb, var(--live) 40%, transparent);
+}
+
+/* ===================== Top bar ===================== */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--edge);
+  background: linear-gradient(180deg, var(--rail), transparent);
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(8px);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  font-size: 15px;
+}
+.brand-mark {
+  color: var(--live);
+  font-size: 20px;
+  filter: drop-shadow(0 0 6px rgba(255, 176, 32, 0.5));
+}
+.brand-accent {
+  color: var(--live);
+}
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.topnav a:not(.btn):hover {
+  color: var(--live);
+}
+.topnav-user {
+  color: var(--ink-dim);
+  text-transform: none;
+}
+.theme-toggle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid var(--edge);
+  background: transparent;
+  color: var(--ink-dim);
+  font-size: 15px;
+  line-height: 1;
+}
+.theme-toggle:hover {
+  border-color: var(--live);
+  color: var(--live);
+}
+.btn.sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.btn.full {
+  width: 100%;
+  text-align: center;
+}
+

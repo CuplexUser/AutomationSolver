@@ -1,0 +1,350 @@
+/* ===================== Play layout ===================== */
+/* A workbench: three columns that fill the viewport, each scrolling on its own so
+   a long program never pushes the palette or the operator panel off screen. */
+.play {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  padding: 16px;
+  gap: 0;
+  overflow: hidden;
+}
+.play-brief,
+.play-hmi {
+  flex: 0 0 auto;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+}
+.play-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Resizable dividers */
+.resize-handle {
+  flex: 0 0 14px;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: col-resize;
+  touch-action: none;
+}
+.resize-grip {
+  width: 3px;
+  height: 42px;
+  border-radius: 2px;
+  background: var(--edge);
+  transition: background 0.15s ease;
+}
+.resize-handle:hover .resize-grip,
+.resize-handle:active .resize-grip {
+  background: var(--live);
+  box-shadow: 0 0 8px rgba(255, 176, 32, 0.6);
+}
+.pane-toggle {
+  background: transparent;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  color: var(--ink-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 6px 9px;
+}
+.pane-toggle:hover {
+  border-color: var(--live);
+  color: var(--ink);
+}
+.pane-toggle[aria-pressed='false'] {
+  color: var(--muted);
+}
+.brief-card,
+.io-card,
+.results-card {
+  padding: 18px;
+}
+.brief-card h2 {
+  margin: 6px 0 12px;
+  font-size: 22px;
+}
+.briefing {
+  font-family: var(--font-body);
+  color: var(--ink-dim);
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+.briefing p {
+  margin: 0 0 12px;
+}
+.briefing ol,
+.briefing ul {
+  margin: 0 0 12px;
+  padding-left: 1.4em;
+}
+.briefing ol ol {
+  margin: 4px 0 0;
+}
+.briefing li {
+  margin-bottom: 8px;
+}
+.briefing li:last-child {
+  margin-bottom: 0;
+}
+.briefing > :last-child,
+.briefing section > :last-child {
+  margin-bottom: 0;
+}
+/* Manual-style section headings: same rule-under-a-label look as the panel eyebrows,
+   but sized to sit inside running text rather than to top a card. */
+.briefing-head {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--live);
+  margin: 0 0 8px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--edge);
+}
+.briefing section + section {
+  margin-top: 16px;
+}
+.hints {
+  margin-top: 14px;
+  font-size: 13px;
+}
+.hints ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--ink-dim);
+  line-height: 1.5;
+}
+.hint-reveal {
+  margin-top: 10px;
+}
+.io-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+}
+.io-table td {
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--edge);
+  font-size: 13px;
+}
+.io-name {
+  color: var(--ink);
+}
+.io-kind {
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 11px;
+}
+.io-subhead {
+  display: block;
+  margin-top: 16px;
+}
+.io-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+.io-value {
+  width: 92px;
+}
+.mini-bar {
+  position: relative;
+  height: 15px;
+  border-radius: 3px;
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  overflow: hidden;
+}
+.mini-bar-fill {
+  position: absolute;
+  inset: 0;
+  width: 0;
+  background: color-mix(in srgb, var(--live) 55%, transparent);
+  transition: width 0.08s linear;
+}
+.mini-bar.done .mini-bar-fill {
+  background: color-mix(in srgb, var(--run) 60%, transparent);
+}
+.mini-bar-text {
+  position: relative;
+  z-index: 1;
+  display: block;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  line-height: 15px;
+  color: var(--ink-dim);
+  white-space: nowrap;
+}
+
+/* Results */
+.results-card.solved {
+  border-color: color-mix(in srgb, var(--run) 60%, var(--edge));
+}
+.results-card.invalid {
+  border-color: color-mix(in srgb, var(--stop) 50%, var(--edge));
+}
+.results-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.score {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--ink-dim);
+}
+.score.ok {
+  color: var(--run);
+}
+.solved-banner {
+  color: var(--run);
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 10px 0;
+}
+.next-nav {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+}
+.scenario-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.scenario-list li {
+  display: flex;
+  gap: 8px;
+  font-size: 13px;
+}
+.scenario-mark {
+  font-weight: 700;
+}
+.scenario-list li.pass .scenario-mark {
+  color: var(--run);
+}
+.scenario-list li.fail .scenario-mark {
+  color: var(--stop);
+}
+.scenario-name {
+  color: var(--ink);
+}
+.step-fails,
+.fail-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--stop);
+  font-size: 12px;
+  line-height: 1.4;
+}
+/* One failing step per block: the step label, then a sentence per broken
+   expectation. Overrides the flex row .scenario-list li sets for the top level. */
+.step-fails > li {
+  display: list-item;
+  font-size: 12px;
+}
+.step-fail-label {
+  color: var(--ink-dim);
+}
+.step-fail-reasons {
+  margin: 2px 0 6px;
+  padding-left: 14px;
+  list-style: disc;
+}
+.step-fails .step-fail-reasons li {
+  display: list-item;
+  font-size: 12px;
+}
+
+/* Advisory, not a failure — amber like a caution lamp, never red. */
+.validation-warnings {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--live) 35%, var(--edge));
+}
+.warn-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--live);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Play main / actions */
+.play-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  /* When the window is too short for palette + ladder + trace, scroll the column
+     instead of letting flexbox squeeze the editor under the trace strip. */
+  overflow-y: auto;
+}
+.play-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  margin-bottom: 10px;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--edge);
+}
+.play-nav-back,
+.play-nav-next {
+  color: var(--ink-dim);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.play-nav-back:hover,
+.play-nav-next:hover {
+  color: var(--live);
+}
+.play-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+.pa-left,
+.pa-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.dirty-dot {
+  color: var(--live);
+  font-size: 13px;
+}
+
+
+/* Below 1080px the three-column play view stacks, so the side columns stop
+   sticking. */
+@media (max-width: 1080px) {
+  .play {
+    grid-template-columns: 1fr;
+  }
+  .play-brief,
+  .play-hmi {
+    position: static;
+  }
+}

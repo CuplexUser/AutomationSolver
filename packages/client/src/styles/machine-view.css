@@ -1,0 +1,119 @@
+/* ===================== Machine view (3D scene panel) ===================== */
+.machine-view {
+  padding: 12px;
+  margin-bottom: 16px;
+  background: linear-gradient(180deg, var(--inset), var(--panel-2));
+}
+.mv-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+.mv-tag {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+.mv-tag-icon {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+.mv-tag.warn {
+  color: var(--stop);
+  cursor: help;
+}
+/* Why the machine froze, on hover or keyboard focus. Anchored to the tag's right
+   edge so it can never push the panel sideways. */
+.mv-tag[data-tip]:hover::after,
+.mv-tag[data-tip]:focus-visible::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 6;
+  width: max-content;
+  max-width: 260px;
+  padding: 7px 9px;
+  border: 1px solid var(--edge);
+  border-radius: 6px;
+  background: var(--panel-2);
+  box-shadow: 0 6px 18px rgb(0 0 0 / 45%);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+}
+.machine3d {
+  position: relative;
+  width: 100%;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+.machine3d:active {
+  cursor: grabbing;
+}
+.machine3d-hint {
+  position: absolute;
+  right: 6px;
+  bottom: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.6;
+  pointer-events: none;
+}
+.machine3d-zoom {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.machine3d:hover .machine3d-zoom,
+.machine3d:focus-within .machine3d-zoom {
+  opacity: 1;
+}
+.mv-readout {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.mv-stat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--inset);
+}
+.mv-stat-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.mv-stat-value {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink-dim);
+}
+.mv-stat.on {
+  border-color: color-mix(in srgb, var(--run) 55%, var(--edge));
+}
+.mv-stat.on .mv-stat-value {
+  color: var(--run);
+}

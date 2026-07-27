@@ -1,0 +1,54 @@
+/* ===================== HMI panel ===================== */
+.hmi {
+  padding: 14px;
+}
+
+.hmi-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.scan-dot {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.scan-dot.live {
+  color: var(--run);
+}
+.scan-dot.live::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--run);
+  box-shadow: 0 0 8px var(--run);
+  animation: pulse 0.6s ease-in-out infinite;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+.hmi-controls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.hmi-controls .btn {
+  flex: 1;
+  padding: 9px 8px;
+}
+.hmi-io {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.io-title {
+  display: block;
+  margin-bottom: 6px;
+}

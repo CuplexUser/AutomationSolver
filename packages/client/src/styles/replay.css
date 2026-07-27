@@ -1,0 +1,76 @@
+/* ===================== Replay ===================== */
+.replay-bar {
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  flex: 0 0 auto;
+  border-color: color-mix(in srgb, var(--live) 50%, var(--edge));
+}
+.replay-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.replay-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.replay-scrub {
+  flex: 1 1 auto;
+  accent-color: var(--live);
+}
+.replay-time {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.replay-step {
+  margin: 8px 0 0;
+}
+
+/* ===================== Trace strip ===================== */
+.trace-strip {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  margin-top: 12px;
+  max-height: 220px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.trace-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.trace-body {
+  display: flex;
+  margin-top: 8px;
+  overflow-y: auto;
+  min-height: 0;
+}
+.trace-labels {
+  flex: 0 0 auto;
+  padding-right: 10px;
+  border-right: 1px solid var(--edge);
+}
+.trace-label {
+  display: flex;
+  align-items: center;
+  font-size: 11px;
+  color: var(--muted);
+}
+.trace-scroll {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+}
+.trace-svg {
+  display: block;
+}
+.trace-svg.scrubbable {
+  cursor: pointer;
+}
+

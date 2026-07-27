@@ -1,0 +1,168 @@
+/* ===================== HMI widgets ===================== */
+.widget-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 8px;
+}
+.widget {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 5px;
+  background: var(--inset);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+}
+.widget-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+.widget-chiprow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.widget-key {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 14px;
+  padding: 0 4px;
+  color: var(--muted);
+  border: 1px solid var(--edge-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+.widget-name {
+  font-size: 10px;
+  line-height: 1.2;
+  color: var(--ink-dim);
+}
+.widget-state {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+}
+
+/* Lamp */
+.lamp {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: transparent;
+  opacity: 0.85;
+}
+.lamp.small {
+  width: 18px;
+  height: 18px;
+}
+.lamp:not(.on) {
+  opacity: 0.4;
+}
+
+/* Push button */
+.push,
+.toggle,
+.estop {
+  padding: 0;
+  border: none;
+  background: none;
+}
+.push-cap {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #33445a, #1a2530);
+  border: 2px solid var(--edge-strong);
+  box-shadow: 0 3px 0 #0b1017;
+  transition: all 0.06s ease;
+}
+.push.held .push-cap {
+  background: radial-gradient(circle at 40% 35%, #2a3644, #10161d);
+  box-shadow: 0 0 0 #0b1017;
+  transform: translateY(3px);
+}
+/* Toggle */
+.toggle {
+  width: 38px;
+  height: 21px;
+  border-radius: 12px;
+  background: var(--inset);
+  border: 1px solid var(--edge-strong);
+  position: relative;
+}
+.toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #4a5a6c;
+  transition: all 0.12s ease;
+}
+.toggle.on {
+  background: color-mix(in srgb, var(--live) 30%, var(--inset));
+  border-color: var(--live);
+}
+.toggle.on .toggle-knob {
+  left: 19px;
+  background: var(--live);
+  box-shadow: 0 0 8px var(--live);
+}
+/* E-stop */
+.estop-cap {
+  display: block;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #ff6a70, #b5161c);
+  border: 3px solid #7a0f13;
+  box-shadow: 0 3px 0 #0b1017;
+}
+.estop.pressed .estop-cap {
+  transform: translateY(3px);
+  box-shadow: 0 0 12px var(--stop);
+}
+/* Motor */
+.motor {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  position: relative;
+  opacity: 0.5;
+  display: grid;
+  place-items: center;
+}
+.motor.on {
+  opacity: 1;
+  box-shadow: 0 0 14px 1px currentColor;
+}
+.motor-hub {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  z-index: 1;
+}
+.motor-blades {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  border: 2px dashed currentColor;
+}
+.motor.on .motor-blades {
+  animation: spin 0.5s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+

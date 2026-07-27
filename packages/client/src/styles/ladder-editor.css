@@ -1,0 +1,366 @@
+/* ===================== Ladder editor ===================== */
+.ladder-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  flex: 1 1 auto;
+  /* min-height stays auto (min-content): shrinking below the palette + the ladder
+     viewport's 160px minimum spills the rungs under the trace strip — the scaled
+     ladder canvas is a stacking context, so it paints on top of later panels. */
+}
+.palette {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+/* .play-main (not .ladder-scroll) is what actually scrolls once a program's
+   rungs overflow the viewport, so pin the address/preset editor to its top —
+   otherwise it scrolls out of reach on long programs. Opt-out via the
+   "Pin toolbar" preference. */
+.palette.palette-pinned {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+.palette-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.palette-fields {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.field.compact {
+  width: 90px;
+  padding: 7px 9px;
+}
+.field.preset {
+  width: 70px;
+}
+.palette-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.dev-quick {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.dev-quick .dev-chip {
+  cursor: pointer;
+}
+.palette-instr {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.instr-btn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 8px 4px;
+  min-width: 58px;
+  background: linear-gradient(180deg, var(--rail-2), var(--rail));
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  color: var(--ink-dim);
+}
+.instr-key {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--muted);
+  border: 1px solid var(--edge);
+  border-radius: 2px;
+  padding: 0 3px;
+  line-height: 1.3;
+}
+.instr-btn:hover:not(:disabled) .instr-key {
+  color: var(--live);
+  border-color: var(--live-dim);
+}
+.palette-fold {
+  font-size: 10px;
+  padding: 2px 5px;
+}
+.palette-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+.shortcuts {
+  font-size: 12px;
+  flex: 0 0 auto;
+}
+.shortcuts summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+}
+.shortcuts summary:hover {
+  color: var(--live);
+}
+.shortcuts dl {
+  margin: 8px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.shortcuts dl > div {
+  display: flex;
+  gap: 10px;
+}
+.shortcuts dt {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink);
+  min-width: 120px;
+  text-align: right;
+}
+.shortcuts dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.instr-btn:hover:not(:disabled) {
+  border-color: var(--live);
+  color: var(--ink);
+}
+.instr-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.instr-btn.danger:hover:not(:disabled) {
+  border-color: var(--stop);
+}
+.instr-glyph {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--ink);
+}
+.instr-label {
+  font-family: var(--font-display);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.palette-hint {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0;
+}
+.palette-hint.live {
+  color: var(--live);
+}
+
+.palette-controls {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.zoom-ctl {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.zoom-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+  width: 38px;
+  text-align: center;
+}
+
+.editor-prefs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pref-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+}
+.pref-toggle input {
+  cursor: pointer;
+}
+
+/* A pinned corner echo of the Address/Preset fields for when the toolbar
+   itself isn't pinned (or is scrolled past on a very long program). Anchored
+   with zero height so it doesn't add to the flow — it just floats in the
+   .play-main scrollport's bottom-right corner. */
+.cell-float-anchor {
+  position: sticky;
+  bottom: 0;
+  height: 0;
+  overflow: visible;
+  z-index: 6;
+}
+.cell-float {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  box-shadow: var(--shadow-lg, var(--shadow));
+}
+
+.ladder-scroll {
+  padding: 12px;
+  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 160px;
+}
+.ladder-canvas {
+  transform-origin: top left;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+.rung {
+  display: flex;
+  flex-direction: column;
+}
+.rung-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 15px;
+}
+.rung-num {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.rung-tools {
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.rung:hover .rung-tools {
+  opacity: 1;
+}
+.icon-btn {
+  background: var(--rail-2);
+  border: 1px solid var(--edge);
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 7px;
+  border-radius: 3px;
+}
+.icon-btn:hover:not(:disabled) {
+  border-color: var(--live);
+  color: var(--ink);
+}
+.icon-btn.danger:hover:not(:disabled) {
+  border-color: var(--stop);
+  color: var(--stop);
+}
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.rung-body {
+  display: flex;
+  align-items: stretch;
+}
+.rail {
+  width: 5px;
+  background: var(--edge-strong);
+  border-radius: 2px;
+}
+.rail.live {
+  background: var(--live);
+  box-shadow: 0 0 10px rgba(255, 176, 32, 0.6);
+}
+.cell-grid {
+  display: grid;
+}
+.ladder-cell {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ladder-cell:hover {
+  border-color: var(--edge);
+  background: rgba(74, 163, 255, 0.05);
+}
+.ladder-cell.is-selected {
+  border-color: var(--live);
+  background: rgba(255, 176, 32, 0.08);
+}
+.cell-addr {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+.cell-preset {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  fill: var(--muted);
+}
+.vlink {
+  position: absolute;
+  width: 12px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  z-index: 2;
+}
+.vlink::before {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  border-radius: 2px;
+}
+.vlink:not(:disabled) {
+  cursor: pointer;
+}
+.vlink:not(:disabled):hover::before {
+  background: var(--edge-strong);
+}
+.vlink.active::before {
+  background: var(--wire-idle);
+}
+.vlink.active.live::before {
+  background: var(--live);
+  box-shadow: 0 0 6px rgba(255, 176, 32, 0.8);
+}
+.add-rung {
+  align-self: flex-start;
+  margin-top: 8px;
+}
+

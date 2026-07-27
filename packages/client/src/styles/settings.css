@@ -1,0 +1,38 @@
+/* ===================== Settings ===================== */
+.settings-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 40px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.settings-page h1 {
+  font-size: 28px;
+  margin: 6px 0 22px;
+}
+.settings-card {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.setting-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.setting-row strong {
+  font-family: var(--font-display);
+}
+.toggle-row input {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--live);
+}
+.saved-tick {
+  color: var(--run);
+  font-size: 13px;
+}
+
