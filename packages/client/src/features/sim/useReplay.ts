@@ -17,7 +17,10 @@ export interface ReplayController {
   trace: ScenarioTrace | null;
   index: number;
   playing: boolean;
-  currentStepLabel: string | undefined;
+  /** The step the playhead is inside, so the bar can show why it failed. */
+  currentStep: ScenarioTrace['steps'][number] | undefined;
+  /** Where each failing step was judged, as a 0..1 position along the scrub. */
+  failureMarks: number[];
   runner: SimRunner | null;
   start: (spec: LadderPuzzleSpec, program: LadderProgram, scenarioName: string) => void;
   seek: (index: number) => void;
@@ -57,10 +60,13 @@ export function useReplay(): ReplayController {
 
   const pause = useCallback(() => setPlaying(false), []);
 
+  // Land on the scan the grader actually judged, not the start of the step.
+  // Steps run for seconds; opening at their first scan is why a replay could
+  // show the machine working perfectly with no sign of the failure.
   const stepToFailure = useCallback(() => {
     if (!trace) return;
     const failing = trace.steps.find((s) => !s.passed);
-    if (failing) setIndex(failing.startSample);
+    if (failing) setIndex(failing.checkSample);
   }, [trace]);
 
   const close = useCallback(() => {
@@ -108,15 +114,34 @@ export function useReplay(): ReplayController {
     };
   }, [trace, index, history]);
 
-  const currentStepLabel = useMemo(() => {
+  const currentStep = useMemo(() => {
     if (!trace) return undefined;
-    let label: string | undefined;
+    let found: ScenarioTrace['steps'][number] | undefined;
     for (const step of trace.steps) {
       if (step.startSample > index) break;
-      label = step.label;
+      found = step;
     }
-    return label;
+    return found;
   }, [trace, index]);
 
-  return { trace, index, playing, currentStepLabel, runner, start, seek, play, pause, stepToFailure, close };
+  const failureMarks = useMemo(() => {
+    const total = trace?.samples.length ?? 0;
+    if (!trace || total < 2) return [];
+    return trace.steps.filter((s) => !s.passed).map((s) => s.checkSample / (total - 1));
+  }, [trace]);
+
+  return {
+    trace,
+    index,
+    playing,
+    currentStep,
+    failureMarks,
+    runner,
+    start,
+    seek,
+    play,
+    pause,
+    stepToFailure,
+    close,
+  };
 }

@@ -146,6 +146,15 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   the process model and checks the `expect` assertions. `grade.test.ts` holds a canonical
   solution for **every shipped puzzle** — that test is the guardrail against authoring an
   impossible puzzle.
+  - A step with `until` runs to a **milestone** instead of a fixed deadline (`holdMs` becomes
+    its timeout, `thenHoldMs` a settle window). Sequential machines are paced by the program
+    driving them, so asserting at a hard deadline grades pace rather than behaviour.
+  - **Scoring** splits `CORRECTNESS_WEIGHT` (85) for scenarios passed and 15 for throughput.
+    Throughput compares each scenario's `elapsedMs` against its declared `parMs`, full marks at
+    or under par tapering to zero at `PAR_SLACK` (1.5) x par, and is only awarded once every
+    scenario passes. Scenarios with no `parMs` (E-Stop checks, every puzzle without machine
+    dynamics) score on correctness alone. So a correct but leisurely program is `solved` and
+    unlocks what follows, and still has to be pipelined to reach 100.
   - `traceScenario()` re-runs one named scenario capturing a scan-by-scan `ScenarioTrace`
     (bits, rung eval results, machine state per scan, plus per-step pass/fail with a
     `startSample` index). It shares its scan loop with `gradeProgram()` (`simulateScenario()`,

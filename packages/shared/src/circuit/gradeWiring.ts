@@ -64,6 +64,9 @@ function runScenario(
     name: scenario.name,
     passed: steps.every((s) => s.passed),
     steps: steps.map(({ label, passed, failures }) => ({ label, passed, failures })),
+    // Cabinet steps are all fixed-duration, so the run length is known up front.
+    // No cabinet puzzle declares a par, so this is reporting only.
+    elapsedMs: scenario.steps.reduce((sum, s) => sum + Math.max(1, Math.ceil(s.holdMs / dt)) * dt, 0),
   };
 }
 

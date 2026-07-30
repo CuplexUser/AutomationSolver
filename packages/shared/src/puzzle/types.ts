@@ -81,12 +81,46 @@ export interface PuzzleRegister {
   note?: string; // preset / usage hint, e.g. "preset K20 = 2.0 s"
 }
 
+/**
+ * A point the run has to reach: bit states and/or machine-state props that must
+ * all hold at the same instant.
+ */
+export interface ScenarioCondition {
+  /** Device/register bits (ladder addresses or cabinet component ids). */
+  bits?: Record<string, boolean>;
+  /** Machine-state props reported by the process model. */
+  machine?: Record<string, string | number | boolean>;
+}
+
 export interface ScenarioStep {
   label: string;
   /** Input bits set at the start of this step; persist until changed by a later step. */
   setInputs?: Record<string, boolean>;
-  /** Simulated milliseconds to run before checking expectations. */
+  /**
+   * Simulated milliseconds to run before checking expectations. When `until` is
+   * set this is the deadline instead: the step ends as soon as the milestone is
+   * reached, and only a run that never reaches it uses the whole budget (and
+   * fails).
+   */
   holdMs: number;
+  /**
+   * Milestone to run to, rather than checking at a fixed deadline.
+   *
+   * Sequential machines are paced by the program driving them, so two equally
+   * correct solutions can reach the same milestone hundreds of ms apart (start
+   * the spindle with the clamp or once CLAMPED is in; keep the front end
+   * filling during a flip or wait for the flip to finish). Asserting at a hard
+   * deadline turns that legitimate difference into a wall of failures, so
+   * anything the program's own pace controls waits for the milestone and
+   * asserts there.
+   */
+  until?: ScenarioCondition;
+  /**
+   * Extra run time after `until` is reached, before the expectations are
+   * checked — for "and it is still like that a moment later" assertions such as
+   * the drill holding its dwell at the bottom of the stroke.
+   */
+  thenHoldMs?: number;
   /** Expected device-bit states at the end of the step (ladder addresses or cabinet component ids). */
   expect?: Record<string, boolean>;
   /** Expected machine-state props at the end of the step. */
@@ -99,6 +133,19 @@ export interface Scenario {
   /** Initial X input overrides before step 0 (on top of NC rest defaults). */
   initialInputs?: Record<string, boolean>;
   steps: ScenarioStep[];
+  /**
+   * Simulated ms a well-paced program takes to run this scenario end to end.
+   *
+   * Correctness alone is a pass: a program that drives the machine safely and
+   * hits every milestone is solved and unlocks what comes next, however
+   * leisurely it is. Throughput is then graded on top, because on a real line
+   * an un-pipelined cycle is a worse program even when it never faults. Full
+   * marks at or under par, tapering to none at `PAR_SLACK` times par.
+   *
+   * Omit it where pace is not a design goal (every puzzle without machine
+   * dynamics); those scenarios simply score full throughput marks.
+   */
+  parMs?: number;
 }
 
 interface PuzzleSpecBase {

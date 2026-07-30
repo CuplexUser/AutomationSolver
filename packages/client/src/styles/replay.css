@@ -16,9 +16,26 @@
   gap: 12px;
   margin-top: 10px;
 }
+.replay-track {
+  position: relative;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+}
 .replay-scrub {
   flex: 1 1 auto;
   accent-color: var(--live);
+}
+/* Where each failing check was judged, so the moment that matters is findable
+   on the track instead of only through the jump button. */
+.replay-mark {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  margin-left: -1px;
+  background: var(--stop);
+  pointer-events: none;
 }
 .replay-time {
   font-size: 12px;
@@ -27,6 +44,18 @@
 }
 .replay-step {
   margin: 8px 0 0;
+}
+.replay-step.failed {
+  padding: 6px 10px;
+  border-left: 2px solid var(--stop);
+  background: color-mix(in srgb, var(--stop) 8%, transparent);
+}
+.replay-fails {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--stop);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 /* ===================== Trace strip ===================== */

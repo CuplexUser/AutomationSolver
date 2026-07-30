@@ -63,6 +63,15 @@ const BLOCK_REST = { x: 0.27, y: 0.061, z: -0.2 };
 const BLOCK_CHUTE = { x: 0.195, y: 0.112 }; // sitting on the feed tray at the chute mouth
 const BLOCK_EJECT_Z = -0.08; // landing point on the outfeed belt
 
+// A blank lands outboard of the work position and the clamp carries it the last
+// 18mm onto the station stop. That travel is the whole point of the layout: the
+// stop is where the drill is centred and where the METAL PART prox looks through
+// the stop's window, so "clamped in position" and "measured" are one event. An
+// unclamped blank (steel, which is never clamped) simply never gets there.
+const BLOCK_RECEIVE_X = 0.288;
+/** Fraction of the clamp stroke spent closing the gap before the pad bites. */
+const CLAMP_CONTACT = 0.22;
+
 // The feed is a slide then a drop rather than one diagonal: the part rides the
 // feed tray clear across the fixed StationStop first, and only falls the last
 // 50 mm onto the fixture once it is past it. A straight lerp would cut the
@@ -70,13 +79,26 @@ const BLOCK_EJECT_Z = -0.08; // landing point on the outfeed belt
 const DROP_RATE = 1 / 0.5; // seconds for a fresh part to reach the fixture
 const SLIDE_FRACTION = 0.55; // of that, the share spent sliding before the drop
 
-// A rejected blank (the diverter, Y6, open as it is pushed) never reaches the
-// belt. There is no scrap bin in the model, so it slides clear of the belt in +X
-// while dropping away, and is hidden once it is past the belt's edge — enough to
-// read as "this one did not get drilled and did not ship".
-const REJECT_DRIFT = 0.45; // units/s sideways
-const REJECT_FALL = 0.55; // units/s², an accelerating drop
-const REJECT_FLOOR_Y = -0.06; // gone from sight below the belt line
+// The reject diverter (Y6): a blade on the belt's near frame, driven by a rotary
+// actuator, that swings across the belt to sort blanks into the scrap chute.
+// RejectGate is an empty at the blade's pivot, so the whole assembly is one
+// rotation about Y — parked (0) it lies along the frame clear of the belt, fully
+// swung it spans the belt width.
+const GATE_SWING = 0.85; // radians, parked to fully across
+// Where the blade meets the belt. It sits downstream of the station (blanks land
+// at BLOCK_EJECT_Z) because the material is read at the fixture, before the
+// program decides to clamp: sense at the station, sort further along.
+const DIVERT_Z = 0.08;
+
+// A diverted blank rides to the blade, then runs off it in +X: across the belt,
+// down the chute's slope, then off its lip into the bin. Following the chute
+// rather than falling on a single parabola is what keeps the blank from sinking
+// through the belt's far rail on its way out.
+const REJECT_DRIFT = 0.85; // units/s sideways once the blade turns it
+const CHUTE_X = { from: 0.341, to: 0.512 }; // where the chute starts and its lip
+const CHUTE_END_Y = 0.025; // part center height at the lip (chute floor + half a blank)
+const REJECT_FALL = 1.6; // units/s² off the lip
+const REJECT_FLOOR_Y = 0; // swallowed once it is well down inside the bin
 
 // Hardened steel stock the station cannot drill, versus the machinable blanks it
 // can. Only the material differs — the blank geometry is identical, which is
@@ -98,7 +120,10 @@ interface BlockAnim {
   // retracts, so this tracks a running max instead of the live feed.
   maxFeed: number;
   carry: number; // how far the ejected part has ridden down the outfeed belt
-  fly: number; // seconds since a rejected blank left the fixture
+  divert: number; // how far a rejected blank has been pushed off the belt in +X
+  // 0 = still where it landed, 1 = carried onto the stop by the clamp. A running
+  // max, because releasing the clamp does not send the blank back outboard.
+  shifted: number;
   // Captured when the part leaves, because the machine state that produced them
   // (the diverter, the material sensor) has already moved on to the next blank.
   rejected: boolean;
@@ -114,6 +139,8 @@ interface DriveRefs {
   spindleHead?: THREE.Object3D;
   bit?: THREE.Object3D;
   blockPlug?: THREE.Object3D;
+  /** Pivot empty carrying the diverter blade and its hub. */
+  rejectGate?: THREE.Object3D;
   stackRed?: THREE.Mesh;
   stackGreen?: THREE.Mesh;
   rollers: THREE.Object3D[];
@@ -121,6 +148,21 @@ interface DriveRefs {
   /** Own clones of the work piece's materials, so re-tinting can't leak. */
   stockMats: THREE.MeshStandardMaterial[];
   stockBase?: { color: THREE.Color; metalness: number; roughness: number };
+}
+
+/**
+ * How far a diverted blank has dropped below belt height by the time it has
+ * drifted out to `x`: flat while it is still crossing the belt, down the
+ * chute's slope, then an accelerating fall off the lip into the scrap bin.
+ */
+function rejectDrop(x: number): number {
+  if (x <= CHUTE_X.from) return 0;
+  const onChute = BLOCK_REST.y - CHUTE_END_Y;
+  if (x <= CHUTE_X.to) {
+    return onChute * ((x - CHUTE_X.from) / (CHUTE_X.to - CHUTE_X.from));
+  }
+  const fell = (x - CHUTE_X.to) / REJECT_DRIFT; // seconds since it left the lip
+  return onChute + REJECT_FALL * fell * fell;
 }
 
 /** Gives a mesh its own copy of its material so it can be tinted in isolation. */
@@ -163,6 +205,7 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       spindleHead: scene.getObjectByName('SpindleHead') ?? undefined,
       bit: scene.getObjectByName('Bit') ?? undefined,
       blockPlug: scene.getObjectByName('BlockPlug') ?? undefined,
+      rejectGate: scene.getObjectByName('RejectGate') ?? undefined,
       stackRed: scene.getObjectByName('StackLightRed') as THREE.Mesh | undefined,
       stackGreen: scene.getObjectByName('StackLightGreen') as THREE.Mesh | undefined,
       rollers: series(scene, 'Roller_'),
@@ -175,7 +218,8 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     drop: 1,
     maxFeed: 0,
     carry: 0,
-    fly: 0,
+    divert: 0,
+    shifted: 0,
     rejected: false,
     steel: false,
     infeed: 0,
@@ -210,27 +254,39 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     if (a.stage === 'fixture' && push >= 1) {
       a.stage = 'ejected';
       a.carry = 0;
-      a.fly = 0;
-      a.rejected = gate > 0.5; // the diverter was open, so this one is scrap
+      a.divert = 0;
+      // Read the coil, not the blade's travel: the process routes the blank on
+      // Y6 itself, so anything else can show a part riding the belt that the
+      // machine has already counted as scrap.
+      a.rejected = boolOf(machine.gateOpen);
       a.infeedTarget += INFEED_PITCH; // a part consumed, so index the queue up by one
     }
     if (a.stage !== 'ejected' && stock != null) a.steel = stock === 'steel';
     // A fresh blank is on its way: the stock-aware puzzles say so outright, the
     // rest infer it from the cycle-done lamp clearing.
     const freshPart = stock != null ? stock !== 'none' : !done;
-    if (a.stage === 'ejected' && freshPart) {
+    // There is only one work-piece mesh, so a blank still travelling to the
+    // scrap bin has to finish before it can be reused for the next one —
+    // otherwise a reject snaps back to the chute mouth in mid air.
+    const rejectClear =
+      !a.rejected || rejectDrop(BLOCK_REST.x + a.divert) >= BLOCK_REST.y - REJECT_FLOOR_Y;
+    if (a.stage === 'ejected' && freshPart && rejectClear) {
       a.stage = 'dropping';
       a.drop = 0;
       a.maxFeed = 0; // a fresh part arrives undrilled
+      a.shifted = 0; // and lands outboard, waiting to be carried in
     }
     a.maxFeed = Math.max(a.maxFeed, feed);
+    a.shifted = Math.max(a.shifted, clamp01((clamp - CLAMP_CONTACT) / (1 - CLAMP_CONTACT)));
     if (a.stage === 'dropping') {
       a.drop = Math.min(1, a.drop + DROP_RATE * dt);
       if (a.drop >= 1) a.stage = 'fixture';
     }
     if (a.stage === 'ejected') {
-      a.fly += dt;
-      if (!a.rejected) a.carry += BELT_SPEED * dt;
+      // Everything rides the belt off the fixture; a reject only leaves it once
+      // it reaches the blade, which sits further down the line.
+      if (a.rejected && BLOCK_EJECT_Z + a.carry >= DIVERT_Z) a.divert += REJECT_DRIFT * dt;
+      else a.carry += BELT_SPEED * dt;
     }
     if (a.infeed < a.infeedTarget) {
       a.infeed = Math.min(a.infeedTarget, a.infeed + INFEED_SPEED * dt);
@@ -253,12 +309,18 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       // The belt ride only applies to the part that is actually on the belt —
       // leaving it in once a fresh part has dropped would park that part a whole
       // belt-length downstream (and past BELT_EXIT_Z, so invisible).
-      const beltRide = a.stage === 'ejected' && !a.rejected ? a.carry : 0;
-      // A diverted blank leaves sideways and downward instead of riding the belt.
+      const beltRide = a.stage === 'ejected' ? a.carry : 0;
+      // A diverted blank turns off the belt at the blade and runs down the scrap
+      // chute. `slide`/`fall` are both 1 by then, so these are offsets from the
+      // fixture's rest pose.
       const scrapping = a.stage === 'ejected' && a.rejected;
-      const driftX = scrapping ? REJECT_DRIFT * a.fly : 0;
-      const dropY = scrapping ? REJECT_FALL * a.fly * a.fly : 0;
-      r.block.position.x = BLOCK_CHUTE.x + (BLOCK_REST.x - BLOCK_CHUTE.x) * slide + driftX;
+      const driftX = scrapping ? a.divert : 0;
+      // Where the blank sits across the fixture: outboard on arrival, on the
+      // stop once the clamp has carried it in.
+      const stationX = BLOCK_RECEIVE_X + (BLOCK_REST.x - BLOCK_RECEIVE_X) * a.shifted;
+      const baseX = BLOCK_CHUTE.x + (stationX - BLOCK_CHUTE.x) * slide + driftX;
+      const dropY = scrapping ? rejectDrop(baseX) : 0;
+      r.block.position.x = baseX;
       r.block.position.y = BLOCK_CHUTE.y + (BLOCK_REST.y - BLOCK_CHUTE.y) * fall - dropY;
       r.block.position.z = ejectZ + beltRide;
       // Once it has ridden off the far end of the belt (or dropped past its edge
@@ -285,6 +347,11 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       part.position.x = x;
       part.visible = x > INFEED_VISIBLE.from && x < INFEED_VISIBLE.to;
     });
+
+    // The diverter tracks its own travel (machine.gate, a real 250ms stroke), so
+    // opening Y6 is visible on the panel the instant it is commanded rather than
+    // only when the next blank happens to leave.
+    if (r.rejectGate) r.rejectGate.rotation.y = GATE_SWING * gate;
 
     if (r.spindleHead) {
       r.spindleHead.position.y = HEAD_Y.retracted + (HEAD_Y.extended - HEAD_Y.retracted) * feed;
@@ -333,6 +400,10 @@ export function DrillStation3D({ machine, height = 300 }: { machine: MachineStat
       target={[0.4, 1.6, -0.4]}
       minDistance={12}
       maxDistance={34}
+      // The station spreads out along X (infeed rollers, fixture, outfeed belt
+      // and scrap chute), so a zoomed-in view has to be able to travel to the
+      // end being watched rather than only orbiting the fixture.
+      panBounds={{ x: [-1, 9], y: [0, 5], z: [-3, 3] }}
     >
       <DrillStationScene machine={machine} />
     </MachineCanvas>

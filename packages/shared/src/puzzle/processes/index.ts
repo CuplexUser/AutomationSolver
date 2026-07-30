@@ -122,7 +122,7 @@ const drill: ProcessModel = {
       jam: false,
     };
     if (drillHas(devices, 'Y5')) Object.assign(base, { speed: 0 });
-    if (drillHas(devices, 'Y6')) Object.assign(base, { gate: 0 });
+    if (drillHas(devices, 'Y6')) Object.assign(base, { gate: 0, gateOpen: false });
     if (drillHas(devices, 'X5')) {
       Object.assign(base, {
         part: 'none',
@@ -279,7 +279,13 @@ const drill: ProcessModel = {
       jam,
     };
     if (hasSpindle) next.speed = speed;
-    if (hasGate) next.gate = gate;
+    if (hasGate) {
+      next.gate = gate;
+      // The routing decision above is made on the coil, not on the diverter's
+      // travel, so the view has to read the same signal or a part can be
+      // counted scrap while it is animated riding the belt.
+      next.gateOpen = gateCmd;
+    }
     if (hasFeeder) {
       Object.assign(next, { part, drilled, dwell, feedT, fedIndex, good, scrap, bad });
     }

@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { LadderElement, LadderProgram, Rung, VLink } from '../ladder/types.js';
 import { getPuzzle } from './content/index.js';
-import { gradeProgram, traceScenario } from './grade.js';
+import {
+  CORRECTNESS_WEIGHT,
+  PAR_SLACK,
+  gradeProgram,
+  throughputScore,
+  traceScenario,
+} from './grade.js';
 import { validateProgram } from './validate.js';
 import type { LadderPuzzleSpec } from './types.js';
 
@@ -654,6 +660,167 @@ describe('gradeProgram — canonical solutions solve every puzzle', () => {
   }
 });
 
+/**
+ * Correct but slower than par: every scenario passes, so the program is solved
+ * and banks the whole correctness weight, but it gives up part of the
+ * throughput weight and so falls short of 100.
+ */
+function expectSolvedButNotOptimal(spec: LadderPuzzleSpec, program: LadderProgram): void {
+  const result = gradeProgram(spec, program);
+  const failed = result.scenarios
+    .filter((s) => !s.passed)
+    .map((s) => `${s.name}: ${s.steps.flatMap((st) => st.failures).join('; ')}`);
+  expect(failed, failed.join(' | ')).toEqual([]);
+  expect(result.solved).toBe(true);
+  expect(result.score).toBeGreaterThanOrEqual(CORRECTNESS_WEIGHT);
+  expect(result.score).toBeLessThan(100);
+  expect(result.efficiency).toBeLessThan(1);
+}
+
+// A sequential machine is paced by the program driving it, so two equally
+// correct solutions can reach the same milestone hundreds of ms apart. These
+// are real player solutions that used to score 33% / 50% against scenarios
+// whose deadlines were tuned to the canonical program's exact cycle time; they
+// are the guardrail against grading pace instead of behaviour. Pace still
+// costs marks — it just no longer costs the pass.
+describe('gradeProgram — differently paced but correct solutions still solve', () => {
+  it('drill-spindle: starting the spindle once CLAMPED is in, not with the clamp', () => {
+    // Y5 waits for X2, which pushes spin-up, the feed, the dwell and the eject
+    // ~400ms later than the canonical program. The feed is retracted by M0
+    // dropping rather than by nc(T0), one scan later again.
+    const spec = getLadderPuzzle('drill-spindle')!;
+    const rungs = [
+      R('a1', 1, 5, {
+        '0,0': no('X0'), '0,1': no('X1'), '0,2': no('X5'), '0,3': nc('M1'), '0,4': out('M0'),
+      }),
+      R('a2', 1, 2, { '0,0': no('M0'), '0,1': out('Y0') }),
+      R('a3', 1, 3, { '0,0': no('M0'), '0,1': no('X2'), '0,2': out('Y5') }),
+      R('a4', 1, 2, { '0,0': no('Y5'), '0,1': out('Y2') }),
+      R('a5', 1, 4, { '0,0': no('M0'), '0,1': no('X2'), '0,2': no('X7'), '0,3': out('Y1') }),
+      R('a6', 1, 3, { '0,0': no('X3'), '0,1': no('X7'), '0,2': timer('T0', 10) }),
+      R('a7', 1, 3, { '0,0': no('M0'), '0,1': no('T0'), '0,2': set('M1') }),
+      R('a8', 1, 2, { '0,0': no('M1'), '0,1': out('Y3') }),
+      R('a9', 1, 2, { '0,0': no('M1'), '0,1': out('Y4') }),
+      R('a10', 1, 2, { '0,0': no('X4'), '0,1': rst('M1') }),
+    ];
+    const validation = validateProgram(spec, { rungs });
+    expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+    expectSolvedButNotOptimal(spec, { rungs });
+  });
+
+  it('pack-full: a front end that pauses instead of filling through the flip', () => {
+    // Gating the 2-pack pusher on nc(M0) stops section 2 filling while the lift
+    // is away, so the line runs un-pipelined: every flip lands ~900ms later
+    // than the canonical program's, compounding over the four flips of a pack.
+    const spec = getLadderPuzzle('pack-full')!;
+    const rungs = [
+      R(
+        'b1',
+        2,
+        6,
+        {
+          '0,0': no('X14'), '0,1': no('X15'), '0,2': no('X0'), '0,3': no('X2'),
+          '0,4': nc('M0'), '0,5': out('Y0'),
+          '1,0': no('Y0'), '1,1': nc('X1'), '1,2': wire, '1,3': wire,
+        },
+        [{ row: 0, col: 4 }],
+      ),
+      R('b2', 1, 2, { '0,0': no('X1'), '0,1': counter('C0', 2) }),
+      R(
+        'b3',
+        2,
+        4,
+        {
+          '0,0': no('X2'), '0,1': no('X4'), '0,2': no('C0'), '0,3': out('Y1'),
+          '1,0': no('Y1'), '1,1': nc('X3'), '1,2': wire,
+        },
+        [{ row: 0, col: 3 }],
+      ),
+      R('b4', 1, 2, { '0,0': no('X3'), '0,1': rst('C0') }),
+      R('b5', 1, 3, { '0,0': no('X3'), '0,1': no('X4'), '0,2': set('M0') }),
+      R('b6', 1, 2, { '0,0': no('X5'), '0,1': rst('M0') }),
+      R('b7', 1, 2, { '0,0': no('X5'), '0,1': counter('C1', 4) }),
+      R('b8', 1, 5, {
+        '0,0': no('M0'), '0,1': nc('M1'), '0,2': nc('M2'), '0,3': nc('M3'), '0,4': out('Y2'),
+      }),
+      R('b9', 1, 4, { '0,0': nc('M1'), '0,1': nc('M2'), '0,2': nc('M3'), '0,3': out('Y5') }),
+      R(
+        'b10',
+        2,
+        3,
+        { '0,0': rise('X4'), '0,1': no('C1'), '0,2': set('M1'), '1,2': rst('C1') },
+        [{ row: 0, col: 2 }],
+      ),
+      R('b11', 1, 2, { '0,0': no('M2'), '0,1': out('Y3') }),
+      R('b12', 1, 2, { '0,0': no('M4'), '0,1': out('Y4') }),
+      R('b13', 2, 3, { '0,0': no('M1'), '0,1': no('X12'), '0,2': set('M2'), '1,2': rst('M1') }, [
+        { row: 0, col: 2 },
+      ]),
+      R('b14', 2, 3, { '0,0': no('M2'), '0,1': no('X7'), '0,2': set('M3'), '1,2': rst('M2') }, [
+        { row: 0, col: 2 },
+      ]),
+      R('b15', 2, 3, { '0,0': no('M3'), '0,1': no('X6'), '0,2': set('M4'), '1,2': rst('M3') }, [
+        { row: 0, col: 2 },
+      ]),
+      R('b16', 2, 3, { '0,0': no('M4'), '0,1': no('X11'), '0,2': set('M5'), '1,2': rst('M4') }, [
+        { row: 0, col: 2 },
+      ]),
+      R('b17', 1, 3, { '0,0': no('M5'), '0,1': no('X10'), '0,2': rst('M5') }),
+    ];
+    const validation = validateProgram(spec, { rungs });
+    expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+    expectSolvedButNotOptimal(spec, { rungs });
+  });
+});
+
+describe('throughputScore', () => {
+  it('gives full marks at or under par and none past the slack limit', () => {
+    expect(throughputScore(5000, 10000)).toBe(1);
+    expect(throughputScore(10000, 10000)).toBe(1);
+    expect(throughputScore(10000 * PAR_SLACK, 10000)).toBe(0);
+    expect(throughputScore(60000, 10000)).toBe(0);
+  });
+
+  it('tapers linearly between the two', () => {
+    const half = 10000 * (1 + (PAR_SLACK - 1) / 2);
+    expect(throughputScore(half, 10000)).toBeCloseTo(0.5, 6);
+  });
+
+  it('treats a scenario with no meaningful par as on time', () => {
+    expect(throughputScore(9999, 0)).toBe(1);
+  });
+});
+
+describe('gradeProgram — throughput only counts once the program works', () => {
+  it('reports elapsed time and par per scenario', () => {
+    const spec = getLadderPuzzle('drill-spindle')!;
+    const result = gradeProgram(spec, solutions['drill-spindle']!);
+    const cycle = result.scenarios.find((s) => s.name === 'Two parts run back to back')!;
+    expect(cycle.parMs).toBeDefined();
+    expect(cycle.elapsedMs).toBeGreaterThan(0);
+    expect(cycle.elapsedMs).toBeLessThanOrEqual(cycle.parMs!);
+    expect(result.efficiency).toBe(1);
+  });
+
+  it('withholds every throughput mark from a program that fails a scenario', () => {
+    const spec = getLadderPuzzle('drill-spindle')!;
+    // Never clamps, so the fixture stays empty and the run is over in no time —
+    // a fast wrong answer must not out-score a slow right one.
+    const bad: LadderProgram = { rungs: [R('r1', 1, 2, { '0,0': no('X0'), '0,1': out('Y5') })] };
+    const result = gradeProgram(spec, bad);
+    expect(result.solved).toBe(false);
+    expect(result.score).toBeLessThan(CORRECTNESS_WEIGHT);
+  });
+
+  it('scores puzzles with no declared par on correctness alone', () => {
+    const spec = getLadderPuzzle('seal-in')!;
+    expect(spec.scenarios.every((s) => s.parMs === undefined)).toBe(true);
+    const result = gradeProgram(spec, solutions['seal-in']!);
+    expect(result.efficiency).toBeUndefined();
+    expect(result.score).toBe(100);
+  });
+});
+
 describe('gradeProgram — wrong programs do not solve', () => {
   it('a direct wire without seal-in fails the seal-in puzzle', () => {
     const spec = getLadderPuzzle('seal-in')!;
@@ -865,7 +1032,8 @@ describe('gradeProgram — plausible wrong drill-station programs are rejected',
       true,
     );
     expect(failures.some((f) => f.includes('the clamp was not holding'))).toBe(true);
-    expect(failures.some((f) => f.includes('should have produced 1 good part'))).toBe(true);
+    // The frozen machine never reaches the milestone the last step waits for.
+    expect(failures.some((f) => f.includes('for the machine to produce 1 good part'))).toBe(true);
   });
 
   it('names the field device, not just the address, when an output is wrong', () => {
@@ -999,3 +1167,4 @@ describe('validateProgram', () => {
     expect(res.valid).toBe(false);
   });
 });
+

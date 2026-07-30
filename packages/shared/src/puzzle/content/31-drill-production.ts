@@ -47,6 +47,8 @@ export const drillProduction: PuzzleSpec = {
     '  with no jam.',
     '- Sending an undrilled blank down the belt, or a good aluminium part into the',
     '  scrap bin, is a routing fault. The batch is only accepted with zero of them.',
+    '- Full marks also want pace: the batch should be through in 18.0 s. A blank you',
+    '  sort out the moment METAL PART reads never ties up the fixture at all.',
   ].join('\n'),
   hints: [
     'Keep the previous program intact and add a third stage relay M2 = "rejecting ' +
@@ -104,34 +106,50 @@ export const drillProduction: PuzzleSpec = {
   scenarios: [
     {
       name: 'Mixed stock: three holes, one reject',
+      // Three drilled parts and one steel blank sorted out, back to back. The
+      // reject is the cheap part of the batch: swing the gate as soon as METAL
+      // PART reads and the blank leaves without ever tying up the fixture.
+      parMs: 18000,
       steps: [
         {
           label: 'Auto on: the first aluminium blank is drilled and shipped',
           setInputs: { X0: true },
-          holdMs: 4200,
+          until: { machine: { good: 1 } },
+          holdMs: 8000,
           expect: { Y7: false },
-          expectMachine: { good: 1, scrap: 0, bad: 0, jam: false },
+          expectMachine: { scrap: 0, bad: 0, jam: false },
         },
         {
-          label: 'A steel blank arrives: no clamp, no spindle, gate opens',
-          holdMs: 700,
-          expect: { X5: true, X6: true, Y0: false, Y5: false, Y1: false, Y6: true, Y4: true },
+          label: 'A steel blank arrives: no clamp, no spindle, and the gate opens',
+          until: { bits: { X5: true, X6: true, Y6: true } },
+          holdMs: 4000,
+          expect: { Y0: false, Y5: false, Y1: false },
+        },
+        {
+          label: 'The reject pusher runs with the gate still open',
+          until: { bits: { Y4: true } },
+          holdMs: 2000,
+          expect: { Y6: true, Y0: false, Y1: false },
         },
         {
           label: 'Steel goes down the reject chute, not onto the belt',
-          holdMs: 900,
+          until: { machine: { scrap: 1 } },
+          holdMs: 3000,
+          thenHoldMs: 400,
           expect: { Y6: false, Y4: false, Y7: false },
-          expectMachine: { good: 1, scrap: 1, bad: 0, jam: false },
+          expectMachine: { good: 1, bad: 0, jam: false },
         },
         {
           label: 'Two more aluminium parts complete the batch of three',
-          holdMs: 8500,
-          expect: { Y7: true, Y4: false },
-          expectMachine: { good: 3, scrap: 1, bad: 0, jam: false },
+          until: { machine: { good: 3 } },
+          holdMs: 14000,
+          expectMachine: { bad: 0, jam: false },
         },
         {
-          label: 'Batch done: the station parks although more stock keeps arriving',
-          holdMs: 2500,
+          label: 'BATCH DONE lights and the station parks although more stock arrives',
+          until: { bits: { Y7: true } },
+          holdMs: 3000,
+          thenHoldMs: 4000,
           expect: { X5: true, Y7: true, Y0: false, Y1: false, Y4: false, Y5: false, Y6: false },
           expectMachine: { good: 3, scrap: 1, bad: 0, jam: false },
         },
@@ -143,8 +161,9 @@ export const drillProduction: PuzzleSpec = {
         {
           label: 'Run up to the drilling phase',
           setInputs: { X0: true },
-          holdMs: 1600,
-          expect: { Y1: true, Y5: true, Y0: true },
+          until: { bits: { Y1: true } },
+          holdMs: 4000,
+          expect: { Y5: true, Y0: true },
         },
         {
           label: 'Hit E-Stop: clamp, feed, spindle and gate all drop',
@@ -155,9 +174,10 @@ export const drillProduction: PuzzleSpec = {
         {
           label: 'Released: the blank is drilled properly and counts once',
           setInputs: { X1: true },
-          holdMs: 3500,
+          until: { machine: { good: 1 } },
+          holdMs: 8000,
           expect: { Y7: false },
-          expectMachine: { good: 1, scrap: 0, bad: 0, jam: false },
+          expectMachine: { scrap: 0, bad: 0, jam: false },
         },
       ],
     },

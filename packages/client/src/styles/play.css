@@ -212,6 +212,25 @@
   font-weight: 600;
   margin: 10px 0;
 }
+/* Why a working program is short of 100: correctness passed, cycle time did not. */
+.throughput-note {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--live);
+  background: color-mix(in srgb, var(--live) 8%, transparent);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-dim);
+}
+.scenario-timing {
+  margin: 3px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--live);
+}
+.scenario-timing.ok {
+  color: var(--muted);
+}
 .next-nav {
   display: flex;
   align-items: center;
@@ -244,7 +263,6 @@
 .scenario-name {
   color: var(--ink);
 }
-.step-fails,
 .fail-list {
   margin: 4px 0 0;
   padding-left: 16px;
@@ -252,21 +270,47 @@
   font-size: 12px;
   line-height: 1.4;
 }
-/* One failing step per block: the step label, then a sentence per broken
-   expectation. Overrides the flex row .scenario-list li sets for the top level. */
-.step-fails > li {
-  display: list-item;
+.scenario-progress {
+  margin: 4px 0 0;
   font-size: 12px;
+  color: var(--muted);
 }
-.step-fail-label {
+/* The scenario's checks in order, passed ones included, so how far the machine
+   actually got is visible. Overrides the flex row .scenario-list li sets. */
+.step-checks {
+  list-style: none;
+  margin: 4px 0 6px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.step-checks > li {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.step-check-mark {
+  font-weight: 700;
+  color: var(--run);
+}
+.step-checks > li.fail .step-check-mark {
+  color: var(--stop);
+}
+.step-check-label {
+  color: var(--muted);
+}
+.step-checks > li.fail .step-check-label {
   color: var(--ink-dim);
 }
 .step-fail-reasons {
-  margin: 2px 0 6px;
+  margin: 2px 0 4px;
   padding-left: 14px;
   list-style: disc;
+  color: var(--stop);
 }
-.step-fails .step-fail-reasons li {
+.step-fail-reasons li {
   display: list-item;
   font-size: 12px;
 }

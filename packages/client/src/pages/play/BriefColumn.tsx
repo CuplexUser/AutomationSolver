@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { TIMER_BASE_MS, type PuzzleSpec, type SimSnapshot } from '@automationsolver/shared';
+import {
+  CORRECTNESS_WEIGHT,
+  TIMER_BASE_MS,
+  type PuzzleSpec,
+  type SimSnapshot,
+} from '@automationsolver/shared';
 import { usePuzzles, type useSubmit } from '../../api/queries';
 
 /** Live sim state for lighting up the terminal/register tables; omit for a static (non-running) view. */
@@ -309,6 +314,11 @@ function HintsPanel({ slug, hints }: { slug: string; hints: string[] }) {
   );
 }
 
+/** Simulated ms as a short "12.4 s" for the throughput readout. */
+function secs(ms: number): string {
+  return `${(ms / 1000).toFixed(1)} s`;
+}
+
 function ResultsCard({
   slug,
   result,
@@ -388,6 +398,16 @@ function ResultsCard({
       {grade.solved && (
         <>
           <p className="solved-banner">✔ Solved — all scenarios pass</p>
+          {/* Correctness is the pass; the rest of the score is cycle time, so a
+              working but leisurely program has to be told why it is short of
+              100 and not left guessing at a hidden check. */}
+          {grade.efficiency !== undefined && grade.efficiency < 1 && (
+            <p className="throughput-note">
+              Behaviour is worth {CORRECTNESS_WEIGHT} points and you have all of them. The last{' '}
+              {100 - CORRECTNESS_WEIGHT} are cycle time: this program runs the machine correctly
+              but slower than the line target below.
+            </p>
+          )}
           <NextPuzzleNav slug={slug} />
         </>
       )}
@@ -397,25 +417,40 @@ function ResultsCard({
             <span className="scenario-mark">{s.passed ? '✔' : '✕'}</span>
             <div>
               <span className="scenario-name">{s.name}</span>
+              {s.passed && s.parMs !== undefined && (
+                <p className={`scenario-timing${s.elapsedMs <= s.parMs ? ' ok' : ''}`}>
+                  Cycle {secs(s.elapsedMs)} · target {secs(s.parMs)}
+                  {s.elapsedMs > s.parMs && ` · ${secs(s.elapsedMs - s.parMs)} of slack to trim`}
+                </p>
+              )}
               {!s.passed && (
                 <>
-                  <ul className="step-fails">
-                    {s.steps
-                      .filter((st) => !st.passed)
-                      .map((st, j) => (
-                        <li key={j}>
-                          <span className="step-fail-label">{st.label}</span>
-                          <ul className="step-fail-reasons">
-                            {st.failures.map((f, k) => (
-                              <li key={k}>{f}</li>
-                            ))}
-                          </ul>
-                        </li>
-                      ))}
-                  </ul>
+                  {/* Every check, not just the broken ones: a run that gets
+                      nine steps in and trips on the tenth reads as "everything
+                      worked" unless the nine are on screen too. */}
+                  <p className="scenario-progress">
+                    {s.steps.filter((st) => st.passed).length} of {s.steps.length} checks passed
+                  </p>
+                  <ol className="step-checks">
+                    {s.steps.map((st, j) => (
+                      <li key={j} className={st.passed ? 'pass' : 'fail'}>
+                        <span className="step-check-mark">{st.passed ? '✔' : '✕'}</span>
+                        <div>
+                          <span className="step-check-label">{st.label}</span>
+                          {st.failures.length > 0 && (
+                            <ul className="step-fail-reasons">
+                              {st.failures.map((f, k) => (
+                                <li key={k}>{f}</li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
                   {onReplay && (
                     <button className="btn btn-ghost sm" onClick={() => onReplay(s.name)}>
-                      ▶ Replay
+                      ▶ Replay this run
                     </button>
                   )}
                 </>

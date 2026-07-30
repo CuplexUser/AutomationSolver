@@ -46,6 +46,9 @@ export const packFull: PuzzleSpec = {
     '',
     '## Acceptance',
     '- Ship one finished 16-pack to the out-feed without a jam.',
+    '- Full marks also want pace: the pack should ship in 19.5 s. That only happens if',
+    '  the front end keeps grouping cartons while the lift is away, so the next four',
+    '  are already waiting when it comes back down.',
   ].join('\n'),
   hints: [
     'Let the bracket rest forward: Y5 = M1(NC) · M2(NC) · M3(NC). It pulls back only ' +
@@ -107,30 +110,54 @@ export const packFull: PuzzleSpec = {
   scenarios: [
     {
       name: 'Ship a finished 16-pack, end to end',
+      // Sixteen cartons through four flips and out. The line is only this quick
+      // if the front end keeps grouping while the lift is away: hold the 2-pack
+      // pusher until the lift is back down and every flip lands a second late.
+      parMs: 19500,
       steps: [
         {
           label: 'First 4-pack flips into section 3',
+          until: { machine: { sec3: 4 } },
+          holdMs: 12000,
+          expectMachine: { jam: false },
+        },
+        {
+          label: 'Second flip lands',
+          until: { machine: { sec3: 8 } },
+          holdMs: 9000,
+          expectMachine: { jam: false },
+        },
+        {
+          label: 'Fourth flip: 16 cartons staged in section 3',
+          until: { machine: { sec3: 16 } },
+          holdMs: 16000,
+          expectMachine: { jam: false },
+        },
+        {
+          label: 'The bracket is fully back before the 16-pack pusher moves',
+          until: { bits: { Y3: true } },
           holdMs: 6000,
-          expectMachine: { sec3: 4, jam: false },
-        },
-        { label: 'Second flip lands', holdMs: 3300, expectMachine: { sec3: 8, jam: false } },
-        { label: 'Fourth flip: 16 cartons staged', holdMs: 7000, expectMachine: { sec3: 16, jam: false } },
-        {
-          label: 'Bracket pulls back, 16-pack-1 slides the block across',
-          holdMs: 1000,
-          expect: { Y3: true, Y5: false },
+          expect: { X12: true, Y5: false },
         },
         {
-          label: 'Block squared into section 4, pusher home again',
-          holdMs: 700,
+          label: 'The block is squared into section 4',
+          until: { machine: { sec4: 16 } },
+          holdMs: 4000,
+          expectMachine: { sec3: 0, jam: false },
+        },
+        {
+          label: '16-pack-1 springs home and the bracket comes forward again',
+          until: { bits: { X6: true, Y5: true } },
+          holdMs: 4000,
           expect: { Y3: false },
-          expectMachine: { sec4: 16, jam: false },
         },
         {
-          label: 'Bracket forward again, 16-pack-2 ships it: one finished 16-pack',
-          holdMs: 1500,
+          label: '16-pack-2 ships it: one finished 16-pack on the out-feed',
+          until: { machine: { finished: 1 } },
+          holdMs: 5000,
+          thenHoldMs: 400,
           expect: { Y4: false, Y5: true },
-          expectMachine: { finished: 1, sec4: 0, jam: false },
+          expectMachine: { sec4: 0, jam: false },
         },
       ],
     },

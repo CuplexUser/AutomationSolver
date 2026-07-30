@@ -27,6 +27,15 @@ export function describeBitFailure(
   return `${deviceName(address, devices)} should be ${onOff(expected)} at this point, but it was ${onOff(actual)}.`;
 }
 
+/** "Drill Feed (Y1) to come ON" — the thing a timed-out step was waiting for. */
+export function describeBitWait(
+  address: string,
+  expected: boolean,
+  devices: readonly PuzzleDevice[],
+): string {
+  return `${deviceName(address, devices)} to ${expected ? 'come ON' : 'go OFF'}`;
+}
+
 /** Where and why a run jammed, so a later step can point back at the cause. */
 export interface JamOnset {
   tMs: number;
@@ -131,4 +140,39 @@ export function describeMachineFailure(
     return `${key} should be ${expected ? 'true' : 'false'} at this point, but it was ${actual === true ? 'true' : 'false'}.`;
   }
   return `${key} should be ${String(expected)} at this point, but it was ${String(actual)}.`;
+}
+
+/** "the machine to produce 3 good parts" — for a milestone that was never reached. */
+export function describeMachineWait(key: string, expected: number | boolean | string): string {
+  if (key === 'jam') return expected === true ? 'the machine to jam' : 'the machine to run clear';
+
+  const produced = PRODUCED[key];
+  if (produced && typeof expected === 'number') {
+    return `the machine to produce ${count(expected, produced)}`;
+  }
+
+  const held = HELD[key];
+  if (held && typeof expected === 'number') {
+    return `${held.replace(/^The /, 'the ')} to be holding ${boxes(expected)}`;
+  }
+
+  const slot = SLOT.exec(key);
+  if (slot) return `tray slot ${slot[1]} to ${expected === true ? 'fill' : 'empty'}`;
+
+  return `${key} to be ${String(expected)}`;
+}
+
+/** "A and B", "A, B and C" — player-facing lists, never a bare comma run. */
+function joinAnd(parts: readonly string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  return `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}`;
+}
+
+/**
+ * A step that waits for a milestone and never gets there. Says what the run was
+ * waiting for and how long it waited, which is far more useful than the
+ * end-of-window bit dump a fixed-deadline step produces.
+ */
+export function describeTimeout(waits: readonly string[], timeoutMs: number): string {
+  return `Waited ${seconds(timeoutMs)} for ${joinAnd(waits)}, but the machine never got there.`;
 }
