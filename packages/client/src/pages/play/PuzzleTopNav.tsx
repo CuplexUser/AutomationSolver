@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from 'react-router';
 import { CATEGORY_TITLES, type PuzzleSpec } from '@automationsolver/shared';
 import { usePuzzles } from '../../api/queries';
 

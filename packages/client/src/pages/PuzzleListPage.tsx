@@ -1,4 +1,4 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 import {
   CATEGORY_ORDER,
   CATEGORY_TITLES,

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router';
 import { ApiError } from '../api/client';
 import { usePuzzle, useSubmit } from '../api/queries';
 import { useAuth } from '../auth/AuthContext';
