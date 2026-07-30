@@ -56,6 +56,11 @@
   display: flex;
   gap: 2px;
 }
+.slots-new {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 .slots-import-export {
   display: flex;
   flex-direction: column;

@@ -347,7 +347,9 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
 - **Save slots** (`features/slots/`) — `useActiveSlot` resolves which of a puzzle's several named
   save slots is "active" (remembered per user in `user_settings.activeSlot`, falling back to the
   most-recently-updated slot) and loads its program; `SlotsPanel` lists/creates/renames/deletes
-  slots. The editor waits for slot resolution before rendering interactively, so a fast typist
+  slots. New slots come either from the current program or blank ("New (start fresh)"), the blank
+  program being supplied by the play surface (`emptyProgram()` for ladder, `{ wires: [] }` for
+  cabinet) so the panel stays kind-agnostic. The editor waits for slot resolution before rendering interactively, so a fast typist
   can't have their first edits clobbered by the async slot load.
 - **Puzzle list + category nav** (`pages/PuzzleListPage.tsx`) — grouped by category, each section
   headed with its `CATEGORY_BLURBS` line. A pill nav routes between an **All** view and a single

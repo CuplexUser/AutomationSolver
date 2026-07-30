@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { LadderProgram, LadderPuzzleSpec } from '@automationsolver/shared';
+import { emptyProgram, type LadderProgram, type LadderPuzzleSpec } from '@automationsolver/shared';
 import { useCreateSlot, useSubmit, useUpdateSlot } from '../../api/queries';
 import type { useAuth } from '../../auth/AuthContext';
 import { useEditor } from '../../features/ladder/editorStore';
@@ -163,6 +163,7 @@ export function LadderPlay({ spec, user, submit, previousPuzzle }: PlayProps<Lad
             slots={activeSlot.slots}
             activeId={activeSlot.activeId}
             program={program}
+            emptyProgram={emptyProgram()}
             onSelect={(id) => activeSlot.setActive(id)}
             onClose={() => setSlotsOpen(false)}
           />

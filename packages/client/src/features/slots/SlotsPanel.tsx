@@ -8,6 +8,7 @@ export function SlotsPanel({
   slots,
   activeId,
   program,
+  emptyProgram,
   onSelect,
   onClose,
 }: {
@@ -15,6 +16,8 @@ export function SlotsPanel({
   slots: SolutionSlot[];
   activeId: number | null;
   program: PuzzleProgram;
+  /** A blank program of this puzzle's kind, for starting a slot from scratch. */
+  emptyProgram: PuzzleProgram;
   onSelect: (id: number) => void;
   onClose: () => void;
 }) {
@@ -124,13 +127,25 @@ export function SlotsPanel({
         ))}
         {slots.length === 0 && <li className="muted sm">No saved slots yet.</li>}
       </ul>
-      <button
-        className="btn btn-ghost full"
-        disabled={createSlot.isPending}
-        onClick={() => createSlot.mutate({ program }, { onSuccess: (slot) => onSelect(slot.id) })}
-      >
-        + New slot from current program
-      </button>
+      <div className="slots-new">
+        <button
+          className="btn btn-ghost full"
+          disabled={createSlot.isPending}
+          onClick={() =>
+            createSlot.mutate({ program: emptyProgram }, { onSuccess: (slot) => onSelect(slot.id) })
+          }
+          title="Start this puzzle over in a fresh, empty slot"
+        >
+          + New (start fresh)
+        </button>
+        <button
+          className="btn btn-ghost full"
+          disabled={createSlot.isPending}
+          onClick={() => createSlot.mutate({ program }, { onSuccess: (slot) => onSelect(slot.id) })}
+        >
+          + New slot from current program
+        </button>
+      </div>
       {importExportEnabled && (
         <div className="slots-import-export">
           <button className="btn btn-ghost full" onClick={exportCurrent}>

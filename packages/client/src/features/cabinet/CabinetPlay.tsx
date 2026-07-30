@@ -146,6 +146,7 @@ export function CabinetPlay({ spec, user, submit, previousPuzzle }: PlayProps<Ca
             slots={activeSlot.slots}
             activeId={activeSlot.activeId}
             program={wiring}
+            emptyProgram={{ wires: [] }}
             onSelect={(id) => activeSlot.setActive(id)}
             onClose={() => setSlotsOpen(false)}
           />
