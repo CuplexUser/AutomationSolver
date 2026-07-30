@@ -16,23 +16,23 @@ export function VerifyEmailPage() {
     if (!token) return;
     if (attemptedTokenRef.current === token) return;
     attemptedTokenRef.current = token;
-    let cancelled = false;
+    // No cancelled-on-cleanup guard here: attemptedTokenRef already ensures this
+    // fires at most once per token, including across StrictMode's dev-only
+    // double-invoke of this effect. A cancelled flag would instead do the
+    // opposite of what it's for — the ref blocks the second (StrictMode) call
+    // from ever firing, so its cleanup marking the first call "cancelled" would
+    // permanently discard the one real response for this single-use token.
     authApi
       .verifyEmail(token)
       .then(async () => {
-        if (cancelled) return;
         await refresh();
         setStatus('success');
         navigate('/puzzles');
       })
       .catch((err) => {
-        if (cancelled) return;
         setStatus('error');
         setError(err instanceof ApiError ? err.message : 'Something went wrong');
       });
-    return () => {
-      cancelled = true;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once per token; navigate/refresh identity churn must not re-trigger a (single-use) verify call
   }, [token]);
 
