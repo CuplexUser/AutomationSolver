@@ -2,7 +2,7 @@ import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import type { MachineState } from '@automationsolver/shared';
+import { DRILL_STOCK, type MachineState } from '@automationsolver/shared';
 import { MachineCanvas, enableShadows, DRACO_DECODER_PATH } from './MachineCanvas';
 
 const MODEL_URL = '/models/drill-station.glb';
@@ -100,6 +100,15 @@ const CHUTE_END_Y = 0.025; // part center height at the lip (chute floor + half 
 const REJECT_FALL = 1.6; // units/s² off the lip
 const REJECT_FLOOR_Y = 0; // swallowed once it is well down inside the bin
 
+// The canonical reject rungs drop Y6 the instant the eject stroke completes
+// (same coil that resets the stage relay), well before a diverted blank has
+// actually crossed the belt — the coil is a routing decision made once at the
+// fixture, not a live "blade is in the way" signal. Read literally, the blade
+// would swing shut again while the blank was still traveling toward it. So
+// the 3D view holds the blade visually open for as long as a rejected blank
+// is still resolving (riding the belt, crossing it, or down the chute),
+// independent of the coil having already dropped.
+
 // Hardened steel stock the station cannot drill, versus the machinable blanks it
 // can. Only the material differs — the blank geometry is identical, which is
 // exactly why the machine needs an inductive sensor to tell them apart. These
@@ -110,6 +119,18 @@ const REJECT_FLOOR_Y = 0; // swallowed once it is well down inside the bin
 const STEEL_COLOR = new THREE.Color('#9599a0');
 const STEEL_METALNESS = 1;
 const STEEL_ROUGHNESS = 0.49;
+
+/** How many blanks the infeed queue holds before its positions wrap. */
+const INFEED_SLOTS = Math.round(INFEED_SPAN / INFEED_PITCH);
+
+type StockLook = { color: THREE.Color; metalness: number; roughness: number };
+
+/** Paints one blank as hardened steel or leaves it as the glb's own stock. */
+function paintStock(mat: THREE.MeshStandardMaterial, steel: boolean, base: StockLook): void {
+  mat.color.copy(steel ? STEEL_COLOR : base.color);
+  mat.metalness = steel ? STEEL_METALNESS : base.metalness;
+  mat.roughness = steel ? STEEL_ROUGHNESS : base.roughness;
+}
 
 type BlockStage = 'fixture' | 'ejected' | 'dropping';
 interface BlockAnim {
@@ -147,7 +168,9 @@ interface DriveRefs {
   infeed: THREE.Object3D[];
   /** Own clones of the work piece's materials, so re-tinting can't leak. */
   stockMats: THREE.MeshStandardMaterial[];
-  stockBase?: { color: THREE.Color; metalness: number; roughness: number };
+  stockBase?: StockLook;
+  /** One own material per queued blank, so each can show its own stock. */
+  infeedMats: (THREE.MeshStandardMaterial | undefined)[];
 }
 
 /**
@@ -194,11 +217,13 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       ownMaterial(scene.getObjectByName('BlockPlug') ?? undefined),
     ].filter((m): m is THREE.MeshStandardMaterial => m != null);
     const first = stockMats[0];
+    const infeed = series(scene, 'InfeedPart_');
     return {
       stockMats,
       stockBase: first
         ? { color: first.color.clone(), metalness: first.metalness, roughness: first.roughness }
         : undefined,
+      infeedMats: infeed.map((part) => ownMaterial(part)),
       holdRod: scene.getObjectByName('HoldRod') ?? undefined,
       pushRod: scene.getObjectByName('PushRod') ?? undefined,
       block: scene.getObjectByName('Block') ?? undefined,
@@ -209,7 +234,7 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       stackRed: scene.getObjectByName('StackLightRed') as THREE.Mesh | undefined,
       stackGreen: scene.getObjectByName('StackLightGreen') as THREE.Mesh | undefined,
       rollers: series(scene, 'Roller_'),
-      infeed: series(scene, 'InfeedPart_'),
+      infeed,
     };
   }, [scene]);
 
@@ -242,6 +267,9 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     // Puzzles that model real stock report the fixture's contents; the simpler
     // ones don't, and fall back to the done-lamp heuristic below.
     const stock = typeof machine.part === 'string' ? machine.part : undefined;
+    // Only the X6 puzzles run a mixed batch; elsewhere every blank is aluminum
+    // and the queue must stay uniform rather than inventing steel.
+    const mixed = boolOf(machine.mixedStock);
     const r = refs;
     const a = anim.current;
 
@@ -261,7 +289,6 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       a.rejected = boolOf(machine.gateOpen);
       a.infeedTarget += INFEED_PITCH; // a part consumed, so index the queue up by one
     }
-    if (a.stage !== 'ejected' && stock != null) a.steel = stock === 'steel';
     // A fresh blank is on its way: the stock-aware puzzles say so outright, the
     // rest infer it from the cycle-done lamp clearing.
     const freshPart = stock != null ? stock !== 'none' : !done;
@@ -276,6 +303,12 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       a.maxFeed = 0; // a fresh part arrives undrilled
       a.shifted = 0; // and lands outboard, waiting to be carried in
     }
+    // Read the material only once the blank on screen is the one the fixture is
+    // reporting: while a part is riding away the machine has already moved on to
+    // the next blank, and picking that up early would repaint the departing one.
+    // Checked *after* the hand-over above so the fresh blank is right on the very
+    // first frame it appears, rather than wearing its predecessor's color for one.
+    if (a.stage !== 'ejected' && stock != null) a.steel = stock === 'steel';
     a.maxFeed = Math.max(a.maxFeed, feed);
     a.shifted = Math.max(a.shifted, clamp01((clamp - CLAMP_CONTACT) / (1 - CLAMP_CONTACT)));
     if (a.stage === 'dropping') {
@@ -332,26 +365,41 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
 
     // Hardened stock reads as steel: same blank, different material.
     if (r.stockBase) {
-      for (const mat of r.stockMats) {
-        mat.color.copy(a.steel ? STEEL_COLOR : r.stockBase.color);
-        mat.metalness = a.steel ? STEEL_METALNESS : r.stockBase.metalness;
-        mat.roughness = a.steel ? STEEL_ROUGHNESS : r.stockBase.roughness;
-      }
+      for (const mat of r.stockMats) paintStock(mat, a.steel, r.stockBase);
     }
 
     // Infeed queue. Both the parts and the rollers are driven straight off the
     // travelled distance, so they simply stand still between index moves.
     for (const roller of r.rollers) roller.rotation.z = a.infeed * INFEED_ROLLER_TURN;
     r.infeed.forEach((part, i) => {
-      const x = INFEED_START_X + ((i * INFEED_PITCH + a.infeed) % INFEED_SPAN);
+      const traveled = i * INFEED_PITCH + a.infeed;
+      const x = INFEED_START_X + (traveled % INFEED_SPAN);
       part.position.x = x;
       part.visible = x > INFEED_VISIBLE.from && x < INFEED_VISIBLE.to;
+      // Which blank of the run this one is. The queue is a ring of INFEED_SLOTS
+      // meshes, so a mesh becomes a *new* blank each time it wraps: counting the
+      // wraps gives a number that only ever increases, and only changes at the
+      // far end of the bed where the mesh is hidden. Deriving it from the same
+      // travel that positions the mesh (rather than from machine.fedIndex) is
+      // what keeps a blank from changing color halfway down the queue.
+      const mat = r.infeedMats[i];
+      if (mat && r.stockBase) {
+        const nth =
+          INFEED_SLOTS - 1 - i + INFEED_SLOTS * Math.floor(traveled / INFEED_SPAN);
+        const steel = mixed && DRILL_STOCK[nth % DRILL_STOCK.length] === 'steel';
+        paintStock(mat, steel, r.stockBase);
+      }
     });
 
     // The diverter tracks its own travel (machine.gate, a real 250ms stroke), so
     // opening Y6 is visible on the panel the instant it is commanded rather than
-    // only when the next blank happens to leave.
-    if (r.rejectGate) r.rejectGate.rotation.y = GATE_SWING * gate;
+    // only when the next blank happens to leave. But the coil itself drops the
+    // instant the eject stroke completes — before a blank ejected early in that
+    // stroke has actually crossed the belt — so hold the blade visually open
+    // for as long as a rejected blank is still resolving, regardless of where
+    // the coil has already gone.
+    const holdOpen = a.stage === 'ejected' && a.rejected && !rejectClear;
+    if (r.rejectGate) r.rejectGate.rotation.y = GATE_SWING * (holdOpen ? 1 : gate);
 
     if (r.spindleHead) {
       r.spindleHead.position.y = HEAD_Y.retracted + (HEAD_Y.extended - HEAD_Y.retracted) * feed;

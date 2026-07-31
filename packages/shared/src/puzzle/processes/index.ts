@@ -78,8 +78,13 @@ const DRILL_INFEED_MS = 700;
  */
 const DRILL_DWELL_MS = 800;
 
-/** Deterministic stock sequence for the mixed-material puzzle. */
-const DRILL_STOCK = ['alu', 'steel', 'alu', 'alu', 'steel', 'alu', 'alu', 'steel'] as const;
+/**
+ * Deterministic stock sequence for the mixed-material puzzle. Exported because
+ * the 3D view reads it to color the blanks still waiting on the infeed queue —
+ * the sequence is what makes a steel blank visible before it reaches the
+ * fixture, rather than only once X6 has already picked it out.
+ */
+export const DRILL_STOCK = ['alu', 'steel', 'alu', 'alu', 'steel', 'alu', 'alu', 'steel'] as const;
 
 const drillHas = (devices: PuzzleDevice[], address: string): boolean =>
   devices.some((d) => d.address === address);
@@ -289,6 +294,9 @@ const drill: ProcessModel = {
     if (hasFeeder) {
       Object.assign(next, { part, drilled, dwell, feedT, fedIndex, good, scrap, bad });
     }
+    // Only the X6 puzzles run mixed stock; without the sensor every blank is
+    // aluminum, and the view must not color the queue as if it weren't.
+    if (hasMetal) next.mixedStock = true;
 
     const derivedInputs: Record<string, boolean> = { X2: clamp >= 1, X3: feed >= 1, X4: push >= 1 };
     if (hasHomeSensors) {
