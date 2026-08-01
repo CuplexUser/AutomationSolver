@@ -35,7 +35,7 @@ export const elevatorDoors: PuzzleSpec = {
     '- Detect that stop on the rising edge of the arrival sensor with both direction',
     '  latches off in the same scan. A level contact would re-open the door every scan',
     '  for as long as the car stands there.',
-    '- Timer presets are in units of 100 ms, so K30 = 3.0 s.',
+    '- Timer presets are in units of 100 ms, so K=30 = 3.0 s.',
   ].join('\n'),
   hints: [
     'Reuse the dispatch/stop logic from the 5-Floor Dispatch puzzle unchanged: the ' +
@@ -46,7 +46,7 @@ export const elevatorDoors: PuzzleSpec = {
       'from a pass-through, since a pass-through leaves at least one latch still set. ' +
       'A level contact instead of an edge would reopen the door every scan for as ' +
       'long as the car sits parked, even after it has already closed once.',
-    'Run an on-delay timer (K30 = 3.0 s) while the door is open (X15); when it ' +
+    'Run an on-delay timer (K=30 = 3.0 s) while the door is open (X15); when it ' +
       'finishes, clear the door-open latch so the door retracts.',
   ],
   devices: [
@@ -81,7 +81,7 @@ export const elevatorDoors: PuzzleSpec = {
     { address: 'M16', label: 'Below(4)', note: 'call pending on floor 1, 2 or 3' },
     { address: 'M17', label: 'Below(5)', note: 'call pending on floor 1, 2, 3 or 4' },
     { address: 'M20', label: 'Door open latch', note: 'drives Y2; cleared by the dwell timer' },
-    { address: 'T1', label: 'Dwell timer', note: 'on-delay, preset K30 = 3.0 s' },
+    { address: 'T1', label: 'Dwell timer', note: 'on-delay, preset K=30 = 3.0 s' },
   ],
   allowedInstructions: ['contact-no', 'contact-nc', 'contact-rising', 'coil-out', 'coil-set', 'coil-reset', 'timer'],
   maxRungs: 28,

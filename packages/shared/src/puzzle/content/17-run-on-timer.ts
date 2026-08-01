@@ -17,7 +17,7 @@ export const runOnTimer: PuzzleSpec = {
     '- X0 START and X1 STOP: momentary push buttons.',
     '- Y0 MOTOR: the grinder drive.',
     '- Y1 EXTRACTOR FAN.',
-    '- T0: run-on delay, preset K30 (see Working Registers).',
+    '- T0: run-on delay, preset K=30 (see Working Registers).',
     '',
     '## Sequence of operation',
     '1. Press START. The motor Y0 runs and seals in, and the extractor Y1 runs with it.',
@@ -27,7 +27,7 @@ export const runOnTimer: PuzzleSpec = {
     '   on an untouched machine.',
     '',
     '## Field notes',
-    '- Timer presets are in units of 100 ms, so K30 = 3.0 s.',
+    '- Timer presets are in units of 100 ms, so K=30 = 3.0 s.',
     '- Run the timer only while the fan is on and the motor is off. That way it never',
     '  counts during normal running, and it resets itself ready for the next stop.',
   ].join('\n'),
@@ -38,7 +38,7 @@ export const runOnTimer: PuzzleSpec = {
       'motor directly, and once the motor drops it holds itself until the timer ' +
       'finishes.',
     'Rung 3: run the timer only while the fan is on but the motor is off, so Y1 AND ' +
-      'normally-closed Y0 → T0 (K30). That way it never counts (and never trips the ' +
+      'normally-closed Y0 → T0 (K=30). That way it never counts (and never trips the ' +
       'fan) until an actual stop, and it resets as soon as the fan drops.',
   ],
   devices: [
@@ -47,7 +47,7 @@ export const runOnTimer: PuzzleSpec = {
     { address: 'Y0', label: 'Motor', io: 'output', widget: 'motor', color: '#38bdf8' },
     { address: 'Y1', label: 'Extractor Fan', io: 'output', widget: 'motor', color: '#a78bfa' },
   ],
-  registers: [{ address: 'T0', label: 'Run-on delay', note: 'on-delay, preset K30 = 3.0 s' }],
+  registers: [{ address: 'T0', label: 'Run-on delay', note: 'on-delay, preset K=30 = 3.0 s' }],
   allowedInstructions: ['contact-no', 'contact-nc', 'coil-out', 'timer'],
   maxRungs: 4,
   processId: 'passthrough',

@@ -30,10 +30,10 @@ export const elevatorFull: PuzzleSpec = {
     '## Field notes',
     '- Do not build a separate descent path. Feeding the dispatcher a call is the whole',
     '  trick, and it gets you the door cycle at floor 1 for free.',
-    '- Timer presets are in units of 100 ms, so K100 = 10.0 s.',
+    '- Timer presets are in units of 100 ms, so K=100 = 10.0 s.',
   ].join('\n'),
   hints: [
-    'Run an on-delay timer (K100 = 10.0 s) gated by NOT at floor 1 AND no call ' +
+    'Run an on-delay timer (K=100 = 10.0 s) gated by NOT at floor 1 AND no call ' +
       'pending anywhere (all five call lamps off) AND the Up/Down latches both off ' +
       '(truly idle, not mid-trip).',
     'When it finishes, SET the floor-1 call latch, the same bit the floor-1 call ' +
@@ -74,9 +74,9 @@ export const elevatorFull: PuzzleSpec = {
     { address: 'M16', label: 'Below(4)', note: 'call pending on floor 1, 2 or 3' },
     { address: 'M17', label: 'Below(5)', note: 'call pending on floor 1, 2, 3 or 4' },
     { address: 'M20', label: 'Door open latch', note: 'drives Y2; cleared by the dwell timer' },
-    { address: 'T1', label: 'Dwell timer', note: 'on-delay, preset K30 = 3.0 s' },
+    { address: 'T1', label: 'Dwell timer', note: 'on-delay, preset K=30 = 3.0 s' },
     { address: 'M21', label: 'Any call pending', note: 'OR of the five call lamps' },
-    { address: 'T2', label: 'Idle-return timer', note: 'on-delay, preset K100 = 10.0 s' },
+    { address: 'T2', label: 'Idle-return timer', note: 'on-delay, preset K=100 = 10.0 s' },
   ],
   allowedInstructions: ['contact-no', 'contact-nc', 'contact-rising', 'coil-out', 'coil-set', 'coil-reset', 'timer'],
   maxRungs: 32,

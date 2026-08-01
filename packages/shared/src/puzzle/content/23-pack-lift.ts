@@ -62,7 +62,7 @@ export const packLift: PuzzleSpec = {
     { address: 'Y2', label: 'Lift / Flipper', io: 'output', widget: 'motor', color: '#a78bfa' },
   ],
   registers: [
-    { address: 'C0', label: 'Pair-stroke counter', note: 'preset K2: two strokes = one 4-pack' },
+    { address: 'C0', label: 'Pair-stroke counter', note: 'preset K=2: two strokes = one 4-pack' },
     { address: 'M0', label: 'Flip in progress' },
   ],
   allowedInstructions: ['contact-no', 'contact-nc', 'coil-out', 'coil-set', 'coil-reset', 'counter'],

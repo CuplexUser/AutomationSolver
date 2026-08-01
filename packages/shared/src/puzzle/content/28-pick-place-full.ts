@@ -16,7 +16,7 @@ export const pickPlaceFull: PuzzleSpec = {
     '- The complete cell from the previous work orders.',
     '- X20 UNLOAD BUTTON on the operator panel, and Y5 UNLOAD TRAY. While Y5 is on,',
     '  the machine clears all four occupancy sensors.',
-    '- Y7 ORDER COMPLETE lamp, and C0 tray counter, preset K2 (see Working Registers).',
+    '- Y7 ORDER COMPLETE lamp, and C0 tray counter, preset K=2 (see Working Registers).',
     '',
     '## Sequence of operation',
     '1. Fill the tray with the complete cycle from the previous work orders: supply',
@@ -36,7 +36,7 @@ export const pickPlaceFull: PuzzleSpec = {
   ].join('\n'),
   hints: [
     'Three new one-line rungs: no(X20) out(Y5), no(X18) driving counter C0 with ' +
-      'preset K2, and no(C0) out(Y7).',
+      'preset K=2, and no(C0) out(Y7).',
     'Close the order by adding nc(C0) in series with the infeed branches of the ' +
       'reach-down and gripper-close rungs, next to nc(X18) and no(X13). Once C0 ' +
       'completes, picks stay blocked even after the tray is cleared.',
@@ -71,7 +71,7 @@ export const pickPlaceFull: PuzzleSpec = {
   registers: [
     { address: 'M0', label: 'Carrying', note: 'set on rise(X12), reset on M1' },
     { address: 'M1', label: 'Placed pulse', note: 'one scan per placement, any pad' },
-    { address: 'C0', label: 'Tray counter', note: 'preset K2, counts rises of X18, never reset' },
+    { address: 'C0', label: 'Tray counter', note: 'preset K=2, counts rises of X18, never reset' },
   ],
   allowedInstructions: [
     'contact-no',

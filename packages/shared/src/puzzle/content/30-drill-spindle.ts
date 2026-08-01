@@ -50,7 +50,7 @@ export const drillSpindle: PuzzleSpec = {
     '  the spindle at once.',
     '',
     '## Field notes',
-    '- Timer presets are in units of 100 ms, so K10 = 1.0 s.',
+    '- Timer presets are in units of 100 ms, so K=10 = 1.0 s.',
     '',
     '## Acceptance',
     '- Two parts drilled and ejected back to back, with no jam and no scrap.',
@@ -65,7 +65,7 @@ export const drillSpindle: PuzzleSpec = {
     'Clamp Y0 and spindle Y5 are plain NO contacts on M0. That alone is what ' +
       'stops the rotation once the part is drilled, since M0 drops at the end of ' +
       'the drilling stage. Beacon Y2 follows Y5.',
-    'Drive the dwell timer straight off the bottom sensor: no(X3) → T0 (K10). It ' +
+    'Drive the dwell timer straight off the bottom sensor: no(X3) → T0 (K=10). It ' +
       'resets itself when the feed leaves the bottom, so no latch is needed.',
     'Feed Y1 = M0 AND X2 AND X7 AND nc(T0): the nc(T0) is what retracts the feed ' +
       'when the dwell completes. Put the timer rung above the feed rung so the ' +
@@ -92,7 +92,7 @@ export const drillSpindle: PuzzleSpec = {
   registers: [
     { address: 'M0', label: 'Drilling stage', note: 'clamped + spindle running on this part' },
     { address: 'M1', label: 'Eject stage', note: 'set when the dwell finishes, reset on X4' },
-    { address: 'T0', label: 'Bottom dwell', note: 'preset K10 = 1.0 s at full depth' },
+    { address: 'T0', label: 'Bottom dwell', note: 'preset K=10 = 1.0 s at full depth' },
   ],
   allowedInstructions: [
     'contact-no',

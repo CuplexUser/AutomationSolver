@@ -17,7 +17,7 @@ export const packGroup: PuzzleSpec = {
     '- Everything from the pair-stroke work order, unchanged.',
     '- Y1 4-PACK PUSHER, with sensors X2 4-PACK IN and X3 4-PACK OUT.',
     '- X4 LIFT DOWN: made while the lift platform is parked at the bottom.',
-    '- C0: pair-stroke counter, preset K2 (see Working Registers).',
+    '- C0: pair-stroke counter, preset K=2 (see Working Registers).',
     '',
     '## Sequence of operation',
     '1. Keep the pair pusher running as commissioned, with the two new conditions on',
@@ -42,7 +42,7 @@ export const packGroup: PuzzleSpec = {
   hints: [
     'Extend the pair rung\'s start condition: X14 · X15 · X2 · C0(NC), still sealed ' +
       'with Y0 and broken by X1(NC). The C0(NC) contact is what stops a third pair.',
-    'Count the strokes off the OUT sensor: X1 → C0 (K2). The counter steps on each ' +
+    'Count the strokes off the OUT sensor: X1 → C0 (K=2). The counter steps on each ' +
       'rising edge, so one stroke = one count.',
     'Load the lift with C0 · X4 → Y1. Reset with X3 → RST C0. Dropping the counter ' +
       'also drops Y1, which is what lets it spring home.',
@@ -58,7 +58,7 @@ export const packGroup: PuzzleSpec = {
     { address: 'Y0', label: '2-Pack Pusher', io: 'output', widget: 'motor', color: '#38bdf8' },
     { address: 'Y1', label: '4-Pack Pusher', io: 'output', widget: 'motor', color: '#f59e0b' },
   ],
-  registers: [{ address: 'C0', label: 'Pair-stroke counter', note: 'preset K2: two strokes = one 4-pack' }],
+  registers: [{ address: 'C0', label: 'Pair-stroke counter', note: 'preset K=2: two strokes = one 4-pack' }],
   allowedInstructions: ['contact-no', 'contact-nc', 'coil-out', 'counter', 'coil-reset'],
   maxRungs: 6,
   processId: 'packaging',

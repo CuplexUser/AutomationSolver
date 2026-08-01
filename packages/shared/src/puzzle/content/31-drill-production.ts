@@ -17,7 +17,7 @@ export const drillProduction: PuzzleSpec = {
     '- X6 METAL PART: on for steel, off for aluminium.',
     '- Y6 REJECT GATE: a diverter. Open it and an ejected part goes to the scrap bin',
     '  instead of the outfeed belt.',
-    '- Y7 BATCH DONE lamp, and C0 hole counter, preset K3 (see Working Registers).',
+    '- Y7 BATCH DONE lamp, and C0 hole counter, preset K=3 (see Working Registers).',
     '- Everything else is the station from the previous work order.',
     '',
     '## Sequence of operation',
@@ -30,9 +30,9 @@ export const drillProduction: PuzzleSpec = {
     '2. Steel (X5 on, X6 on): do not clamp it and do not start the spindle. Open the',
     '   REJECT GATE (Y6), eject the blank straight into the scrap bin, then close the',
     '   gate again.',
-    '3. Count finished holes on C0. Rejected steel blanks are not production and must',
-    '   not count.',
-    '4. When C0 completes, light BATCH DONE (Y7) and close the order down. Park the',
+    '3. Count finished holes on C0, preset K=3: the order is three drilled parts.',
+    '   Rejected steel blanks are not production and must not count.',
+    '4. When C0 reaches 3, light BATCH DONE (Y7) and close the order down. Park the',
     '   station and start no further cycle, even though the infeed keeps delivering',
     '   stock. Leave Y7 on.',
     '',
@@ -60,7 +60,7 @@ export const drillProduction: PuzzleSpec = {
       'independent rows: use one coil with a vertical link merging the two rows.',
     'Reset both M1 and M2 on X4 (two coils in one rung, joined by a vertical ' +
       'link): a completed stroke ends either kind of eject.',
-    'Count on the dwell, not on the eject: no(T0) → C0 (K3) counts exactly one ' +
+    'Count on the dwell, not on the eject: no(T0) → C0 (K=3) counts exactly one ' +
       'finished hole per part, so rejects can never sneak into the batch.',
     'Close the order the way the pick & place production run does: nc(C0) in ' +
       'series in *both* the SET M0 and SET M2 rungs, and no(C0) → out(Y7). Never ' +
@@ -88,8 +88,8 @@ export const drillProduction: PuzzleSpec = {
     { address: 'M0', label: 'Drilling stage', note: 'aluminium only: clamped, spindle running' },
     { address: 'M1', label: 'Eject stage', note: 'good part to the belt, gate closed' },
     { address: 'M2', label: 'Reject stage', note: 'steel blank to the scrap bin, gate open' },
-    { address: 'T0', label: 'Bottom dwell', note: 'preset K10 = 1.0 s at full depth' },
-    { address: 'C0', label: 'Batch counter', note: 'preset K3, counts finished holes, never reset' },
+    { address: 'T0', label: 'Bottom dwell', note: 'preset K=10 = 1.0 s at full depth' },
+    { address: 'C0', label: 'Batch counter', note: 'preset K=3, counts finished holes, never reset' },
   ],
   allowedInstructions: [
     'contact-no',

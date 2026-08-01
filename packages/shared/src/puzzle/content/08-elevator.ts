@@ -29,13 +29,13 @@ export const elevatorAutoReturn: PuzzleSpec = {
     '   car is already moving.',
     '',
     '## Field notes',
-    '- Timer presets are in units of 100 ms, so K100 = 10.0 s.',
+    '- Timer presets are in units of 100 ms, so K=100 = 10.0 s.',
     '- A car already parked at floor 1 must never start a descent.',
   ].join('\n'),
   hints: [
     'Drive up: X0 (NO) in series with a normally-closed X5 so the car stops at the ' +
       'top.',
-    'Run an on-delay timer T0 (K100) while the car is away from floor 1 (NC X3) and ' +
+    'Run an on-delay timer T0 (K=100) while the car is away from floor 1 (NC X3) and ' +
       'no up command (NC X0). When T0 finishes, seal in a descent bit M0.',
     'Break the M0 seal-in with NC X3 (reached the bottom) and NC X0 (up cancels it); ' +
       'drive the down output Y1 from M0.',
@@ -49,7 +49,7 @@ export const elevatorAutoReturn: PuzzleSpec = {
     { address: 'Y1', label: 'Motor Down', io: 'output', widget: 'motor', color: '#f59e0b' },
   ],
   registers: [
-    { address: 'T0', label: 'Idle timer', note: 'on-delay, preset K100 = 10 s' },
+    { address: 'T0', label: 'Idle timer', note: 'on-delay, preset K=100 = 10 s' },
     { address: 'M0', label: 'Descent latch', note: 'runs the car down until floor 1' },
   ],
   allowedInstructions: ['contact-no', 'contact-nc', 'coil-out', 'timer'],

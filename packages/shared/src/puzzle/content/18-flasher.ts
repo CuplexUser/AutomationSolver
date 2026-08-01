@@ -16,7 +16,7 @@ export const flasher: PuzzleSpec = {
     '## Equipment',
     '- X0 HAZARD: maintained switch.',
     '- Y0 BEACON: amber lamp.',
-    '- T0 and T1: the on phase and the off phase, preset K10 each (see Working',
+    '- T0 and T1: the on phase and the off phase, preset K=10 each (see Working',
     '  Registers).',
     '',
     '## Sequence of operation',
@@ -26,15 +26,15 @@ export const flasher: PuzzleSpec = {
     '3. Turn the switch off. The flashing stops at once and the beacon stays dark.',
     '',
     '## Field notes',
-    '- Timer presets are in units of 100 ms, so K10 = 1.0 s.',
+    '- Timer presets are in units of 100 ms, so K=10 = 1.0 s.',
     '- The oscillator is two rungs: T0 times one phase and is broken by T1, and T1 is',
     '  driven by T0. Each timer resetting the other is what makes the pattern repeat.',
     '- Read the lamp off the oscillator on its own rung, so the switch can black it out',
     '  instantly without waiting for a phase to finish.',
   ].join('\n'),
   hints: [
-    'Rung 1: run T0 (K10) from X0 in series with a normally-closed T1 contact.',
-    'Rung 2: run T1 (K10) from a normally-open T0 contact.',
+    'Rung 1: run T0 (K=10) from X0 in series with a normally-closed T1 contact.',
+    'Rung 2: run T1 (K=10) from a normally-open T0 contact.',
     'When T1 finishes it opens rung 1, which resets T0; that in turn resets T1, and ' +
       'the cycle starts over.',
     'Rung 3: light the beacon while the switch is on but T0 has not finished its ' +
@@ -45,8 +45,8 @@ export const flasher: PuzzleSpec = {
     { address: 'Y0', label: 'Beacon', io: 'output', widget: 'lamp', color: '#f59e0b' },
   ],
   registers: [
-    { address: 'T0', label: 'On phase', note: 'on-delay, preset K10 = 1.0 s' },
-    { address: 'T1', label: 'Off phase', note: 'on-delay, preset K10 = 1.0 s' },
+    { address: 'T0', label: 'On phase', note: 'on-delay, preset K=10 = 1.0 s' },
+    { address: 'T1', label: 'Off phase', note: 'on-delay, preset K=10 = 1.0 s' },
   ],
   allowedInstructions: ['contact-no', 'contact-nc', 'coil-out', 'timer'],
   maxRungs: 4,

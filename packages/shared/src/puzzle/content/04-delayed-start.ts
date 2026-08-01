@@ -25,13 +25,13 @@ export const delayedStart: PuzzleSpec = {
     '4. Press STOP at any point in the cycle. Beacon, timer and motor drop together.',
     '',
     '## Field notes',
-    '- Timer presets are counted in units of 100 ms, so K20 = 2.0 s.',
+    '- Timer presets are counted in units of 100 ms, so K=20 = 2.0 s.',
     '- Drive the timer from the sealed-in run command, not from the button. A timer fed',
     '  straight off X0 resets the moment the operator lets go.',
   ].join('\n'),
   hints: [
     'Rung 1: seal in a run command (X0 OR the run bit) AND normally-closed X1.',
-    'Rung 2: drive the beacon Y1 and the timer T0 (preset K20) from the run bit.',
+    'Rung 2: drive the beacon Y1 and the timer T0 (preset K=20) from the run bit.',
     'Rung 3: a normally-open T0 contact drives the motor Y0.',
   ],
   devices: [
@@ -42,7 +42,7 @@ export const delayedStart: PuzzleSpec = {
   ],
   registers: [
     { address: 'M0', label: 'Run latch', note: 'seals in the start command' },
-    { address: 'T0', label: 'Start delay', note: 'on-delay, preset K20 = 2.0 s' },
+    { address: 'T0', label: 'Start delay', note: 'on-delay, preset K=20 = 2.0 s' },
   ],
   allowedInstructions: ['contact-no', 'contact-nc', 'coil-out', 'timer'],
   maxRungs: 4,
