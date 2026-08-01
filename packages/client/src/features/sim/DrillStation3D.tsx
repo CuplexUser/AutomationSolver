@@ -85,6 +85,13 @@ const SLIDE_FRACTION = 0.55; // of that, the share spent sliding before the drop
 // rotation about Y — parked (0) it lies along the frame clear of the belt, fully
 // swung it spans the belt width.
 const GATE_SWING = 0.85; // radians, parked to fully across
+// The blade's stroke, matching DRILL_GATE_MS in the drill process model. The
+// machine state only advances one sim scan (60 ms) at a time, so a 250 ms stroke
+// read straight onto the rotation steps across the belt in four visible jumps —
+// and dropping `holdOpen` onto a coil that fell long ago snaps it shut in a
+// single frame. The blade is driven toward its target at this speed instead, so
+// it moves continuously at frame rate and still tracks the real actuator.
+const GATE_STROKE_MS = 250;
 // Where the blade meets the belt. It sits downstream of the station (blanks land
 // at BLOCK_EJECT_Z) because the material is read at the fixture, before the
 // program decides to clamp: sense at the station, sort further along.
@@ -145,6 +152,8 @@ interface BlockAnim {
   // 0 = still where it landed, 1 = carried onto the stop by the clamp. A running
   // max, because releasing the clamp does not send the blank back outboard.
   shifted: number;
+  /** Blade angle actually on screen, 0..1, chasing the commanded one smoothly. */
+  gateShown: number;
   // Captured when the part leaves, because the machine state that produced them
   // (the diverter, the material sensor) has already moved on to the next blank.
   rejected: boolean;
@@ -188,12 +197,22 @@ function rejectDrop(x: number): number {
   return onChute + REJECT_FALL * fell * fell;
 }
 
-/** Gives a mesh its own copy of its material so it can be tinted in isolation. */
+/**
+ * Gives a mesh its own copy of its material so it can be tinted in isolation.
+ *
+ * Idempotent, because the memo that calls this can run more than once for the
+ * same scene (React deliberately double-invokes memo factories in dev). Cloning
+ * afresh every time would leave the mesh wearing the *last* clone while the refs
+ * kept an earlier one, and every repaint after that would land on a material
+ * nothing renders -- the blank stays its unpainted color forever.
+ */
 function ownMaterial(obj: THREE.Object3D | undefined): THREE.MeshStandardMaterial | undefined {
   const mesh = obj as THREE.Mesh | undefined;
   const mat = mesh?.material as THREE.MeshStandardMaterial | undefined;
   if (!mesh || !mat) return undefined;
+  if (mat.userData.blankOwner === true) return mat;
   const copy = mat.clone();
+  copy.userData = { ...copy.userData, blankOwner: true };
   mesh.material = copy;
   return copy;
 }
@@ -209,7 +228,14 @@ function series(scene: THREE.Object3D, prefix: string): THREE.Object3D[] {
 }
 
 function DrillStationScene({ machine }: { machine: MachineState }) {
-  const { scene } = useGLTF(MODEL_URL, DRACO_DECODER_PATH);
+  const { scene: cached } = useGLTF(MODEL_URL, DRACO_DECODER_PATH);
+  // useGLTF hands out one cached scene per URL, and this scene repaints the work
+  // piece's material every frame. Painting the cached scene leaves those
+  // materials however the last visit ended, so the next mount reads a steel-gray
+  // material as its "unpainted" base and every blank -- queue included -- comes
+  // out the same gray. Cloning per instance keeps the cache pristine; geometries
+  // and the source materials are still shared, so the clone is cheap.
+  const scene = useMemo(() => cached.clone(true), [cached]);
   const refs = useMemo<DriveRefs>(() => {
     enableShadows(scene);
     const stockMats = [
@@ -245,6 +271,7 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     carry: 0,
     divert: 0,
     shifted: 0,
+    gateShown: 0,
     rejected: false,
     steel: false,
     infeed: 0,
@@ -325,9 +352,13 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
       a.infeed = Math.min(a.infeedTarget, a.infeed + INFEED_SPEED * dt);
     }
     // 0 = at the fixture stop, 1 = fully ejected — frozen at 1 once the part has
-    // actually left, 0 once a fresh one is dropping onto the empty fixture, and
-    // tracking the live rod otherwise.
-    const blockPushProgress = a.stage === 'ejected' ? 1 : a.stage === 'dropping' ? 0 : push;
+    // actually left, and tracking the live rod otherwise, arriving blanks
+    // included. A blank the program rejects on sight (steel: Y4 comes up on the
+    // same scan METAL PART reads) is pushed out while the view is still playing
+    // its slide onto the fixture, so pinning an arriving blank in place ran the
+    // rod straight through it and then snapped the blank out when the slide
+    // finished. During a normal arrival the rod is home and this is 0 anyway.
+    const blockPushProgress = a.stage === 'ejected' ? 1 : push;
 
     // Both cylinders are authored with their rods running deep into the barrel,
     // so the stroke is a plain translation — no stretching needed to keep the rod
@@ -399,7 +430,13 @@ function DrillStationScene({ machine }: { machine: MachineState }) {
     // for as long as a rejected blank is still resolving, regardless of where
     // the coil has already gone.
     const holdOpen = a.stage === 'ejected' && a.rejected && !rejectClear;
-    if (r.rejectGate) r.rejectGate.rotation.y = GATE_SWING * (holdOpen ? 1 : gate);
+    const gateTarget = holdOpen ? 1 : gate;
+    const gateStep = (dt * 1000) / GATE_STROKE_MS;
+    a.gateShown =
+      a.gateShown < gateTarget
+        ? Math.min(gateTarget, a.gateShown + gateStep)
+        : Math.max(gateTarget, a.gateShown - gateStep);
+    if (r.rejectGate) r.rejectGate.rotation.y = GATE_SWING * a.gateShown;
 
     if (r.spindleHead) {
       r.spindleHead.position.y = HEAD_Y.retracted + (HEAD_Y.extended - HEAD_Y.retracted) * feed;

@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 
 const CLIENT_PORT = 5173;
-const SERVER_PORT = 4000;
+const SERVER_PORT = 4005;
 
 export default defineConfig({
   testDir: './tests',

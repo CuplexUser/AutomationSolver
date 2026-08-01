@@ -84,13 +84,19 @@
 .machine3d:focus-within .machine3d-zoom {
   opacity: 1;
 }
+/* Tiles reflow onto a second row when the column is too narrow for all of them,
+   rather than each tile shrinking until its value has to wrap. The row's height
+   then depends only on how many tiles the puzzle has, not on how long the
+   current value happens to be. */
 .mv-readout {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
   gap: 6px;
   margin-top: 8px;
 }
 .mv-stat {
-  flex: 1;
+  /* Lets the value ellipsize instead of forcing the tile wider than its share. */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -110,6 +116,13 @@
   font-family: var(--font-mono);
   font-size: 13px;
   color: var(--ink-dim);
+  /* One line, always. The values change as the machine runs ("ALU" -> "ALU OK",
+     "OFF" -> "SPIN-UP"), and in a narrow column the longer ones used to wrap to
+     two lines: the readout row grew, and the 3D scene above it jumped down the
+     page mid-cycle. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mv-stat.on {
   border-color: color-mix(in srgb, var(--run) 55%, var(--edge));
