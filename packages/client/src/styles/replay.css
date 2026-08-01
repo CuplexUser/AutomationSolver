@@ -74,8 +74,13 @@
   align-items: center;
   flex: 0 0 auto;
 }
+/* The one scroll container for the strip. Both columns must size to their own
+   content (flex-start, not the default stretch) and overflow into this
+   scrollport together — a single-line flex container with a definite height
+   would otherwise hand each column the 200px line height instead. */
 .trace-body {
   display: flex;
+  align-items: flex-start;
   margin-top: 8px;
   overflow-y: auto;
   min-height: 0;
@@ -91,10 +96,13 @@
   font-size: 11px;
   color: var(--muted);
 }
+/* No overflow here: the svg is always width:100%, so there is nothing to scroll
+   horizontally, and any `auto` axis forces the other one to `auto` as well —
+   that nested scrollport clipped the waveforms at the strip's height while the
+   label column kept scrolling, so the two drifted apart. */
 .trace-scroll {
   flex: 1 1 auto;
   min-width: 0;
-  overflow-x: auto;
 }
 .trace-svg {
   display: block;
