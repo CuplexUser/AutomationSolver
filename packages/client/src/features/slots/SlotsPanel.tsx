@@ -2,6 +2,13 @@ import { useRef, useState } from 'react';
 import type { PuzzleSpec } from '@automationsolver/shared';
 import type { PuzzleProgram, SolutionSlot } from '../../api/client';
 import { useCreateSlot, useDeleteSlot, useSettings, useUpdateSlot } from '../../api/queries';
+import { useAuth } from '../../auth/AuthContext';
+import {
+  SLOT_FILE_EXTENSION,
+  buildEnvelope,
+  decodeSlotFile,
+  encodeSlotFile,
+} from './slotFile';
 
 export function SlotsPanel({
   spec,
@@ -25,36 +32,40 @@ export function SlotsPanel({
   const updateSlot = useUpdateSlot(spec.slug);
   const deleteSlot = useDeleteSlot(spec.slug);
   const { data: settingsData } = useSettings();
+  const { user } = useAuth();
   const importExportEnabled = settingsData?.settings.enableImportExport === true;
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const exportCurrent = () => {
-    const blob = new Blob([JSON.stringify(program, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
+  const exportCurrent = async () => {
+    const envelope = buildEnvelope(spec.slug, program, user, new Date());
+    const url = URL.createObjectURL(await encodeSlotFile(envelope));
     const a = document.createElement('a');
     a.href = url;
-    a.download = `${spec.slug}.json`;
+    a.download = `${spec.slug}${SLOT_FILE_EXTENSION}`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const importFile = async (file: File) => {
     setImportError(null);
+    let imported: PuzzleProgram;
     try {
-      const parsed: unknown = JSON.parse(await file.text());
-      createSlot.mutate(
-        { program: parsed as PuzzleProgram, name: file.name.replace(/\.json$/i, '') },
-        {
-          onSuccess: (slot) => onSelect(slot.id),
-          onError: () => setImportError('That file was rejected as an invalid program.'),
-        },
-      );
+      // The envelope's email and display name are read but intentionally not used yet.
+      ({ program: imported } = await decodeSlotFile(file));
     } catch {
-      setImportError('That file is not valid JSON.');
+      setImportError('That file is not a saved program.');
+      return;
     }
+    createSlot.mutate(
+      { program: imported, name: file.name.replace(/\.(ladder|json)$/i, '') },
+      {
+        onSuccess: (slot) => onSelect(slot.id),
+        onError: () => setImportError('That file was rejected as an invalid program.'),
+      },
+    );
   };
 
   const commitRename = (id: number) => {
@@ -148,7 +159,7 @@ export function SlotsPanel({
       </div>
       {importExportEnabled && (
         <div className="slots-import-export">
-          <button className="btn btn-ghost full" onClick={exportCurrent}>
+          <button className="btn btn-ghost full" onClick={() => void exportCurrent()}>
             ⬇ Export current
           </button>
           <button className="btn btn-ghost full" onClick={() => fileInputRef.current?.click()}>
@@ -157,7 +168,7 @@ export function SlotsPanel({
           <input
             ref={fileInputRef}
             type="file"
-            accept="application/json"
+            accept=".ladder,application/json"
             hidden
             onChange={(e) => {
               const file = e.target.files?.[0];
