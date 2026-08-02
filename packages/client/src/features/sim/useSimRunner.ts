@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   defaultInputs,
   getProcess,
+  GRADE_DT,
   SimEngine,
   type LadderProgram,
   type LadderPuzzleSpec,
@@ -10,12 +11,22 @@ import {
   type SimSnapshot,
 } from '@automationsolver/shared';
 
-const DT = 60; // scan interval / dt in ms
-const HISTORY_LIMIT = 400; // ~24s of scans at DT=60ms, for the trace strip
+/**
+ * Scan interval / dt in ms. Deliberately *the grader's* dt: booleans survived a
+ * mismatch here because every process model's timings are exact multiples of
+ * both cadences, but an integrator does not — a tank level or a velocity ramp
+ * accumulating at 50ms vs 60ms diverges immediately, and a threshold crossing
+ * lands on a different scan. Running the same dt is what keeps live play and the
+ * server's grade the same run.
+ */
+const DT = GRADE_DT;
+const HISTORY_LIMIT = 480; // ~24s of scans at DT=50ms, for the trace strip
 
 export interface TraceHistorySample {
   tMs: number;
   bits: Record<string, boolean>;
+  /** D-register image at this scan, for the analog trend. */
+  registers?: Record<string, number>;
 }
 
 /**
@@ -26,6 +37,10 @@ export interface HmiRunner {
   running: boolean;
   inputs: Record<string, boolean>;
   bits: Record<string, boolean>;
+  /** D-register image. Absent on the cabinet runner, which has no word devices. */
+  registers?: Record<string, number>;
+  /** Scan history, for the analog trend. Absent where nothing is recorded. */
+  history?: TraceHistorySample[];
   start: () => void;
   stop: () => void;
   step: () => void;
@@ -33,7 +48,12 @@ export interface HmiRunner {
   setInput: (address: string, value: boolean) => void;
 }
 
+/** The scan interval the panel reports, so the header cannot drift from the engine. */
+export const SCAN_INTERVAL_MS = DT;
+
 export interface SimRunner extends HmiRunner {
+  /** Live D-register image, for analog gauges and the trend. */
+  registers: Record<string, number>;
   machine: MachineState;
   evalResults: RungEvalResult[];
   /** Rolling scan history for the trace strip, oldest first. */
@@ -48,6 +68,7 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
   const processRef = useRef(getProcess(spec.processId));
   const machineRef = useRef<MachineState>({});
   const derivedRef = useRef<Record<string, boolean>>({});
+  const derivedRegsRef = useRef<Record<string, number>>({});
   const inputsRef = useRef<Record<string, boolean>>(defaultInputs(spec.devices));
   const historyRef = useRef<TraceHistorySample[]>([]);
   const tMsRef = useRef(0);
@@ -55,6 +76,7 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
   const [running, setRunning] = useState(false);
   const [inputs, setInputsState] = useState<Record<string, boolean>>(() => defaultInputs(spec.devices));
   const [bits, setBits] = useState<Record<string, boolean>>({});
+  const [registers, setRegisters] = useState<Record<string, number>>({});
   const [timers, setTimers] = useState<SimSnapshot['timers']>({});
   const [counters, setCounters] = useState<SimSnapshot['counters']>({});
   const [machine, setMachine] = useState<MachineState>({});
@@ -67,11 +89,13 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
       processRef.current = getProcess(spec.processId);
       machineRef.current = processRef.current.init(spec.devices);
       derivedRef.current = {};
+      derivedRegsRef.current = {};
       inputsRef.current = defaultInputs(spec.devices);
       historyRef.current = [];
       tMsRef.current = 0;
       setInputsState(inputsRef.current);
       setBits({});
+      setRegisters({});
       setTimers({});
       setCounters({});
       setMachine(machineRef.current);
@@ -94,26 +118,37 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
     const engine = engineRef.current;
     engine.setInputs(inputsRef.current);
     engine.setInputs(derivedRef.current);
+    engine.setRegisters(derivedRegsRef.current);
     engine.scan(DT);
     const outputs: Record<string, boolean> = {};
-    for (const d of spec.devices) if (d.io === 'output') outputs[d.address] = engine.getBit(d.address);
+    const regs: Record<string, number> = {};
+    for (const d of spec.devices) {
+      if (d.signal === 'analog') regs[d.address] = engine.getRegister(d.address);
+      else if (d.io === 'output') outputs[d.address] = engine.getBit(d.address);
+    }
     const res = processRef.current.step({
       outputs,
       inputs: inputsRef.current,
+      registers: regs,
       machine: machineRef.current,
       devices: spec.devices,
       dtMs: DT,
     });
     machineRef.current = res.machine;
     derivedRef.current = res.derivedInputs ?? {};
+    derivedRegsRef.current = res.derivedRegisters ?? {};
     const snap = engine.snapshot();
     tMsRef.current += DT;
-    historyRef.current = [...historyRef.current, { tMs: tMsRef.current, bits: snap.bits }];
+    historyRef.current = [
+      ...historyRef.current,
+      { tMs: tMsRef.current, bits: snap.bits, registers: snap.registers },
+    ];
     if (historyRef.current.length > HISTORY_LIMIT) {
       historyRef.current = historyRef.current.slice(historyRef.current.length - HISTORY_LIMIT);
     }
     setEvalResults(engine.lastRungResults.slice());
     setBits(snap.bits);
+    setRegisters(snap.registers);
     setTimers(snap.timers);
     setCounters(snap.counters);
     setMachine({ ...machineRef.current });
@@ -135,6 +170,7 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
     running,
     inputs,
     bits,
+    registers,
     timers,
     counters,
     machine,

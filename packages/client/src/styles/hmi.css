@@ -52,3 +52,77 @@
   display: block;
   margin-bottom: 6px;
 }
+
+/* ---------- Analog strip ----------
+   Word devices get their own block above the lamp grid: on a regulating puzzle
+   these are the instruments the player actually watches, and a gauge crammed
+   into the widget grid is too small to read a trend off. */
+.hmi-analog {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.analog-widget {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+}
+.analog-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.analog-name {
+  font-size: 12px;
+  color: var(--muted);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.analog-value {
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.analog-units {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.75;
+}
+/* The number the *program* sees, kept alongside the engineering value so the
+   scaling lesson stays visible rather than being quietly done for the player. */
+.analog-counts {
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.8;
+}
+.analog-bar {
+  height: 10px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--edge) 70%, transparent);
+  overflow: hidden;
+}
+.analog-fill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 80ms linear;
+}
+.analog-trend {
+  width: 100%;
+  height: 44px;
+  display: block;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--bg) 60%, transparent);
+}
+.trend-grid {
+  stroke: var(--edge);
+  stroke-width: 0.5;
+  opacity: 0.55;
+}

@@ -30,6 +30,43 @@ const rst = (d: string): LadderElement => ({ type: 'coil-reset', device: d });
 const set = (d: string): LadderElement => ({ type: 'coil-set', device: d });
 const wire: LadderElement = { type: 'hwire', device: '' };
 
+// Word instructions. `compare` is the only element with no `device` at all:
+// both sides are operands.
+const mov = (source: string, dest: string): LadderElement => ({
+  type: 'mov',
+  device: dest,
+  operands: [source],
+});
+const math = (
+  op: 'add' | 'sub' | 'mul' | 'div',
+  a: string,
+  b: string,
+  dest: string,
+): LadderElement => ({ type: 'math', device: dest, op, operands: [a, b] });
+const cmp = (
+  op: '=' | '<>' | '>' | '<' | '>=' | '<=',
+  a: string,
+  b: string,
+): LadderElement => ({ type: 'compare', device: '', op, operands: [a, b] });
+const pid = (
+  sv: string,
+  pv: string,
+  mv: string,
+  tuning: { kp: number; ti?: number; td?: number },
+): LadderElement => ({
+  type: 'pid',
+  device: mv,
+  operands: [sv, pv],
+  pid: {
+    kp: tuning.kp,
+    ti: tuning.ti ?? 0,
+    td: tuning.td ?? 0,
+    sampleMs: 100,
+    outMin: 0,
+    outMax: 4000,
+  },
+});
+
 function R(
   id: string,
   rows: number,
@@ -637,6 +674,122 @@ const solutions: Record<string, LadderProgram> = {
       R('r29', 1, 2, { '0,0': no('T2'), '0,1': set('M0') }),
     ],
   },
+
+  // --- process control ----------------------------------------------------
+  // The valve is written from several rungs on purpose. MOV only writes while
+  // its rung conducts, so "whichever condition is true supplies the value" is
+  // the idiom, and the rung order below each PID block is what lets a trip
+  // overrule a running loop.
+  'tank-level-readout': {
+    rungs: [
+      R('r1', 1, 2, { '0,0': wire, '0,1': math('div', 'D0', 'K4', 'D10') }),
+      R('r2', 1, 2, { '0,0': no('X0'), '0,1': mov('K4000', 'D20') }),
+      R('r3', 1, 2, { '0,0': nc('X0'), '0,1': mov('K0', 'D20') }),
+      R('r4', 1, 2, { '0,0': cmp('>=', 'D10', 'K800'), '0,1': out('Y1') }),
+      R('r5', 1, 2, { '0,0': cmp('<=', 'D10', 'K200'), '0,1': out('Y2') }),
+    ],
+  },
+  'tank-two-position': {
+    rungs: [
+      // Fill latch: set at the low mark, held until the high mark.
+      R(
+        'r1',
+        2,
+        3,
+        {
+          '0,0': cmp('<=', 'D0', 'K1600'),
+          '1,0': no('M0'),
+          '0,1': cmp('<', 'D0', 'K2400'),
+          '0,2': out('M0'),
+        },
+        [{ row: 0, col: 1 }],
+      ),
+      R('r2', 1, 2, { '0,0': no('X0'), '0,1': out('Y0') }),
+      R('r3', 1, 3, { '0,0': no('X0'), '0,1': no('M0'), '0,2': mov('K4000', 'D20') }),
+      R(
+        'r4',
+        2,
+        2,
+        { '0,0': nc('X0'), '1,0': nc('M0'), '0,1': mov('K0', 'D20') },
+        [{ row: 0, col: 1 }],
+      ),
+    ],
+  },
+  'tank-p-control': {
+    rungs: [
+      R('r1', 1, 2, { '0,0': wire, '0,1': mov('K2400', 'D30') }),
+      R('r2', 1, 2, { '0,0': wire, '0,1': math('sub', 'D30', 'D0', 'D31') }),
+      // Whole-number gain: error reaches 2400 counts, so anything above 8 would
+      // peg the register before the valve ever saw it.
+      R('r3', 1, 2, { '0,0': wire, '0,1': math('mul', 'D31', 'K4', 'D32') }),
+      // Bias = setpoint, the valve position this vessel needs at zero load.
+      R('r4', 1, 2, { '0,0': no('X0'), '0,1': math('add', 'D32', 'D30', 'D20') }),
+      R('r5', 1, 2, { '0,0': nc('X0'), '0,1': mov('K0', 'D20') }),
+      R('r6', 1, 3, { '0,0': no('X0'), '0,1': no('X3'), '0,2': out('Y0') }),
+    ],
+  },
+  'tank-pid': {
+    rungs: [
+      R('r1', 1, 2, { '0,0': wire, '0,1': mov('K2400', 'D30') }),
+      // Ti at the vessel's own time constant is the textbook cancellation, and
+      // it leaves a closed loop with no overshoot to speak of.
+      R('r2', 1, 2, { '0,0': no('X0'), '0,1': pid('D30', 'D0', 'D20', { kp: 300, ti: 4000 }) }),
+      R('r3', 1, 2, { '0,0': nc('X0'), '0,1': mov('K0', 'D20') }),
+      R('r4', 1, 3, { '0,0': no('X0'), '0,1': no('X3'), '0,2': out('Y0') }),
+      R('r5', 1, 4, {
+        '0,0': no('X0'),
+        '0,1': cmp('>=', 'D0', 'K2320'),
+        '0,2': cmp('<=', 'D0', 'K2480'),
+        '0,3': out('Y1'),
+      }),
+    ],
+  },
+  'tank-auto': {
+    rungs: [
+      R('r1', 1, 2, { '0,0': no('X4'), '0,1': mov('K2800', 'D30') }),
+      R('r2', 1, 2, { '0,0': nc('X4'), '0,1': mov('K1600', 'D30') }),
+      // Trip latch: the float seals it in, only reset lets go.
+      R(
+        'r3',
+        2,
+        3,
+        { '0,0': no('X2'), '1,0': no('M0'), '0,1': nc('X5'), '0,2': out('M0') },
+        [{ row: 0, col: 1 }],
+      ),
+      R('r4', 1, 2, { '0,0': no('M0'), '0,1': out('Y2') }),
+      // Three writers to the valve, in priority order down the program: the
+      // loop, then hand mode over the top of it, then the trip over both.
+      R('r5', 1, 3, {
+        '0,0': no('X0'),
+        '0,1': nc('M0'),
+        '0,2': pid('D30', 'D0', 'D20', { kp: 300, ti: 4000 }),
+      }),
+      R('r6', 1, 3, { '0,0': no('X6'), '0,1': nc('M0'), '0,2': mov('K4000', 'D20') }),
+      R(
+        'r7',
+        2,
+        3,
+        {
+          '0,0': no('M0'),
+          '0,1': wire,
+          '1,0': nc('X0'),
+          '1,1': nc('X6'),
+          '0,2': mov('K0', 'D20'),
+        },
+        [{ row: 0, col: 2 }],
+      ),
+      R('r8', 1, 3, { '0,0': no('X0'), '0,1': no('X3'), '0,2': out('Y0') }),
+      // The on-setpoint band moves with the recipe, so it is computed, not typed.
+      R('r9', 1, 2, { '0,0': wire, '0,1': math('sub', 'D30', 'K80', 'D33') }),
+      R('r10', 1, 2, { '0,0': wire, '0,1': math('add', 'D30', 'K80', 'D34') }),
+      R('r11', 1, 4, {
+        '0,0': no('X0'),
+        '0,1': cmp('>=', 'D0', 'D33'),
+        '0,2': cmp('<=', 'D0', 'D34'),
+        '0,3': out('Y1'),
+      }),
+    ],
+  },
 };
 
 describe('gradeProgram — canonical solutions solve every puzzle', () => {
@@ -818,6 +971,89 @@ describe('gradeProgram — throughput only counts once the program works', () =>
     const result = gradeProgram(spec, solutions['seal-in']!);
     expect(result.efficiency).toBeUndefined();
     expect(result.score).toBe(100);
+  });
+
+  /**
+   * The analog puzzles spend the same 15 marks on control quality. A loop that
+   * holds setpoint loosely is still solved and still unlocks what follows, and
+   * still does not reach 100 — the exact property the cycle-time axis has.
+   */
+  it('scores a regulating puzzle on its error integral instead of on elapsed time', () => {
+    const spec = getLadderPuzzle('tank-p-control')!;
+    expect(spec.scenarios.every((s) => s.parMs === undefined)).toBe(true);
+    expect(spec.scenarios.some((s) => s.parIae !== undefined)).toBe(true);
+
+    const sloppy = structuredClone(solutions['tank-p-control']!);
+    // Gain 2 instead of 4: still inside every band the puzzle asks for, but it
+    // takes longer to get there and sits further out once loaded. Gain 1 would
+    // miss the band outright, which is a different failure to the one under
+    // test here.
+    sloppy.rungs[2]!.cells[0]![1] = math('mul', 'D31', 'K2', 'D32');
+    const result = gradeProgram(spec, sloppy);
+
+    expect(result.solved).toBe(true);
+    expect(result.score).toBeGreaterThanOrEqual(CORRECTNESS_WEIGHT);
+    expect(result.score).toBeLessThan(100);
+    const loaded = result.scenarios.find((s) => s.name === 'The offset moves when the load does')!;
+    expect(loaded.iae).toBeGreaterThan(loaded.parIae!);
+  });
+});
+
+describe('gradeProgram — analog puzzles reject the plausible wrong answer', () => {
+  /**
+   * The discriminator for the P-control puzzle. Open-loop — park the valve at
+   * the setpoint and hope — lands exactly on target at the design load, so the
+   * no-load scenario alone would pass it. The load step is what exposes that
+   * there is no feedback at all.
+   */
+  it('tank-p-control: an open-loop valve position fails the moment the load changes', () => {
+    const spec = getLadderPuzzle('tank-p-control')!;
+    const openLoop: LadderProgram = {
+      rungs: [
+        R('r1', 1, 2, { '0,0': no('X0'), '0,1': mov('K2400', 'D20') }),
+        R('r2', 1, 2, { '0,0': nc('X0'), '0,1': mov('K0', 'D20') }),
+        R('r3', 1, 3, { '0,0': no('X0'), '0,1': no('X3'), '0,2': out('Y0') }),
+      ],
+    };
+    const result = gradeProgram(spec, openLoop);
+    expect(result.solved).toBe(false);
+    const byName = new Map(result.scenarios.map((s) => [s.name, s]));
+    expect(byName.get('Holds setpoint with no load')!.passed).toBe(true);
+    expect(byName.get('The offset moves when the load does')!.passed).toBe(false);
+  });
+
+  /**
+   * The discriminator for the PID puzzle: proportional action alone. It reaches
+   * a level and holds it steadily, which is exactly what makes the offset the
+   * only thing separating it from a right answer.
+   */
+  it('tank-pid: a P-only block leaves an offset the tight band will not accept', () => {
+    const spec = getLadderPuzzle('tank-pid')!;
+    const pOnly = structuredClone(solutions['tank-pid']!);
+    pOnly.rungs[1]!.cells[0]![1] = pid('D30', 'D0', 'D20', { kp: 300, ti: 0 });
+    const result = gradeProgram(spec, pOnly);
+    expect(result.solved).toBe(false);
+    const failures = result.scenarios
+      .flatMap((s) => s.steps)
+      .flatMap((s) => s.failures)
+      .join(' ');
+    expect(failures).toContain('proportional term alone');
+  });
+
+  /**
+   * The discriminator for the capstone: a trip that follows the float instead of
+   * latching on it. It looks right while the float is made and quietly reopens
+   * the valve the moment the level falls back, which is the failure mode a
+   * latch exists to prevent.
+   */
+  it('tank-auto: a non-latching trip lets go as soon as the level falls back', () => {
+    const spec = getLadderPuzzle('tank-auto')!;
+    const noLatch = structuredClone(solutions['tank-auto']!);
+    noLatch.rungs[2] = R('r3', 1, 2, { '0,0': no('X2'), '0,1': out('M0') });
+    const result = gradeProgram(spec, noLatch);
+    expect(result.solved).toBe(false);
+    const trip = result.scenarios.find((s) => s.name.startsWith('Hand mode overfills'))!;
+    expect(trip.passed).toBe(false);
   });
 });
 

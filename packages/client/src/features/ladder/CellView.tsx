@@ -1,4 +1,9 @@
-import type { LadderElement } from '@automationsolver/shared';
+import {
+  MATH_MNEMONIC,
+  MATH_SYMBOL,
+  type LadderElement,
+  type MathOp,
+} from '@automationsolver/shared';
 
 // Compact cell geometry — dense enough to fit a real program on one screen while
 // keeping the address label at a legible size. The symbol occupies the middle
@@ -26,17 +31,68 @@ function glow(live: boolean): React.CSSProperties {
   return live ? { filter: 'drop-shadow(0 0 3px rgba(255,176,32,0.8))' } : {};
 }
 
+/**
+ * What goes on the cell's two text lines.
+ *
+ * Bit elements have always shown their one address on top. Word elements read
+ * as the little expression they are — `D0÷K4` rather than `D0,K4` — with the
+ * register they write underneath, arrow-prefixed so a destination can never be
+ * mistaken for another operand. A compare writes nothing, so it uses the top
+ * line alone.
+ */
+function cellText(element: LadderElement): { top: string; bottom?: string } {
+  const [a = '?', b = '?'] = element.operands ?? [];
+  const dest = element.device ? `→${element.device}` : '→?';
+  switch (element.type) {
+    case 'compare':
+      return { top: `${a}${element.op ?? '?'}${b}` };
+    case 'mov':
+      return { top: a, bottom: dest };
+    case 'math':
+      return { top: `${a}${MATH_SYMBOL[(element.op as MathOp) ?? 'add']}${b}`, bottom: dest };
+    case 'pid':
+      // Setpoint over measurement; the block face already says which is which.
+      return { top: `${a}/${b}`, bottom: dest };
+    default:
+      return {
+        top: element.device,
+        bottom:
+          (element.type === 'timer' || element.type === 'counter') && element.preset != null
+            ? `K${element.preset}`
+            : undefined,
+      };
+  }
+}
+
+/** Spoken form for the cell button's aria-label, since the glyphs are terse. */
+export function describeElement(element: LadderElement): string {
+  const [a = '?', b = '?'] = element.operands ?? [];
+  switch (element.type) {
+    case 'compare':
+      return `compare ${a} ${element.op ?? '='} ${b}`;
+    case 'mov':
+      return `move ${a} into ${element.device}`;
+    case 'math':
+      return `${MATH_MNEMONIC[(element.op as MathOp) ?? 'add']} ${a} and ${b} into ${element.device}`;
+    case 'pid':
+      return `PID loop, setpoint ${a}, measured ${b}, output ${element.device}`;
+    default:
+      return `${element.type} ${element.device}`;
+  }
+}
+
 export function CellView({ element, selected, leftLive, rightLive, symbolLive, onClick }: Props) {
   const symColor = symbolLive ? LIVE : IDLE_SYM;
   const leftColor = leftLive ? LIVE : IDLE_WIRE;
   const rightColor = rightLive ? LIVE : IDLE_WIRE;
+  const text = element ? cellText(element) : { top: '', bottom: undefined };
 
   return (
     <button
       type="button"
       onClick={onClick}
       className={`ladder-cell${selected ? ' is-selected' : ''}`}
-      aria-label={element ? `${element.type} ${element.device}` : 'empty cell'}
+      aria-label={element ? describeElement(element) : 'empty cell'}
     >
       <svg width={CELL_W} height={CELL_H} viewBox={`0 0 ${CELL_W} ${CELL_H}`}>
         {element ? (
@@ -52,11 +108,11 @@ export function CellView({ element, selected, leftLive, rightLive, symbolLive, o
             />
             <Symbol element={element} color={symColor} live={symbolLive} />
             <text x={CELL_W / 2} y={13} textAnchor="middle" className="cell-addr" style={{ fill: symColor }}>
-              {element.device}
+              {text.top}
             </text>
-            {(element.type === 'timer' || element.type === 'counter') && element.preset != null && (
+            {text.bottom && (
               <text x={CELL_W / 2} y={CELL_H - 3} textAnchor="middle" className="cell-preset">
-                K{element.preset}
+                {text.bottom}
               </text>
             )}
           </>
@@ -75,6 +131,54 @@ function Symbol({ element, color, live }: { element: LadderElement; color: strin
   const sw = 2;
   const s = { stroke: color, ...glow(live) };
   const t = element.type;
+
+  // Compare: a contact whose "state" is the comparison, so it keeps the contact
+  // bars and puts the operator between them.
+  if (t === 'compare') {
+    return (
+      <g strokeWidth={sw} style={s} fill="none">
+        <line x1={26} y1={WIRE_Y - 9} x2={26} y2={WIRE_Y + 9} />
+        <line x1={46} y1={WIRE_Y - 9} x2={46} y2={WIRE_Y + 9} />
+        <line x1={24} y1={WIRE_Y} x2={26} y2={WIRE_Y} />
+        <line x1={46} y1={WIRE_Y} x2={48} y2={WIRE_Y} />
+        <text
+          x={36}
+          y={WIRE_Y + 4}
+          textAnchor="middle"
+          fontSize={11}
+          fontWeight={700}
+          stroke="none"
+          style={{ fill: color }}
+        >
+          {element.op ?? '='}
+        </text>
+      </g>
+    );
+  }
+
+  // Word outputs: a function block carrying its mnemonic.
+  if (t === 'mov' || t === 'math' || t === 'pid') {
+    const mnemonic =
+      t === 'mov' ? 'MOV' : t === 'pid' ? 'PID' : (MATH_MNEMONIC[(element.op as MathOp) ?? 'add'] ?? 'ADD');
+    return (
+      <g strokeWidth={sw} style={s} fill="none">
+        <rect x={18} y={WIRE_Y - 11} width={36} height={22} rx={3} />
+        <line x1={12} y1={WIRE_Y} x2={18} y2={WIRE_Y} />
+        <line x1={54} y1={WIRE_Y} x2={60} y2={WIRE_Y} />
+        <text
+          x={36}
+          y={WIRE_Y + 4}
+          textAnchor="middle"
+          fontSize={10}
+          fontWeight={700}
+          stroke="none"
+          style={{ fill: color }}
+        >
+          {mnemonic}
+        </text>
+      </g>
+    );
+  }
 
   // Contacts: two vertical bars at x=28 and x=44
   if (t === 'contact-no' || t === 'contact-nc' || t === 'contact-rising' || t === 'contact-falling') {

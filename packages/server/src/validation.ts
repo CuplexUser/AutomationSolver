@@ -5,18 +5,40 @@ export const elementTypeSchema = z.enum([
   'contact-nc',
   'contact-rising',
   'contact-falling',
+  'compare',
   'hwire',
   'coil-out',
   'coil-set',
   'coil-reset',
   'timer',
   'counter',
+  'mov',
+  'math',
+  'pid',
 ]);
 
+/**
+ * Transport shape only. Whether the operands make sense for the element type is
+ * `validateProgram`'s job in shared, which is the single place that rule lives
+ * for both the client's live check and the server's authoritative one.
+ */
 export const elementSchema = z.object({
   type: elementTypeSchema,
   device: z.string().max(8),
   preset: z.number().int().min(0).max(32767).optional(),
+  operands: z.array(z.string().max(8)).max(4).optional(),
+  op: z.enum(['=', '<>', '>', '<', '>=', '<=', 'add', 'sub', 'mul', 'div']).optional(),
+  pid: z
+    .object({
+      kp: z.number().int().min(0).max(32767),
+      ti: z.number().int().min(0).max(600000),
+      td: z.number().int().min(0).max(600000),
+      sampleMs: z.number().int().min(1).max(60000),
+      outMin: z.number().int().min(-32768).max(32767),
+      outMax: z.number().int().min(-32768).max(32767),
+      reverse: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export const rungSchema = z.object({

@@ -5,9 +5,9 @@ export interface DeviceRef {
   index: number;
 }
 
-const ADDRESS_RE = /^([XYMTC])(\d{1,4})$/;
+const ADDRESS_RE = /^([XYMTCD])(\d{1,4})$/;
 
-const VALID_KINDS: ReadonlySet<string> = new Set(['X', 'Y', 'M', 'T', 'C']);
+const VALID_KINDS: ReadonlySet<string> = new Set(['X', 'Y', 'M', 'T', 'C', 'D']);
 
 /** Parse "X0" -> { kind: 'X', index: 0 }. Returns null if malformed. */
 export function parseAddress(address: string): DeviceRef | null {

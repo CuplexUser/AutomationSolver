@@ -1,6 +1,7 @@
 // Ladder domain
 export * from './ladder/types.js';
 export * from './ladder/address.js';
+export * from './ladder/value.js';
 
 // Simulation engine
 export * from './sim/rungSolver.js';

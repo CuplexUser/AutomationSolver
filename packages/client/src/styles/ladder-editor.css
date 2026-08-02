@@ -42,6 +42,41 @@
 .field.preset {
   width: 70px;
 }
+/* Word-instruction operands: a register (D10) or a constant (K500). */
+.field.operand {
+  width: 76px;
+  text-transform: uppercase;
+}
+.palette-hint.error {
+  color: var(--stop, #e5484d);
+}
+.op-select {
+  width: 74px;
+}
+
+/* PID tuning sits on its own row: five small numbers that only matter while a
+   loop block is in play, so it stays out of the way of the basics' toolbar. */
+.pid-tuning {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 10px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+}
+.pid-tuning label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.pid-tuning .field.preset {
+  width: 76px;
+}
 .palette-controls {
   display: flex;
   align-items: center;

@@ -155,6 +155,29 @@
 .io-value {
   width: 92px;
 }
+/* Word values are two short stacked numbers, not a bar — they need less room. */
+.io-value-word {
+  width: 72px;
+}
+/* A live D register. Tabular figures so the column doesn't jitter as counts
+   sweep from 3 digits to 4 and back. */
+.word-value {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.2;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.word-value.on {
+  color: var(--live);
+}
+.word-eng {
+  font-size: 10px;
+  color: var(--muted);
+}
 .mini-bar {
   position: relative;
   height: 15px;

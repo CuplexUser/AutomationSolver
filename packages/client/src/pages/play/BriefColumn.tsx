@@ -3,6 +3,9 @@ import { Link } from 'react-router';
 import {
   CORRECTNESS_WEIGHT,
   TIMER_BASE_MS,
+  isAnalog,
+  scaleCounts,
+  type PuzzleDevice,
   type PuzzleSpec,
   type SimSnapshot,
 } from '@automationsolver/shared';
@@ -13,6 +16,8 @@ export interface LiveRegisterState {
   bits: Record<string, boolean>;
   timers?: SimSnapshot['timers'];
   counters?: SimSnapshot['counters'];
+  /** Word devices, by address. A D address absent here reads as 0, same as the CPU. */
+  registers?: Record<string, number>;
 }
 
 export function BriefColumn({
@@ -35,6 +40,7 @@ export function BriefColumn({
   onReplay?: (scenarioName: string) => void;
 }) {
   const registers = spec.kind === 'ladder' ? spec.registers : undefined;
+  const hasAnalog = spec.devices.some(isAnalog);
   return (
     <aside className="play-brief" style={{ width }}>
       <div className="brief-card panel">
@@ -56,6 +62,17 @@ export function BriefColumn({
                     <span className={`dev-chip dev-${d.address[0]}${on ? ' on' : ''}`}>{d.address}</span>
                   </td>
                   <td className="io-name">{d.label}</td>
+                  {/* A word device has no lamp to light, so the number *is* its
+                      state — without it the row says nothing while the sim runs.
+                      The column only exists on puzzles that have one, so boolean
+                      puzzles keep their full width for the device name. */}
+                  {hasAnalog && (
+                    <td className="io-value io-value-word">
+                      {isAnalog(d) && runner && (
+                        <WordValue value={runner.registers?.[d.address] ?? 0} device={d} />
+                      )}
+                    </td>
+                  )}
                   <td className="io-kind">{d.io === 'input' ? 'IN' : 'OUT'}</td>
                 </tr>
               );
@@ -214,6 +231,10 @@ function RegisterRow({
   const on = runner?.bits[r.address] === true;
   const t = kind === 'T' ? runner?.timers?.[r.address] : undefined;
   const c = kind === 'C' ? runner?.counters?.[r.address] : undefined;
+  // A working D register is scratch space the player chose the meaning of, so
+  // there is no range to scale it by — show the raw word, which is exactly what
+  // the program is reading.
+  const word = kind === 'D' && runner ? (runner.registers?.[r.address] ?? 0) : undefined;
   return (
     <tr key={r.address}>
       <td>
@@ -224,6 +245,9 @@ function RegisterRow({
         {r.note && <span className="io-note"> · {r.note}</span>}
       </td>
       <td className="io-value">
+        {word !== undefined && (
+          <span className={`word-value${word !== 0 ? ' on' : ''}`}>{word}</span>
+        )}
         {t && (
           <MiniProgress
             value={t.elapsed}
@@ -235,6 +259,28 @@ function RegisterRow({
         {c && <MiniProgress value={c.count} max={c.preset} done={c.done} text={`${c.count} / ${c.preset}`} />}
       </td>
     </tr>
+  );
+}
+
+/**
+ * A wired analog point's live word.
+ *
+ * Raw counts lead, because counts are what the program is actually handed and
+ * what every rung in the solution is written against; the engineering value
+ * follows in smaller type as the human's reading of the same number.
+ */
+function WordValue({ value, device }: { value: number; device: PuzzleDevice }) {
+  const range = device.range;
+  const eng = range ? scaleCounts(value, range) : undefined;
+  return (
+    <span className="word-value on" title={device.label}>
+      {value}
+      {eng !== undefined && range && (
+        <span className="word-eng">
+          {eng.toFixed(range.decimals ?? 1)} {range.units}
+        </span>
+      )}
+    </span>
   );
 }
 

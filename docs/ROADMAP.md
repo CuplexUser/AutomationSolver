@@ -153,22 +153,82 @@ about: feeding before the clamp, feeding before at-speed, retracting instead of 
 the spindle turning between parts, counting ejects instead of holes, and drilling steel. No new
 ladder instructions were needed — the fourth category in a row to need none.
 
+## Process-control expansion ✅ *shipped* (ahead of the phased plan)
+
+A ninth category, `process-control`, and the first time anything in the game is a **continuous
+value** rather than a bit. This is Phase 3's "instruction set growth" delivered in the shape the
+content wanted: not `MOV` for its own sake, but analog signals, regulators, and a way to grade
+how *well* a value is held.
+
+Three layers, each shippable on its own:
+
+1. **Analog in the engine.** `D` data registers as 16-bit signed integers that saturate rather
+   than wrap — integers precisely because the arithmetic is then bit-exact on every platform,
+   keeping the client/server agreement absolute rather than merely likely. Four word
+   instructions (`compare`, `mov`, `math`, `pid`) carrying their sources in `operands`. The
+   prerequisite that made any of it safe: **the client's live scan dt is now `GRADE_DT`**, since
+   booleans tolerated the old 60/50 mismatch only because every process model's timings were
+   exact multiples of both, and an integrator does not.
+2. **Analog in the plant and the UI.** `ProcessStepCtx` gained `registers` in and
+   `derivedRegisters` out (purely additive — every existing model compiled untouched); devices
+   gained `signal: 'analog'` and a raw-count `range`; the HMI gained a gauge/bar/trend strip, and
+   the trend redraws under replay scrubbing because history now carries the register image.
+3. **Grading a regulator.** A `control` spec evaluated across a whole step (band, settle time,
+   overshoot and steady-error caps) rather than at its final instant, and `parIae` spending the
+   existing 15 performance marks on the error integral instead of on cycle time. No change to
+   the scoring model: same weight, same taper, same "correct but mediocre still unlocks what
+   follows" property.
+
+The `tank` plant integrates on a fixed 10 ms sub-step with a carried remainder, so its
+trajectory is identical at any `dt`, and its constants are pinned so level counts equal valve
+counts at rest with a 4 s time constant — which is what leaves P control a visible,
+load-dependent droop to teach against.
+
+Five puzzles walk the ramp: `tank-level-readout` (scale raw counts, alarm off compare contacts)
+→ `tank-two-position` (hysteresis, and watch the valve slam) → `tank-p-control` (a P regulator
+**hand-built** from SUB/MUL/ADD with a whole-number gain, so the block that comes next replaces
+something the player has felt) → `tank-pid` (integral kills the offset; anti-windup keeps the
+long fill from sailing past setpoint) → `tank-auto` (capstone: two recipe setpoints, hand mode,
+and a high-level trip latching over both). Three discriminating negative tests cover the
+plausible wrong answers the ramp is about: an open-loop valve position that only fails once the
+load moves, a P-only block that holds steadily at the wrong number, and a trip that follows the
+float instead of latching on it.
+
 ## Phase 3 — Content depth
 
 With replay and traces in place, harder content becomes fair rather than frustrating.
 
-1. **Instruction set growth**, in dependency order: `MOV` and data registers (`D`), compare
-   contacts (`=`, `>`, `<`), then off-delay and retentive timers. Each one needs: engine support,
-   validator support, an editor glyph, and at least one puzzle that *requires* it.
-2. **More process models** — traffic light, mixing tank, palletizer (pick-and-place already
-   shipped, see above). Each new `ProcessModel` is a small state machine; the 3D `Box3` renderer
-   already accepts arbitrary scenes, so a new machine view is a `drillBoxes()`-style function, not
-   new infrastructure.
+1. ~~**Instruction set growth**: `MOV` and data registers (`D`), compare contacts~~ — shipped
+   with the process-control expansion above, along with arithmetic and a `PID` block. Still
+   outstanding: **off-delay and retentive timers**. Each needs engine support, validator
+   support, an editor glyph, and at least one puzzle that *requires* it.
+2. **More process models** — traffic light, palletizer (pick-and-place and the level-controlled
+   vessel have both shipped, see above). Each new `ProcessModel` is a small state machine.
 3. **Fault-injection scenarios** — an overload trips mid-cycle, a sensor sticks. Tests whether a
    program is *robust*, not merely correct on the happy path.
 
 **Done means:** ~20 puzzles spanning tutorial → expert, each shipping with a canonical solution
 in `grade.test.ts`.
+
+## Next: the rest of the analog plan
+
+Agreed with the analog design but not yet built, in the order they were approved:
+
+1. **Motion — `axis`, category `motion`.** A traverse axis with real dynamics: commanded
+   velocity → the drive ramps at the *currently selected* accel/decel → position integrates
+   velocity. Accel and decel live in drive **parameter registers** the player `MOV`s into, like a
+   real VFD parameter set, so switching profiles on the fly is the exercise. Four puzzles:
+   `axis-jog` (ramp gently enough not to trip the drive) → `axis-profile` (rapid, then approach
+   speed inside a distance threshold, stop in the in-position window) → `axis-loaded` (**the**
+   puzzle: separate loaded/unloaded tables, and using the unloaded decel with a load on shifts or
+   drops it) → `axis-crane` (traverse plus hoist for an ASRS put-away, with an anti-sway settle).
+   Needs nothing from the PID block, so it could have been built first.
+2. **Paint — `paint`, category `finishing`.** Atomizing pressure and paint flow as lagged loops,
+   plus four CMYK dosing pumps trimmed against an inline color sensor sitting *downstream of the
+   mixer*, so the color loops have real dead time and a naive high gain oscillates. Four puzzles
+   ending in a batch of parts in different colors, with purge waste costing performance marks.
+   The part's material color is driven straight from machine state, which makes the color error
+   visible rather than inferred.
 
 ## Phase 4 — Craft and competition
 

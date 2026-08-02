@@ -16,6 +16,9 @@ const PackMachine3D = lazy(() =>
 const PickPlaceArm3D = lazy(() =>
   import('./PickPlaceArm3D').then((m) => ({ default: m.PickPlaceArm3D })),
 );
+const TankVessel3D = lazy(() =>
+  import('./TankVessel3D').then((m) => ({ default: m.TankVessel3D })),
+);
 
 /** Reserves the scene's footprint while its chunk downloads (no layout shift). */
 const sceneFallback = <div className="machine3d" style={{ height: 300 }} />;
@@ -23,6 +26,8 @@ const sceneFallback = <div className="machine3d" style={{ height: 300 }} />;
 const numOf = (v: unknown, f = 0): number => (typeof v === 'number' ? v : f);
 const boolOf = (v: unknown): boolean => v === true;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
+/** Raw counts as the percent of full scale they stand for: "62% (2480)". */
+const counts = (v: number) => `${Math.round((v / 4000) * 100)}% (${Math.round(v)})`;
 
 /**
  * Puzzle-specific machine visualization. Falls back to nothing when a puzzle has
@@ -114,6 +119,30 @@ export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: 
               value={numOf(m.door) >= 1 ? 'OPEN' : numOf(m.door) <= 0 ? 'CLOSED' : pct(numOf(m.door))}
               on={numOf(m.door) > 0}
             />
+          )}
+        </div>
+      </div>
+    );
+  }
+  if (spec.processId === 'tank') {
+    const m = runner.machine;
+    const hasPump = spec.devices.some((d) => d.address === 'Y0');
+    const level = numOf(m.level);
+    return (
+      <div className="machine-view panel">
+        <div className="mv-head">
+          <span className="eyebrow">Buffer Vessel</span>
+          <StatusTag tag={tankTag(m)} />
+        </div>
+        <Suspense fallback={sceneFallback}>
+          <TankVessel3D machine={m} height={300} />
+        </Suspense>
+        <div className="mv-readout">
+          {/* Counts are what the program sees; percent is what a person reads. */}
+          <Readout label="Level" value={counts(level)} on={level > 0} />
+          <Readout label="Valve" value={counts(numOf(m.valve))} on={numOf(m.valve) > 0} />
+          {hasPump && (
+            <Readout label="Discharge" value={counts(numOf(m.outflow))} on={boolOf(m.pumping)} />
           )}
         </div>
       </div>
@@ -315,6 +344,20 @@ function elevatorTag(m: MachineState): MachineTag {
   const dir = numOf(m.dir);
   if (dir > 0) return { text: 'up', icon: 'up' };
   if (dir < 0) return { text: 'down', icon: 'down' };
+  return { text: 'idle' };
+}
+
+// --- Buffer vessel -----------------------------------------------------------
+
+function tankTag(m: MachineState): MachineTag {
+  if (m.jam === true) return jamTag(m);
+  const level = numOf(m.level);
+  const valve = numOf(m.valve);
+  if (level >= 3600) return { text: 'high level', icon: 'warn', warn: true };
+  if (level <= 400) return { text: 'low level', icon: 'warn', warn: true };
+  if (valve >= 3960) return { text: 'valve wide open', icon: 'up' };
+  if (valve > 0) return { text: 'filling', icon: 'up' };
+  if (boolOf(m.pumping)) return { text: 'discharging', icon: 'down' };
   return { text: 'idle' };
 }
 

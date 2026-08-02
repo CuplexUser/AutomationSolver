@@ -1,4 +1,4 @@
-import type { PuzzleDevice } from './types.js';
+import { scaleCounts, type AnalogBound, type ControlSpec, type PuzzleDevice } from './types.js';
 
 /**
  * Player-facing wording for a failed scenario assertion.
@@ -175,4 +175,102 @@ function joinAnd(parts: readonly string[]): string {
  */
 export function describeTimeout(waits: readonly string[], timeoutMs: number): string {
   return `Waited ${seconds(timeoutMs)} for ${joinAnd(waits)}, but the machine never got there.`;
+}
+
+/**
+ * Analog wording.
+ *
+ * Registers hold raw counts, but nobody thinks in counts, so every number a
+ * player reads is rendered in the device's engineering units when the puzzle
+ * declared a range. "52.4 % (2096 counts)" keeps both: the unit you reason in,
+ * and the number you would actually see in the register monitor.
+ */
+function analogValue(
+  address: string,
+  counts: number,
+  devices: readonly PuzzleDevice[],
+): string {
+  const range = devices.find((d) => d.address === address)?.range;
+  if (!range) return `${counts}`;
+  const decimals = range.decimals ?? 1;
+  return `${scaleCounts(counts, range).toFixed(decimals)} ${range.units} (${counts} counts)`;
+}
+
+function boundText(
+  address: string,
+  bound: AnalogBound,
+  devices: readonly PuzzleDevice[],
+): string {
+  const lo = bound.min === undefined ? undefined : analogValue(address, bound.min, devices);
+  const hi = bound.max === undefined ? undefined : analogValue(address, bound.max, devices);
+  if (lo !== undefined && hi !== undefined) return `between ${lo} and ${hi}`;
+  if (lo !== undefined) return `at least ${lo}`;
+  if (hi !== undefined) return `no more than ${hi}`;
+  return 'any value';
+}
+
+export function describeAnalogFailure(
+  address: string,
+  bound: AnalogBound,
+  actual: number,
+  devices: readonly PuzzleDevice[],
+): string {
+  return (
+    `${deviceName(address, devices)} should be ${boundText(address, bound, devices)} at this ` +
+    `point, but it read ${analogValue(address, actual, devices)}.`
+  );
+}
+
+export function describeAnalogWait(
+  address: string,
+  bound: AnalogBound,
+  devices: readonly PuzzleDevice[],
+): string {
+  return `${deviceName(address, devices)} to come ${boundText(address, bound, devices)}`;
+}
+
+/** What a control step measured, for the failure sentences below. */
+export interface ControlOutcome {
+  settledMs: number;
+  overshoot: number;
+  finalError: number;
+  final: number;
+}
+
+/**
+ * Why a control step failed. Reported one reason at a time and in the order a
+ * technician would look at them: did it get there at all, did it get there
+ * violently, did it get there properly.
+ */
+export function describeControlFailures(
+  spec: ControlSpec,
+  outcome: ControlOutcome,
+  devices: readonly PuzzleDevice[],
+): string[] {
+  const name = deviceName(spec.device, devices);
+  const value = (counts: number): string => analogValue(spec.device, counts, devices);
+  const band = `${value(spec.setpoint)} plus or minus ${spec.band} counts`;
+  const failures: string[] = [];
+
+  if (outcome.settledMs < spec.settleMs) {
+    failures.push(
+      outcome.settledMs === 0
+        ? `${name} never settled inside ${band}. It finished at ${value(outcome.final)}.`
+        : `${name} only held inside ${band} for ${seconds(outcome.settledMs)} at the end of ` +
+          `this step, and ${seconds(spec.settleMs)} was asked for.`,
+    );
+  }
+  if (spec.maxOvershoot !== undefined && outcome.overshoot > spec.maxOvershoot) {
+    failures.push(
+      `${name} overshot the setpoint by ${outcome.overshoot} counts, and the limit is ` +
+        `${spec.maxOvershoot}. Back the gain off, or start slowing down sooner.`,
+    );
+  }
+  if (spec.maxSteadyError !== undefined && outcome.finalError > spec.maxSteadyError) {
+    failures.push(
+      `${name} came to rest ${outcome.finalError} counts from setpoint, and the limit is ` +
+        `${spec.maxSteadyError}. A proportional term alone always leaves an offset like this.`,
+    );
+  }
+  return failures;
 }

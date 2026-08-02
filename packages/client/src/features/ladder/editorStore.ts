@@ -22,9 +22,17 @@ interface EditorState {
   markClean: () => void;
   select: (pos: CellPos | null) => void;
   setCell: (pos: CellPos, element: LadderElement | null) => void;
-  placeSelected: (type: ElementType, device: string, preset?: number) => void;
-  /** Patch the device/preset of the already-placed element in the selected cell. */
-  patchSelected: (patch: Partial<Pick<LadderElement, 'device' | 'preset'>>) => void;
+  placeSelected: (
+    type: ElementType,
+    device: string,
+    preset?: number,
+    /** Word-instruction extras: operands, sub-operator, PID tuning. */
+    word?: Partial<LadderElement>,
+  ) => void;
+  /** Patch the already-placed element in the selected cell, in place. */
+  patchSelected: (
+    patch: Partial<Pick<LadderElement, 'device' | 'preset' | 'operands' | 'op' | 'pid'>>,
+  ) => void;
   toggleVlink: (rung: number, row: number, col: number) => void;
   addRung: () => void;
   insertRung: (index: number) => void;
@@ -67,10 +75,15 @@ export const useEditor = create<EditorState>((set, get) => ({
       dirty: true,
     })),
 
-  placeSelected: (type, device, preset) => {
+  placeSelected: (type, device, preset, word) => {
     const sel = get().selected;
     if (!sel) return;
-    const element: LadderElement = { type, device, ...(preset != null ? { preset } : {}) };
+    const element: LadderElement = {
+      type,
+      device,
+      ...(preset != null ? { preset } : {}),
+      ...word,
+    };
     get().setCell(sel, element);
   },
 

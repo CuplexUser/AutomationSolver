@@ -2,13 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   CabinetSim,
   defaultInputs,
+  GRADE_DT,
   type CabinetPuzzleSpec,
   type CabinetSimResult,
   type WiringDoc,
 } from '@automationsolver/shared';
 import type { HmiRunner } from '../sim/useSimRunner';
 
-const DT = 60; // solve interval / dt in ms, matching the ladder runner cadence
+const DT = GRADE_DT; // solve interval / dt in ms, matching the ladder runner cadence
 
 export interface CabinetRunner extends HmiRunner {
   /** Last solve, for live wire/terminal coloring; null until the sim has stepped. */

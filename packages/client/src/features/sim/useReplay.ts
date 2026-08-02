@@ -92,7 +92,7 @@ export function useReplay(): ReplayController {
   }, [playing, trace]);
 
   const history = useMemo(
-    () => trace?.samples.map((s) => ({ tMs: s.tMs, bits: s.bits })) ?? [],
+    () => trace?.samples.map((s) => ({ tMs: s.tMs, bits: s.bits, registers: s.registers })) ?? [],
     [trace],
   );
 
@@ -103,6 +103,7 @@ export function useReplay(): ReplayController {
       running: true, // keeps LadderEditor read-only and HmiPanel showing "SCANNING"
       inputs: sample.bits,
       bits: sample.bits,
+      registers: sample.registers,
       machine: sample.machine,
       evalResults: sample.rungResults,
       history,

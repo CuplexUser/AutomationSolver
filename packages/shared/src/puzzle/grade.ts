@@ -3,17 +3,24 @@ import type { RungEvalResult } from '../sim/rungSolver.js';
 import type { LadderProgram } from '../ladder/types.js';
 import { getProcess, type MachineState } from './processes/index.js';
 import {
+  describeAnalogFailure,
+  describeAnalogWait,
   describeBitFailure,
   describeBitWait,
+  describeControlFailures,
   describeJamFailure,
   describeMachineFailure,
   describeMachineWait,
   describeTimeout,
+  type ControlOutcome,
   type JamOnset,
 } from './failureText.js';
 import {
+  analogDevices,
   defaultInputs,
   outputDevices,
+  type AnalogBound,
+  type ControlSpec,
   type LadderPuzzleSpec,
   type Scenario,
   type ScenarioCondition,
@@ -33,6 +40,10 @@ export interface ScenarioResult {
   elapsedMs: number;
   /** Target from the spec, when the scenario grades throughput at all. */
   parMs?: number;
+  /** Integral of absolute error in count-seconds, over every `control` step. */
+  iae?: number;
+  /** Target from the spec, when the scenario grades control quality. */
+  parIae?: number;
 }
 
 export interface GradeResult {
@@ -47,18 +58,29 @@ export interface GradeResult {
  * How the two halves of the score split. Correctness is the bulk of it and is
  * what `solved` tracks; throughput is the remainder, and is only awarded once
  * every scenario passes (a program that faults has no meaningful cycle time).
+ *
+ * Analog puzzles spend the same remainder on control quality instead of on
+ * cycle time (`parIae` in place of `parMs`), because for a regulator "how well
+ * did it hold" *is* the performance question. Same weight, same taper, same
+ * "correct but mediocre still unlocks what follows" property.
  */
 export const CORRECTNESS_WEIGHT = 85;
 /** Throughput marks run out at this multiple of par. */
 export const PAR_SLACK = 1.5;
 
-/** 1 at or under par, 0 at PAR_SLACK x par, linear between. */
-export function throughputScore(elapsedMs: number, parMs: number): number {
-  if (parMs <= 0) return 1;
-  const worst = parMs * PAR_SLACK;
-  if (elapsedMs <= parMs) return 1;
-  if (elapsedMs >= worst) return 0;
-  return (worst - elapsedMs) / (worst - parMs);
+/**
+ * 1 at or under par, 0 at PAR_SLACK x par, linear between.
+ *
+ * Used for both performance axes: `actual`/`par` are elapsed ms for a sequencing
+ * puzzle and count-seconds of accumulated error for a regulating one. Lower is
+ * better either way, which is why one curve serves both.
+ */
+export function throughputScore(actual: number, par: number): number {
+  if (par <= 0) return 1;
+  const worst = par * PAR_SLACK;
+  if (actual <= par) return 1;
+  if (actual >= worst) return 0;
+  return (worst - actual) / (worst - par);
 }
 
 /** Grading dt in ms — the timeline replay must reproduce to match bit-for-bit. */
@@ -69,6 +91,8 @@ export interface TraceSample {
   tMs: number;
   stepIndex: number;
   bits: Record<string, boolean>;
+  /** D-register image, so a replay can redraw the trend as well as the bits. */
+  registers: Record<string, number>;
   rungResults: RungEvalResult[];
   machine: MachineState;
 }
@@ -93,25 +117,48 @@ export interface ScenarioTrace {
   steps: TraceStep[];
 }
 
+/** Inside a `control` step: what the loop has done so far. */
+interface ControlAccumulator {
+  spec: ControlSpec;
+  /** Approach direction, from the PV at step start: +1 rising, -1 falling, 0 already there. */
+  direction: number;
+  overshoot: number;
+  settledMs: number;
+  final: number;
+}
+
+function inBound(value: number, bound: AnalogBound): boolean {
+  if (bound.min !== undefined && value < bound.min) return false;
+  if (bound.max !== undefined && value > bound.max) return false;
+  return true;
+}
+
 function simulateScenario(
   spec: LadderPuzzleSpec,
   program: LadderProgram,
   scenario: Scenario,
   dt: number,
   samples: TraceSample[] | undefined,
-): { steps: TraceStep[]; elapsedMs: number } {
+): { steps: TraceStep[]; elapsedMs: number; iae: number } {
   const engine = new SimEngine(program);
   engine.reset();
   const process = getProcess(spec.processId);
   let machine = process.init(spec.devices);
   const outDevs = outputDevices(spec);
+  const analogDevs = analogDevices(spec);
 
   const inputs: Record<string, boolean> = {
     ...defaultInputs(spec.devices),
     ...scenario.initialInputs,
   };
   let derived: Record<string, boolean> = {};
+  let derivedRegs: Record<string, number> = {};
   let tMs = 0;
+  // Accumulated |error| x time over every control step, in count-milliseconds.
+  // Converted to count-seconds once at the end; this is the analog puzzles'
+  // performance axis, standing where cycle time stands for a sequencing one.
+  let iaeCountMs = 0;
+  let control: ControlAccumulator | undefined;
 
   const stepResults: TraceStep[] = [];
   // A jam latches and freezes the machine, so it usually surfaces as a failed
@@ -123,13 +170,38 @@ function simulateScenario(
   const scanOnce = (stepIndex: number, stepLabel: string): void => {
     engine.setInputs(inputs);
     engine.setInputs(derived);
+    engine.setRegisters(derivedRegs);
     engine.scan(dt);
     tMs += dt;
     const outputs: Record<string, boolean> = {};
     for (const d of outDevs) outputs[d.address] = engine.getBit(d.address);
-    const res = process.step({ outputs, inputs, machine, devices: spec.devices, dtMs: dt });
+    const registers: Record<string, number> = {};
+    for (const d of analogDevs) registers[d.address] = engine.getRegister(d.address);
+    const res = process.step({
+      outputs,
+      inputs,
+      registers,
+      machine,
+      devices: spec.devices,
+      dtMs: dt,
+    });
     machine = res.machine;
     derived = res.derivedInputs ?? {};
+    derivedRegs = res.derivedRegisters ?? {};
+
+    // Control quality is measured on the value the *plant* now reports, not on
+    // the one the program last read, so a loop cannot look good by ignoring a
+    // sensor it has already sampled.
+    if (control) {
+      const pv = derivedRegs[control.spec.device] ?? engine.getRegister(control.spec.device);
+      const err = pv - control.spec.setpoint;
+      iaeCountMs += Math.abs(err) * dt;
+      const past = control.direction === 0 ? Math.abs(err) : control.direction * err;
+      if (past > control.overshoot) control.overshoot = past;
+      control.settledMs = Math.abs(err) <= control.spec.band ? control.settledMs + dt : 0;
+      control.final = pv;
+    }
+
     if (!jamOnset && machine.jam === true) {
       jamOnset = {
         tMs,
@@ -139,10 +211,12 @@ function simulateScenario(
       };
     }
     if (samples) {
+      const snap = engine.snapshot();
       samples.push({
         tMs,
         stepIndex,
-        bits: engine.snapshot().bits,
+        bits: snap.bits,
+        registers: snap.registers,
         rungResults: engine.lastRungResults,
         machine,
       });
@@ -158,6 +232,11 @@ function simulateScenario(
     for (const [key, want] of Object.entries(cond.machine ?? {})) {
       if (machine[key] !== want) waits.push(describeMachineWait(key, want));
     }
+    for (const [addr, bound] of Object.entries(cond.analog ?? {})) {
+      if (!inBound(engine.getRegister(addr), bound)) {
+        waits.push(describeAnalogWait(addr, bound, spec.devices));
+      }
+    }
     return waits;
   };
 
@@ -165,6 +244,20 @@ function simulateScenario(
     Object.assign(inputs, step.setInputs ?? {});
     const startSample = samples?.length ?? 0;
     const failures: string[] = [];
+
+    if (step.control) {
+      const pv = engine.getRegister(step.control.device);
+      const gap = step.control.setpoint - pv;
+      control = {
+        spec: step.control,
+        direction: gap > 0 ? 1 : gap < 0 ? -1 : 0,
+        overshoot: 0,
+        settledMs: 0,
+        final: pv,
+      };
+    } else {
+      control = undefined;
+    }
 
     if (step.until) {
       // Milestone step: `holdMs` is the deadline, not the runtime.
@@ -191,6 +284,21 @@ function simulateScenario(
         failures.push(describeBitFailure(addr, expected, actual, spec.devices));
       }
     }
+    for (const [addr, bound] of Object.entries(step.expectAnalog ?? {})) {
+      const actual = engine.getRegister(addr);
+      if (!inBound(actual, bound)) {
+        failures.push(describeAnalogFailure(addr, bound, actual, spec.devices));
+      }
+    }
+    if (control) {
+      const outcome: ControlOutcome = {
+        settledMs: control.settledMs,
+        overshoot: Math.max(0, control.overshoot),
+        finalError: Math.abs(control.final - control.spec.setpoint),
+        final: control.final,
+      };
+      failures.push(...describeControlFailures(control.spec, outcome, spec.devices));
+    }
     const onset: JamOnset | undefined = jamOnset
       ? { ...jamOnset, sameStep: jamOnset.stepIndex === stepIndex }
       : undefined;
@@ -214,7 +322,7 @@ function simulateScenario(
     });
   });
 
-  return { steps: stepResults, elapsedMs: tMs };
+  return { steps: stepResults, elapsedMs: tMs, iae: iaeCountMs / 1000 };
 }
 
 function runScenario(
@@ -223,13 +331,15 @@ function runScenario(
   scenario: Scenario,
   dt: number,
 ): ScenarioResult {
-  const { steps, elapsedMs } = simulateScenario(spec, program, scenario, dt, undefined);
+  const { steps, elapsedMs, iae } = simulateScenario(spec, program, scenario, dt, undefined);
   return {
     name: scenario.name,
     passed: steps.every((s) => s.passed),
     steps: steps.map(({ label, passed, failures }) => ({ label, passed, failures })),
     elapsedMs,
     parMs: scenario.parMs,
+    iae: scenario.parIae === undefined ? undefined : iae,
+    parIae: scenario.parIae,
   };
 }
 
@@ -246,14 +356,23 @@ export function gradeProgram(
   const solved = passedCount === scenarios.length;
   const correctness = passedCount / scenarios.length;
 
-  // Throughput is only meaningful for a run that actually worked, and only for
+  // Performance is only meaningful for a run that actually worked, and only for
   // scenarios that declared a par. Puzzles with no machine dynamics declare
-  // none, so they keep scoring purely on correctness.
-  const timed = scenarios.filter((s) => s.parMs !== undefined);
+  // none, so they keep scoring purely on correctness. A scenario declares
+  // either a cycle-time par or a control-quality one; both run through the same
+  // taper and share the same 15 marks.
+  const timed = scenarios.filter((s) => s.parMs !== undefined || s.parIae !== undefined);
   const efficiency =
     timed.length === 0
       ? undefined
-      : timed.reduce((sum, s) => sum + throughputScore(s.elapsedMs, s.parMs!), 0) / timed.length;
+      : timed.reduce(
+          (sum, s) =>
+            sum +
+            (s.parIae !== undefined
+              ? throughputScore(s.iae ?? 0, s.parIae)
+              : throughputScore(s.elapsedMs, s.parMs!)),
+          0,
+        ) / timed.length;
 
   const throughput = solved ? (efficiency ?? 1) : 0;
   const score = Math.round(

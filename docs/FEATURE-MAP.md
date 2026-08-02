@@ -25,10 +25,23 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 ## Feature areas
 
 ### 1. Ladder program model — `shared/src/ladder/`
-- Mitsubishi FX addressing: `X` inputs, `Y` outputs, `M` relays, `T` timers, `C` counters.
+- Mitsubishi FX addressing: `X` inputs, `Y` outputs, `M` relays, `T` timers, `C` counters,
+  and `D` **data registers** — 16-bit signed *words* rather than bits.
 - A program is an ordered list of **rungs**; a rung is a grid of cells plus vertical links.
-- Elements: NO / NC / rising-edge / falling-edge contacts, OUT / SET / RST coils, timer,
+- Bit elements: NO / NC / rising-edge / falling-edge contacts, OUT / SET / RST coils, timer,
   counter, horizontal wire.
+- **Word elements** (`value.ts` parses their operands, `"D10"` or `"K500"`):
+  - `compare` — a conducting contact carrying an operator (`= <> > < >= <=`) and two operands.
+    The one element with no `device` at all: both sides are operands.
+  - `mov` — move a constant or register into a destination register.
+  - `math` — `add` / `sub` / `mul` / `div` into a destination.
+  - `pid` — a loop block: setpoint and process-value operands, a destination, and `PidParams`
+    (gain in hundredths, integral/derivative times in ms, sample time, output clamp, error-sign
+    flip). `ti`/`td` of 0 disable their term, so one block is a P, a PI or a full PID.
+- Registers **saturate** at ±32767 rather than wrapping (`saturate16`), and integer arithmetic
+  is the point: it is bit-exact on every platform, so the client/server agreement is absolute
+  rather than merely likely. Expressions evaluate at full precision and saturate on the *store*,
+  which is why "divide before you multiply" is a lesson the puzzles teach.
 
 ### 2. Simulation engine — `shared/src/sim/`
 - `rungSolver.ts` — treats a rung as a graph and floods power from the left rail using
@@ -38,6 +51,19 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   rung sees an earlier rung's coil in the *same* scan), tick timers/counters by `dt`.
   `prevBits` is snapshotted at the **end** of each scan, which is what makes edge contacts work.
 - Timer presets are K-units of 100 ms (`TIMER_BASE_MS`).
+- A **register file** alongside the bit image, with `getRegister`/`setRegisters` mirroring
+  `getBit`/`setInputs`. `MOV` and the math blocks write only while their rung conducts, so two
+  rungs moving different values into one register is how you *select* a value, not a
+  double-coil bug — hence their exemption from the validator's `LAST_WRITER_WINS` advisory,
+  and `pid`'s inclusion in it.
+- The **PID block** runs on its own `sampleMs` rather than every scan (authentic, and it
+  decouples tuning from scan rate), holds its output between samples, accumulates the integral
+  in a wide internal accumulator a 16-bit register could not carry, applies **conditional
+  integration** so a loop against its output limit cannot wind up, and clears its state whenever
+  its rung drops so a de-energized loop comes back clean.
+- **One cadence.** The client's live scan dt *is* `GRADE_DT` (50 ms). Booleans survived the old
+  60/50 mismatch because every process model's timings are exact multiples of both; an
+  integrator does not, so this is now a single constant with the client importing it.
 
 ### 3. Puzzle system — `shared/src/puzzle/`
 - **`PuzzleSpec`** (`types.ts`) — a discriminated union on `kind`:
@@ -54,9 +80,14 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     `a.` sub-steps) becomes an `<ol>`, `- ` a `<ul>`, anything else a paragraph. The renderer
     is `Briefing` in `client/src/pages/play/BriefColumn.tsx`.
   - Every spec also carries a **`category`** (`basics` / `timers-counters` / `stations` /
-    `elevator` / `control-cabinet` / `packaging` / `pick-place` / `drill`) — the unit of unlock
-    progression and list grouping (`CATEGORY_ORDER` / `CATEGORY_TITLES` / `CATEGORY_BLURBS` in
-    `types.ts`).
+    `elevator` / `control-cabinet` / `packaging` / `pick-place` / `drill` / `process-control`) —
+    the unit of unlock progression and list grouping (`CATEGORY_ORDER` / `CATEGORY_TITLES` /
+    `CATEGORY_BLURBS` in `types.ts`).
+  - **Analog devices** set `signal: 'analog'`, address a `D` register and carry an
+    `AnalogRange` (raw count span plus what those counts mean in the field). Transmitters
+    report **raw counts**, never pre-scaled engineering units, because that is what an A/D card
+    actually hands the CPU — scaling it is the first puzzle's lesson. `defaultInputs`,
+    `inputDevices` and `outputDevices` all skip them; `analogDevices()` returns them.
 - **Process models** (`processes/`) — small state machines that react to `Y` outputs and drive
   `X` inputs. Registered via `registerProcess`.
   - `passthrough` — no machine dynamics; the HMI *is* the process.
@@ -109,6 +140,18 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     raised/occupied lift, bracket misplaced, aborted stroke) latch a `jam` flag that
     scenarios assert stays false. Address convention is fixed across all packaging puzzles
     (mirrors the real Laboration-7 I/O list).
+  - `tank` — the buffer vessel, and the first plant with genuinely **continuous** state. Level
+    is carried in milli-counts and integrated on a fixed 10 ms sub-step with a carried
+    remainder, so the trajectory is identical whatever `dt` the caller uses — the guarantee the
+    boolean models get from exact-multiple timings, which an integrator cannot get that way.
+    Fixed I/O convention: `D0` level transmitter (raw 0..4000 counts), `D1` discharge flow,
+    `D20` supply valve command, `X1`/`X2` low/high floats, `Y0` discharge pump. Inflow is
+    proportional to valve opening and outflow to level, with the constants pinned so that **at
+    rest, level counts equal valve counts** (50 % open holds 50 % full) and the time constant is
+    4 s. That leaves P control with a visible, load-dependent droop, which is the whole argument
+    for integral action and the thing the category is built around. Overflowing the vessel or
+    running the discharge pump dry latches the packaging-style `jam`; the pump (and so the
+    dry-run fault) is feature-detected off `Y0`, elevator5-door style.
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
   - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
     buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by
@@ -141,7 +184,8 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     opening while carrying; dropping mid-air or placing into an occupied slot both latch a
     packaging-style `jam` that every scenario asserts stays false.
 - **Validator** (`validate.ts`) — structural checks: instruction allow-list, device kind/role
-  match, presets present, every rung drives an output.
+  match, presets present, every rung drives an output, and for word instructions the operand
+  *shape* (right count, each one a register or a constant, a real operator, sane PID tuning).
 - **Grader** (`grade.ts`) — runs each scenario's scripted input timeline through `SimEngine` +
   the process model and checks the `expect` assertions. `grade.test.ts` holds a canonical
   solution for **every shipped puzzle** — that test is the guardrail against authoring an
@@ -149,12 +193,25 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   - A step with `until` runs to a **milestone** instead of a fixed deadline (`holdMs` becomes
     its timeout, `thenHoldMs` a settle window). Sequential machines are paced by the program
     driving them, so asserting at a hard deadline grades pace rather than behaviour.
-  - **Scoring** splits `CORRECTNESS_WEIGHT` (85) for scenarios passed and 15 for throughput.
-    Throughput compares each scenario's `elapsedMs` against its declared `parMs`, full marks at
+  - A step can also carry a **`control`** spec (setpoint, band, settle time, optional overshoot
+    and steady-error caps) evaluated across the *whole step* rather than at its final instant.
+    That distinction is what separates an analog exercise from a sequencing one: a loop that
+    happens to be sitting on setpoint when the clock runs out has not been shown to work, and
+    one that got there through a 40 % overshoot would have put product on the floor.
+    `expectAnalog` and `ScenarioCondition.analog` give the same band checks at an instant, for
+    end-of-step assertions and `until` milestones.
+  - **Scoring** splits `CORRECTNESS_WEIGHT` (85) for scenarios passed and 15 for performance.
+    Performance compares each scenario's `elapsedMs` against its declared `parMs`, full marks at
     or under par tapering to zero at `PAR_SLACK` (1.5) x par, and is only awarded once every
     scenario passes. Scenarios with no `parMs` (E-Stop checks, every puzzle without machine
     dynamics) score on correctness alone. So a correct but leisurely program is `solved` and
     unlocks what follows, and still has to be pipelined to reach 100.
+    - Regulating scenarios spend the same 15 marks on **control quality** instead: they declare
+      `parIae` (integral of absolute error in count-seconds, accumulated over every `control`
+      step) in place of `parMs` and run through the identical taper, because for a loop "how
+      well did it hold" *is* the performance question. Declare one or the other, never both.
+      Pars are calibrated against the canonical solution's measured value, the way the
+      packaging cycle times were.
   - `traceScenario()` re-runs one named scenario capturing a scan-by-scan `ScenarioTrace`
     (bits, rung eval results, machine state per scan, plus per-step pass/fail with a
     `startSample` index). It shares its scan loop with `gradeProgram()` (`simulateScenario()`,
@@ -222,14 +279,35 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 30 | `drill-station` | medium | multi-step sequence, SET/RST, beacon, both ends of both cylinders (X3/X10, X4/X11), rising-edge one-shot eject | drill |
 | 31 | `drill-spindle` | hard | spindle Y5 + X7 at-speed interlock, 1.0 s bottom dwell on T0, rotation off between parts | drill |
 | 32 | `drill-production` | hard | capstone: mixed stock — X6 metal diverted undrilled via Y6, C0 counts holes and parks the batch | drill |
+| 33 | `tank-level-readout` | tutorial | first analog signal: scale raw counts with DIV, drive alarms from compare contacts | tank |
+| 34 | `tank-two-position` | easy | hysteresis latch from two compares; watch the valve slam and wear | tank |
+| 35 | `tank-p-control` | medium | a P regulator hand-built from SUB/MUL/ADD, whole-number gain, manual-reset bias | tank |
+| 36 | `tank-pid` | hard | the PID block: integral kills the offset, anti-windup keeps the fill from overshooting | tank |
+| 37 | `tank-auto` | hard | capstone: two recipe setpoints, hand mode, and a high-level trip that latches over both | tank |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 `elevator`,
-15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`, 29–32 `drill`.
+15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`, 29–32 `drill`,
+33–37 `process-control`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
   vertical-link toggles, add/remove rungs, rows and columns. Editor state in Zustand.
-  - **In-place editing** — select a placed element and retype its address or preset.
+  - **In-place editing** — select a placed element and retype its address, preset, word
+    operands, operator or PID tuning.
+  - **Contextual fields** — the toolbar shows *only* the fields the active instruction uses
+    (whatever is selected, falling back to the last thing placed), labelled per instruction:
+    a MOV shows `Source` and `→ Dest`, a MATH adds `A`/`Op`/`B`, a compare drops the
+    destination entirely, and `Preset K` appears for timers and counters alone. Showing every
+    box at once was actively misleading — a Preset K beside a DIV reads as part of the
+    division, an operator dropdown beside a MOV reads as though a move could compare.
+    The PID tuning row (Kp, Ti, Td, output range) follows the same rule.
+  - **Word instructions** — a destination must be a `D` register, checked at placement rather
+    than left to submit-time validation (otherwise a leftover `X0` in the address box silently
+    becomes a DIV's destination). Operands normalize through `parseValueOperand`, so a bare
+    `10` is stored and shown as `K10`: constant-versus-register is the whole grammar of these
+    instructions and a naked number hides it. A `compare` renders as a contact with its
+    operator between the bars; `mov`/`math`/`pid` render as function blocks showing their
+    operands as an expression (`D0÷K4`) with an arrow-prefixed destination underneath.
   - **Keyboard-first** — arrows move the selection (wrapping across rungs), a single letter
     places an instruction (`C` NO, `X` NC, `P`/`N` edge, `O`/`S`/`R` coils, `T`/`K`, `W` wire),
     `B` toggles a branch, `A` adds a rung, `Shift`+`→`/`↓` grows the rung, `Del` clears.
@@ -281,6 +359,19 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     filled where the bit is high) reading `SimRunner.history`; the live runner keeps a rolling
     ~24s window, replay supplies the full (already-bounded) scenario trace with a scrubbable
     cursor synced to the `ReplayBar`.
+  - **Analog strip** (`HmiPanel`) — word devices get their own block above the lamp grid,
+    showing the register's raw counts *and* the engineering value they stand for, so the scaling
+    lesson stays visible rather than being quietly done for the player. A `trend` widget draws
+    the last stretch of `SimRunner.history` as a strip chart: a regulator cannot be judged, let
+    alone tuned, from an instantaneous number. Because history carries the register image, the
+    trend redraws under replay scrubbing exactly like the bits do.
+  - **Live words in the work-order column** (`BriefColumn.tsx`, `LiveRegisterState.registers`) —
+    Terminal Assignment lights a chip for every *bit*, but a word device has no lamp to light, so
+    its row said nothing at all while the sim ran. Analog terminals now carry their live counts
+    with the engineering value under them, and Working Registers shows each `D` as a raw word (no
+    range to scale by — it's scratch space whose meaning the player chose). The value column is
+    rendered only on puzzles that actually have an analog device, so boolean puzzles keep the
+    full panel width for device names.
   - **Progressive hints** — `PuzzlePlayPage`'s `HintsPanel` reveals `spec.hints` one at a time;
     the reveal count is remembered per puzzle in `localStorage`.
 - **Machine views** (`features/sim/MachineView.tsx`) — puzzle-specific 3D scenes chosen by
@@ -328,6 +419,22 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
   - Both scenes share the same silent-failure risk: a node name typo in the `.glb` is a no-op, not
     an error — `scene.getObjectByName(...)` just returns `undefined` and that part of the scene
     stops animating.
+  - **`TankVessel3D.tsx`** (`processId: 'tank'`, `interactive`) — the one scene built
+    **procedurally** rather than from a `.glb`, on purpose: every other machine's interest is in
+    linkages and shapes, while this one's whole subject is a number moving, and a cylinder of
+    liquid whose height *is* that number says it better than geometry would. Level scales a
+    unit-height liquid cylinder re-seated to grow from the vessel floor; the inlet stream's
+    radius is the valve opening, which makes a modulating valve legible at a glance in a way a
+    gauge is not; float-switch trip rings mark 10 % and 90 %; a fault re-tints the liquid. Still
+    swappable for a hero model later, the way `PackMachine3D` was.
+    - **The liquid, the surface disc and the inlet stream are opaque on purpose.** three renders
+      opaque → transmissive → transparent, and the transmission render target holds only the
+      first two groups, so the original transmissive glass shell both left the liquid out of its
+      refraction *and* (writing depth first) depth-culled it — the column was invisible at every
+      level. The shell is now plain blended glass with `depthWrite={false}`, which sorts
+      correctly against opaque contents and skips a whole scene pass.
+    - The bright surface disc floats `SURFACE_LIFT` above the liquid cylinder's top cap rather
+      than sitting on it; coplanar the two z-fight and the surface strobes as the level moves.
   - **`PickPlaceArm3D.tsx`** (`processId: 'pickPlace'`, `interactive`) — renders the
     Blender-authored `pick-place-arm.glb` (source: `D:\Code\Claude\Design\PickPlaceArm.blend`;
     see the pack/elevator entries above — node names are load-bearing the same way).

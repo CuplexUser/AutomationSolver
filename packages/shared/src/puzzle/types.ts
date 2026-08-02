@@ -11,7 +11,8 @@ export type PuzzleCategory =
   | 'control-cabinet'
   | 'packaging'
   | 'pick-place'
-  | 'drill';
+  | 'drill'
+  | 'process-control';
 
 /** Display order of category sections on the puzzle list. */
 export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
@@ -23,6 +24,7 @@ export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
   'packaging',
   'pick-place',
   'drill',
+  'process-control',
 ];
 
 export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
@@ -34,6 +36,7 @@ export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
   packaging: 'Packaging Machine',
   'pick-place': 'Pick & Place',
   drill: 'Drill Station',
+  'process-control': 'Process Control',
 };
 
 /** One-line blurb per category for the puzzle-list section headers / nav. */
@@ -46,6 +49,8 @@ export const CATEGORY_BLURBS: Record<PuzzleCategory, string> = {
   packaging: 'Group boxes 2 → 4 → 16 with pushers, a flipping lift and an out-feed.',
   'pick-place': 'Index a robot arm between an infeed and a tray, one part at a time.',
   drill: 'Clamp, spin up, drill and sort mixed stock through one automatic station.',
+  'process-control':
+    'Analog signals and regulators: scale a transmitter, then hold a level on setpoint.',
 };
 
 /** How a device is drawn/driven on the HMI panel. */
@@ -56,10 +61,13 @@ export type WidgetType =
   | 'selector' // 2-position selector
   | 'lamp' // indicator lamp
   | 'motor' // motor / rotating machine
-  | 'sensor'; // read-only field sensor (driven by the process model)
+  | 'sensor' // read-only field sensor (driven by the process model)
+  | 'gauge' // analog reading, dial
+  | 'bar' // analog reading, bar graph
+  | 'trend'; // analog reading, strip chart over time
 
 export interface PuzzleDevice {
-  address: string; // "X0", "Y0" ...
+  address: string; // "X0", "Y0", or a "D0" register for analog signals
   label: string;
   io: 'input' | 'output';
   widget: WidgetType;
@@ -67,6 +75,44 @@ export interface PuzzleDevice {
   normallyClosed?: boolean;
   /** Lamp/motor color hint for the HMI. */
   color?: string;
+  /**
+   * Word device rather than a bit: `address` is a D register carrying raw
+   * counts. Inputs are written by the process model, outputs are read by it.
+   */
+  signal?: 'digital' | 'analog';
+  /** Analog only: raw count range and what those counts mean in the field. */
+  range?: AnalogRange;
+}
+
+/**
+ * How to read an analog device's raw counts.
+ *
+ * The register always holds counts, because that is what the card gives the CPU;
+ * `min`/`max`/`units` say what they represent so the HMI can label the gauge in
+ * engineering units without the *program* ever being handed pre-scaled values.
+ */
+export interface AnalogRange {
+  /** Raw count at `min` (almost always 0). */
+  countMin: number;
+  /** Raw count at `max` (4000 on the FX analog cards these puzzles model). */
+  countMax: number;
+  min: number;
+  max: number;
+  units: string;
+  /** Decimals to show when displaying the scaled value. */
+  decimals?: number;
+}
+
+/** Scale raw counts into engineering units, for display only. */
+export function scaleCounts(counts: number, range: AnalogRange): number {
+  const span = range.countMax - range.countMin;
+  if (span === 0) return range.min;
+  const t = (counts - range.countMin) / span;
+  return range.min + t * (range.max - range.min);
+}
+
+export function isAnalog(device: PuzzleDevice): boolean {
+  return device.signal === 'analog';
 }
 
 /**
@@ -90,6 +136,43 @@ export interface ScenarioCondition {
   bits?: Record<string, boolean>;
   /** Machine-state props reported by the process model. */
   machine?: Record<string, string | number | boolean>;
+  /** D-register values, as an inclusive range in raw counts. */
+  analog?: Record<string, AnalogBound>;
+}
+
+/** An inclusive band a register has to be inside. Either end may be open. */
+export interface AnalogBound {
+  min?: number;
+  max?: number;
+}
+
+/**
+ * A control-quality assertion, evaluated over the *whole* step rather than at
+ * its final instant.
+ *
+ * This is what separates an analog exercise from a sequencing one: a loop that
+ * happens to be sitting on setpoint when the clock runs out has not been shown
+ * to work, and a loop that got there via a 40 % overshoot is a loop that would
+ * have put product on the floor. So the step asks for a value held inside a band
+ * for a stretch of time, and can additionally cap the worst excursion along the
+ * way.
+ */
+export interface ControlSpec {
+  /** Register carrying the process value, in raw counts. */
+  device: string;
+  /** Target, in the same raw counts. */
+  setpoint: number;
+  /** Half-width of the acceptable band, in counts. */
+  band: number;
+  /** The value must stay inside the band this long, ending at the step's end. */
+  settleMs: number;
+  /** Cap on the worst excursion past setpoint during the step, in counts. */
+  maxOvershoot?: number;
+  /**
+   * Cap on the final offset from setpoint. Left open on the P-control puzzle —
+   * droop is the lesson there, not the failure.
+   */
+  maxSteadyError?: number;
 }
 
 export interface ScenarioStep {
@@ -125,6 +208,10 @@ export interface ScenarioStep {
   expect?: Record<string, boolean>;
   /** Expected machine-state props at the end of the step. */
   expectMachine?: Record<string, string | number | boolean>;
+  /** Expected D-register bands at the end of the step, in raw counts. */
+  expectAnalog?: Record<string, AnalogBound>;
+  /** Control quality demanded across the step. */
+  control?: ControlSpec;
 }
 
 export interface Scenario {
@@ -146,6 +233,16 @@ export interface Scenario {
    * dynamics); those scenarios simply score full throughput marks.
    */
   parMs?: number;
+  /**
+   * Control-quality target: integral of absolute error in count-seconds,
+   * summed over every step that declares a `control` spec.
+   *
+   * It takes the same 15 marks `parMs` does and runs through the same taper, so
+   * an analog puzzle scores on how *well* the loop held rather than on how fast
+   * it finished — for a regulator those are the same question. Declare one or
+   * the other, not both.
+   */
+  parIae?: number;
 }
 
 interface PuzzleSpecBase {
@@ -183,19 +280,24 @@ export interface CabinetPuzzleSpec extends PuzzleSpecBase {
 
 export type PuzzleSpec = LadderPuzzleSpec | CabinetPuzzleSpec;
 
-/** Default rest state of every input, honoring normally-closed wiring. */
+/** Default rest state of every input bit, honoring normally-closed wiring. */
 export function defaultInputs(devices: PuzzleDevice[]): Record<string, boolean> {
   const out: Record<string, boolean> = {};
   for (const d of devices) {
-    if (d.io === 'input') out[d.address] = d.normallyClosed === true;
+    if (d.io === 'input' && !isAnalog(d)) out[d.address] = d.normallyClosed === true;
   }
   return out;
 }
 
 export function inputDevices(spec: PuzzleSpec): PuzzleDevice[] {
-  return spec.devices.filter((d) => d.io === 'input');
+  return spec.devices.filter((d) => d.io === 'input' && !isAnalog(d));
 }
 
 export function outputDevices(spec: PuzzleSpec): PuzzleDevice[] {
-  return spec.devices.filter((d) => d.io === 'output');
+  return spec.devices.filter((d) => d.io === 'output' && !isAnalog(d));
+}
+
+/** Analog devices in either direction, in declaration order. */
+export function analogDevices(spec: PuzzleSpec): PuzzleDevice[] {
+  return spec.devices.filter(isAnalog);
 }

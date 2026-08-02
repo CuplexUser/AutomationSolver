@@ -1,6 +1,6 @@
 import { useEffect, useMemo, type ReactNode } from 'react';
-import type { PuzzleDevice } from '@automationsolver/shared';
-import type { HmiRunner } from './useSimRunner';
+import { isAnalog, scaleCounts, type AnalogRange, type PuzzleDevice } from '@automationsolver/shared';
+import { SCAN_INTERVAL_MS, type HmiRunner } from './useSimRunner';
 
 // A latching widget flips on keydown; anything else is a spring-return button
 // that stays on only while the key is held.
@@ -65,12 +65,16 @@ export function HmiPanel({
   runner: HmiRunner;
   machineSlot?: ReactNode;
 }) {
-  const inputs = devices.filter((d) => d.io === 'input');
-  const outputs = devices.filter((d) => d.io === 'output');
+  // Analog devices get their own strip rather than sitting among the lamps:
+  // they are the thing a player watches continuously on these puzzles, and a
+  // gauge squeezed into the lamp grid is unreadable.
+  const analog = devices.filter(isAnalog);
+  const inputs = devices.filter((d) => d.io === 'input' && !isAnalog(d));
+  const outputs = devices.filter((d) => d.io === 'output' && !isAnalog(d));
 
   // Sensors are driven by the process model, not the operator, so they get no key.
   const keyed = useMemo(
-    () => devices.filter((d) => d.io === 'input' && d.widget !== 'sensor').slice(0, 9),
+    () => devices.filter((d) => d.io === 'input' && d.widget !== 'sensor' && !isAnalog(d)).slice(0, 9),
     [devices],
   );
   const hotkeys = new Map(keyed.map((d, i) => [d.address, String(i + 1)]));
@@ -81,11 +85,20 @@ export function HmiPanel({
       <div className="hmi-head">
         <span className="eyebrow">Operator Panel</span>
         <span className={`scan-dot${runner.running ? ' live' : ''}`}>
-          {runner.running ? 'SCANNING' : 'HALTED'} · 60ms
+          {runner.running ? 'SCANNING' : 'HALTED'} · {SCAN_INTERVAL_MS}ms
         </span>
       </div>
 
       {machineSlot}
+
+      {analog.length > 0 && (
+        <div className="hmi-analog">
+          <span className="eyebrow io-title">Analog</span>
+          {analog.map((d) => (
+            <AnalogWidget key={d.address} device={d} runner={runner} />
+          ))}
+        </div>
+      )}
 
       <div className="hmi-controls">
         {runner.running ? (
@@ -124,6 +137,109 @@ export function HmiPanel({
         </section>
       </div>
     </div>
+  );
+}
+
+const DEFAULT_RANGE: AnalogRange = {
+  countMin: 0,
+  countMax: 4000,
+  min: 0,
+  max: 100,
+  units: '%',
+  decimals: 1,
+};
+
+/** Fraction of full scale, clamped, for drawing. */
+function fraction(counts: number, range: AnalogRange): number {
+  const span = range.countMax - range.countMin;
+  if (span === 0) return 0;
+  return Math.min(1, Math.max(0, (counts - range.countMin) / span));
+}
+
+/**
+ * A word device: the raw count in the register, shown in the units a person
+ * thinks in. `trend` additionally draws the last stretch of scan history,
+ * because a regulator cannot be judged, let alone tuned, from an instantaneous
+ * number.
+ */
+function AnalogWidget({ device, runner }: { device: PuzzleDevice; runner: HmiRunner }) {
+  const range = device.range ?? DEFAULT_RANGE;
+  const counts = runner.registers?.[device.address] ?? 0;
+  const value = scaleCounts(counts, range).toFixed(range.decimals ?? 1);
+  const color = device.color ?? '#4aa3ff';
+  const pct = fraction(counts, range) * 100;
+
+  return (
+    <div className="analog-widget">
+      <div className="analog-head">
+        <span className={`dev-chip dev-${device.address[0]}`}>{device.address}</span>
+        <span className="analog-name">{device.label}</span>
+        <span className="analog-value mono" style={{ color }}>
+          {value} <span className="analog-units">{range.units}</span>
+        </span>
+        <span className="analog-counts mono">{counts}</span>
+      </div>
+      {device.widget === 'trend' ? (
+        <Trend device={device} range={range} runner={runner} color={color} />
+      ) : (
+        <div className="analog-bar">
+          <div className="analog-fill" style={{ width: `${pct}%`, background: color }} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+const TREND_W = 240;
+const TREND_H = 44;
+
+function Trend({
+  device,
+  range,
+  runner,
+  color,
+}: {
+  device: PuzzleDevice;
+  range: AnalogRange;
+  runner: HmiRunner;
+  color: string;
+}) {
+  const points = useMemo(() => {
+    const history = runner.history ?? [];
+    if (history.length < 2) return '';
+    // One pixel column per sample at most, oldest left.
+    const start = Math.max(0, history.length - TREND_W);
+    const window = history.slice(start);
+    const step = window.length > 1 ? TREND_W / (window.length - 1) : TREND_W;
+    return window
+      .map((sample, i) => {
+        const counts = sample.registers?.[device.address] ?? 0;
+        const y = TREND_H - fraction(counts, range) * TREND_H;
+        return `${(i * step).toFixed(1)},${y.toFixed(1)}`;
+      })
+      .join(' ');
+  }, [runner.history, device.address, range]);
+
+  return (
+    <svg
+      className="analog-trend"
+      viewBox={`0 0 ${TREND_W} ${TREND_H}`}
+      preserveAspectRatio="none"
+      role="img"
+      aria-label={`${device.label} trend`}
+    >
+      {[0.25, 0.5, 0.75].map((f) => (
+        <line
+          key={f}
+          x1={0}
+          x2={TREND_W}
+          y1={TREND_H * f}
+          y2={TREND_H * f}
+          className="trend-grid"
+        />
+      ))}
+      {points && <polyline points={points} fill="none" stroke={color} strokeWidth={1.5} />}
+    </svg>
   );
 }
 

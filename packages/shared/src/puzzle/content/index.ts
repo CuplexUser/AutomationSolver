@@ -30,6 +30,11 @@ import { pickPlaceFull } from './28-pick-place-full.js';
 import { drillClampFeed } from './29-drill-clamp-feed.js';
 import { drillSpindle } from './30-drill-spindle.js';
 import { drillProduction } from './31-drill-production.js';
+import { tankLevelReadout } from './32-tank-level-readout.js';
+import { tankTwoPosition } from './33-tank-two-position.js';
+import { tankPControl } from './34-tank-p-control.js';
+import { tankPid } from './35-tank-pid.js';
+import { tankAuto } from './36-tank-auto.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -63,6 +68,11 @@ export const PUZZLES: PuzzleSpec[] = [
   drillStation,
   drillSpindle,
   drillProduction,
+  tankLevelReadout,
+  tankTwoPosition,
+  tankPControl,
+  tankPid,
+  tankAuto,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

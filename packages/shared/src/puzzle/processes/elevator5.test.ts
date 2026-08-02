@@ -31,7 +31,7 @@ function run(
   const process = getProcess('elevator5');
   let derivedInputs: Record<string, boolean> = {};
   for (let i = 0; i < n; i++) {
-    const res = process.step({ outputs, inputs: {}, machine, devices, dtMs });
+    const res = process.step({ outputs, inputs: {}, registers: {}, machine, devices, dtMs });
     machine = res.machine;
     derivedInputs = res.derivedInputs ?? {};
   }
