@@ -9,8 +9,22 @@ import {
 // keeping the address label at a legible size. The symbol occupies the middle
 // third; the wire enters and leaves at WIRE_Y.
 export const CELL_W = 72;
-export const CELL_H = 52;
+export const CELL_H = 62;
 export const WIRE_Y = 34;
+
+// The band below the symbol, where a word block names the register it writes and
+// a timer/counter names its preset. The cell used to end 7px under the symbol
+// box, so that second line half-overlapped the box outline and the row beneath —
+// the destination register, the one thing a MOV is *for*, was the hardest thing
+// on the rung to read. The band is now a line of its own with clear air above it.
+const DEST_TOP = 47;
+const DEST_H = 13;
+const DEST_BASE = 57;
+/** JetBrains Mono advances 0.6em, so a 10px label is 6px a character. */
+const DEST_CHAR_W = 6;
+
+/** A `D` operand is a register (a value that moves); anything else is a constant. */
+const REGISTER_RE = /^D\d+$/i;
 
 // Theme-following colors. CSS var() is not valid inside SVG presentation
 // attributes, so every color below is applied through the style prop instead.
@@ -31,32 +45,43 @@ function glow(live: boolean): React.CSSProperties {
   return live ? { filter: 'drop-shadow(0 0 3px rgba(255,176,32,0.8))' } : {};
 }
 
+interface CellText {
+  /** The top line, split into tokens so registers can be tinted apart from constants. */
+  top: string[];
+  /** The register a word block writes, shown as a pill under the symbol. */
+  dest?: string;
+  /** A timer/counter preset, shown as plain text in the same band. */
+  preset?: string;
+}
+
 /**
  * What goes on the cell's two text lines.
  *
  * Bit elements have always shown their one address on top. Word elements read
- * as the little expression they are — `D0÷K4` rather than `D0,K4` — with the
- * register they write underneath, arrow-prefixed so a destination can never be
- * mistaken for another operand. A compare writes nothing, so it uses the top
- * line alone.
+ * as the little expression they are — `D0÷K4` rather than `D0,K4` — split into
+ * tokens so a register reads in the register color and a K constant does not.
+ * The register they write goes underneath in a pill of the same color: a
+ * destination is a different kind of thing from an operand and should not have
+ * to be spelled out as one. A compare writes nothing, so it uses the top line
+ * alone.
  */
-function cellText(element: LadderElement): { top: string; bottom?: string } {
+function cellText(element: LadderElement): CellText {
   const [a = '?', b = '?'] = element.operands ?? [];
-  const dest = element.device ? `→${element.device}` : '→?';
+  const dest = element.device || '?';
   switch (element.type) {
     case 'compare':
-      return { top: `${a}${element.op ?? '?'}${b}` };
+      return { top: [a, element.op ?? '?', b] };
     case 'mov':
-      return { top: a, bottom: dest };
+      return { top: [a], dest };
     case 'math':
-      return { top: `${a}${MATH_SYMBOL[(element.op as MathOp) ?? 'add']}${b}`, bottom: dest };
+      return { top: [a, MATH_SYMBOL[(element.op as MathOp) ?? 'add'], b], dest };
     case 'pid':
       // Setpoint over measurement; the block face already says which is which.
-      return { top: `${a}/${b}`, bottom: dest };
+      return { top: [a, '/', b], dest };
     default:
       return {
-        top: element.device,
-        bottom:
+        top: [element.device],
+        preset:
           (element.type === 'timer' || element.type === 'counter') && element.preset != null
             ? `K${element.preset}`
             : undefined,
@@ -85,7 +110,7 @@ export function CellView({ element, selected, leftLive, rightLive, symbolLive, o
   const symColor = symbolLive ? LIVE : IDLE_SYM;
   const leftColor = leftLive ? LIVE : IDLE_WIRE;
   const rightColor = rightLive ? LIVE : IDLE_WIRE;
-  const text = element ? cellText(element) : { top: '', bottom: undefined };
+  const text: CellText = element ? cellText(element) : { top: [] };
 
   return (
     <button
@@ -108,11 +133,21 @@ export function CellView({ element, selected, leftLive, rightLive, symbolLive, o
             />
             <Symbol element={element} color={symColor} live={symbolLive} />
             <text x={CELL_W / 2} y={13} textAnchor="middle" className="cell-addr" style={{ fill: symColor }}>
-              {text.top}
+              {text.top.map((token, i) => (
+                // Live wins over the register tint: while the sim runs, "is this
+                // conducting" is the more urgent question than "is this a D".
+                <tspan
+                  key={i}
+                  className={!symbolLive && REGISTER_RE.test(token) ? 'cell-reg' : undefined}
+                >
+                  {token}
+                </tspan>
+              ))}
             </text>
-            {text.bottom && (
-              <text x={CELL_W / 2} y={CELL_H - 3} textAnchor="middle" className="cell-preset">
-                {text.bottom}
+            {text.dest && <DestPill label={text.dest} />}
+            {text.preset && (
+              <text x={CELL_W / 2} y={DEST_BASE} textAnchor="middle" className="cell-preset">
+                {text.preset}
               </text>
             )}
           </>
@@ -124,6 +159,31 @@ export function CellView({ element, selected, leftLive, rightLive, symbolLive, o
         )}
       </svg>
     </button>
+  );
+}
+
+/**
+ * The register a word block writes, as a filled chip under the block.
+ *
+ * Mono type means the width is arithmetic rather than a measurement, so the
+ * chip fits `D0` and `D1000` alike without ever reaching the cell edge.
+ */
+function DestPill({ label }: { label: string }) {
+  const w = label.length * DEST_CHAR_W + 14;
+  return (
+    <g>
+      <rect
+        x={(CELL_W - w) / 2}
+        y={DEST_TOP}
+        width={w}
+        height={DEST_H}
+        rx={3}
+        className="cell-dest-pill"
+      />
+      <text x={CELL_W / 2} y={DEST_BASE} textAnchor="middle" className="cell-dest">
+        {label}
+      </text>
+    </g>
   );
 }
 

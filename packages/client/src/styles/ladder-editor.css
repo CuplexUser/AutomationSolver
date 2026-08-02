@@ -357,10 +357,28 @@
   font-size: 11px;
   font-weight: 700;
 }
+/* A D operand inside a word expression, tinted so `D20*K4` reads as one moving
+   value and one constant at a glance. */
+.cell-reg {
+  fill: var(--dev-d);
+}
 .cell-preset {
   font-family: var(--font-mono);
-  font-size: 9px;
-  fill: var(--muted);
+  font-size: 10px;
+  fill: var(--ink-dim);
+}
+/* The register a word block writes: its own chip in the register color, so the
+   destination is legible without being mistaken for another operand. */
+.cell-dest-pill {
+  fill: color-mix(in srgb, var(--dev-d) 16%, transparent);
+  stroke: color-mix(in srgb, var(--dev-d) 55%, transparent);
+  stroke-width: 1;
+}
+.cell-dest {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--dev-d);
 }
 .vlink {
   position: absolute;

@@ -36,6 +36,7 @@
   --dev-m: #b98cff;
   --dev-t: #37d67a;
   --dev-c: #ff8fab;
+  --dev-d: #3ddbd9;
 
   --radius: 4px;
   --radius-lg: 8px;
@@ -84,6 +85,7 @@
   --dev-m: #8250df;
   --dev-t: #189a52;
   --dev-c: #d23f72;
+  --dev-d: #0f8f8b;
 
   --shadow: 0 1px 0 rgba(255, 255, 255, 0.7), 0 8px 24px rgba(23, 34, 45, 0.14);
   --inset-shadow: inset 0 2px 6px rgba(23, 34, 45, 0.14);
@@ -251,6 +253,7 @@ button {
 .dev-M { color: var(--dev-m); }
 .dev-T { color: var(--dev-t); }
 .dev-C { color: var(--dev-c); }
+.dev-D { color: var(--dev-d); }
 .dev-chip.on {
   background: color-mix(in srgb, currentColor 45%, transparent);
   box-shadow: 0 0 6px currentColor;
