@@ -1,81 +1,177 @@
 # ⚡ AutomationSolver
 
-**A puzzle game where the "puzzle piece" is ladder logic.** Program a Mitsubishi-style PLC to solve real motor-control problems — start/stop seal-ins, emergency stops, on-delay timers, counters, a conveyor index — on a grid editor, hit Run, watch power flow light up the machine, and get graded against scripted test scenarios.
+**A puzzle game where the puzzle piece is ladder logic.** Program a Mitsubishi-style PLC on a grid editor, hit Run, and watch power flood the rung while a real machine moves in 3D beside it. Forty work orders across ten categories take you from a single contact driving a single coil to a PID loop holding a tank on setpoint and a gantry crane that has to wait out the swing of its own load.
 
 [![TypeScript](https://badgen.net/badge/TypeScript/React%20%2B%20Express/3178c6)]()
 [![No native deps](https://badgen.net/badge/npm%20install/no%20C%2B%2B%20toolchain/2ea44f)]()
+[![Puzzles](https://badgen.net/badge/work%20orders/40%20across%2010%20categories/ffb020)]()
 
-![AutomationSolver bench](docs/preview.png)
+[**Play the demo rung →**](https://cuplexuser.github.io/AutomationSolver/) · a real solver and grader running in the page, no install
 
-> **Note:** the current GitHub Pages homepage link serves the static frontend only — this app needs the Express/SQLite backend to actually grade puzzles, so it likely won't fully run there. Worth pointing the demo link at a real hosted instance (or removing it) so visitors land somewhere that works.
+![The AutomationSolver bench: work order brief, ladder editor and operator panel](docs/shots/bench.webp)
 
-## Why this exists
+## The bench
 
-Ladder logic is normally taught with a $2,000 PLC trainer kit and a manual. This is the same skill — series/parallel rung logic, timers, counters, seal-in circuits — as a browser puzzle game with instant feedback, built out of a real automation coursework background.
+Three columns, all live at once.
 
-## Stack
+- **Work order** — the brief reads like a machine manual: equipment list, sequence of operation, interlocks, acceptance criteria. Terminal assignments light up as the sim runs, and progressive hints are there when you want them.
+- **Ladder editor** — a grid of cells you fill with contacts, coils, timers, counters and function blocks. Series is AND, vertical links are OR. Keyboard-first (one letter per instruction), zoomable, with in-place editing of any address, preset or operand.
+- **Operator panel** — push buttons, maintained switches, e-stops, lamps, motors and analog trends bound to real X/Y addresses. Hold digit keys **1–9** to press several buttons at once, which the two-hand safety press genuinely requires.
 
-- **Frontend** — React + TypeScript (Vite), TanStack Query, Zustand, React Router
-- **Backend** — Express + Passport (local + Google/GitHub OAuth), sessions
-- **Database** — SQLite via Node's built-in `node:sqlite` (no native build step)
-- **Shared** — a pure-TypeScript ladder-logic simulation engine used by both the client (live play) and server (authoritative grading), so they always agree
+Press **Run** and the rung lights up cell by cell as power floods it from the left rail. Press **Submit** and the server replays your program through scripted test scenarios, with machine dynamics, and scores it.
 
-> No native modules. Password hashing uses `node:crypto` scrypt; the database uses the built-in `node:sqlite` — `npm install` never needs a C++ toolchain.
+![Work order 02: an energized start/stop seal-in rung, with the motor output running](docs/shots/bench-seal-in.webp)
+
+*Work order 02. The motor is running with nothing held down: the parallel `Y0` contact under the start button is sealing the rung in, and you can see exactly which cells are carrying power.*
+
+## The machines
+
+Every puzzle family drives a machine visualization that is a diagnostic instrument rather than decoration: nothing animates on its own, and every transform is a pure function of the deterministic state the process model computed from `dt`. Four scenes are hero models authored in Blender and loaded as glTF; two are procedural, because their subject is a number moving and a shape that *is* that number reads better than geometry would.
+
+| | |
+|---|---|
+| ![Drill station](docs/shots/machine-drill.webp)<br>**Drill Station** · clamp, spindle spin-up, feed and eject, sorting aluminum from hardened steel through a reject gate | ![Packaging machine](docs/shots/machine-pack.webp)<br>**Packaging Machine** · six pneumatic actuators group boxes 2 → 4 → 16, with a lift that flips cartons on end |
+| ![Pick and place arm](docs/shots/machine-pickplace.webp)<br>**Pick & Place** · a two-link arm swings between infeed and tray, reaching on an IK path so the gripper hangs plumb | ![Elevator shaft](docs/shots/machine-elevator.webp)<br>**Elevator** · five floors, call buttons, and doors the car physically will not move against |
+| ![Tank vessel](docs/shots/machine-tank.webp)<br>**Process Control** · the liquid column *is* the register, the inlet stream's radius *is* the valve opening | ![Traverse axis and crane](docs/shots/machine-axis.webp)<br>**Motion Control** · a VFD carriage on ramp parameters, with a load swinging on a rope after the trolley stops |
+
+## Two ways to program
+
+### Ladder logic
+
+Mitsubishi FX addressing: `X` inputs, `Y` outputs, `M` relays, `T` timers, `C` counters, and `D` data registers.
+
+- **Bit instructions** — normally-open and normally-closed contacts, rising- and falling-edge contacts, OUT / SET / RST coils, timers (presets in 100 ms units) and counters.
+- **Word instructions** — `compare` (a conducting contact carrying `= <> > < >= <=`), `MOV`, `ADD`/`SUB`/`MUL`/`DIV`, and a real `PID` block with gain, integral and derivative times, its own sample period, an output clamp and conditional anti-windup integration.
+- **Analog I/O** — transmitters report **raw counts** (0..4000, the FX analog cards these puzzles model), never pre-scaled engineering units. Scaling them is the first analog puzzle's lesson, not something the plant does as a favor. Registers are 16-bit signed and **saturate rather than wrap**, and arithmetic evaluates at full precision before saturating on the store, so "divide before you multiply" is a lesson the puzzles teach.
+
+### Control cabinet wiring
+
+The second genre drops ladder logic entirely: you wire the terminals of fixed components — a 3-phase supply, contactors, a thermal overload, pushbuttons, lamps and a motor — using IEC terminal numbering (`K1.A1`, `F1.96`). Two editable views of the same document:
+
+| ![Cabinet schematic view](docs/shots/cabinet-schematic.webp) | ![Cabinet panel view](docs/shots/cabinet-panel.webp) |
+|---|---|
+| **Schematic** — an IEC circuit diagram on white drawing paper, components broken into their distributed parts with `-K1` cross-references and Manhattan wire routing. | **Panel** — an illustrated enclosure with DIN rails, slotted wire ducts, a door strip of real operators and a finned motor. Wires route orthogonally through the ducts. |
+
+Wires and terminals color by live net potential (L1 brown, L2 black, L3 grey, N blue, PE green-yellow). Merge two supply potentials onto one net and the breaker trips, exactly as it would in the panel.
+
+## Grading, replay and the trace strip
+
+Submitting runs every scenario the puzzle declares: a scripted input timeline with assertions, driven through the same simulation engine and the same process model the client just used.
+
+- **Sequencing puzzles** are paced by the program driving them, so a step can run to a **milestone** (`until`) rather than a fixed deadline. Grading pace instead of behavior is how you fail a correct program for being 200 ms slow.
+- **Regulating puzzles** get a different question: a step carries a setpoint, a band, a settle time and overshoot and steady-error caps, evaluated across the whole step. A loop that happens to be sitting on setpoint when the clock runs out has not been shown to work, and one that got there through a 40% overshoot would have put product on the floor.
+- **Scoring** is 85 marks for scenarios passed plus 15 for performance, and the performance marks only land once everything passes. Sequencing puzzles spend them on cycle time against a declared par; regulating puzzles spend them on integral of absolute error. A correct but leisurely program is solved and unlocks what follows, and still has to be pipelined to reach 100.
+- **Replay** — every failing scenario gets a ▶ button that re-runs it scan by scan, right in the editor, with a scrubber. Jump straight to the first failing scan and watch the rung that did it.
+- **Trace strip** — a logic-analyzer view, one row per device or register, filled where the bit is high. It reads the live sim's rolling window or the replay's full trace, and word devices draw as strip charts, because a regulator cannot be judged from an instantaneous number.
+
+## The work orders
+
+| Category | What it teaches |
+|---|---|
+| **Basics** (3) | Contacts, coils and seal-in logic. |
+| **Timers & Counters** (4) | On-delay, off-delay, oscillators and counting. |
+| **Stations** (2) | Sequenced single-station machines: a conveyor index and a two-hand safety press. |
+| **Elevator** (4) | Multi-floor dispatch, up/down latches with tie-break, and door interlocks enforced physically. |
+| **Control Cabinet** (6) | Wire real 400 V starters terminal to terminal: DOL, two-station control, reversing, indication. |
+| **Packaging Machine** (4) | Group boxes 2 → 4 → 16 with pushers, a flipping lift, a retaining bracket and an out-feed. |
+| **Pick & Place** (4) | Index a robot arm between an infeed and a tray, one part at a time, without overfilling. |
+| **Drill Station** (4) | Clamp, spin up, drill and sort mixed stock through one automatic station. |
+| **Process Control** (5) | Scale a transmitter, build a P regulator by hand out of SUB/MUL/ADD, then let a PID block kill the offset. |
+| **Motion Control** (4) | Speed references, drive ramp parameters, and the stopping distance a loaded carriage implies. |
+
+Categories unlock sequentially — each one's first puzzle is always open, and the rest gate on the previous solve. Enforced on the API, not just hidden in the UI.
+
+## One engine, both sides
+
+The architectural bet of the whole project: **a single pure-TypeScript simulation engine in `packages/shared` runs on both the client and the server.** The client runs it for live play; the server runs the identical code as the source of truth for scoring. There is no second implementation to drift.
+
+```
+             packages/shared  (no runtime deps)
+             ├── ladder/      program model + address parsing
+             ├── circuit/     cabinet components, net solver, wiring grader
+             ├── sim/         rungSolver + SimEngine scan cycle
+             └── puzzle/      spec schema, process models, validator, grader
+                    │                              │
+        imported by │                              │ imported by
+                    ▼                              ▼
+        packages/client (Vite React)     packages/server (Express + node:sqlite)
+        live sim, ladder editor, HMI     authoritative grading, auth, persistence
+```
+
+They agree bit-for-bit because of two rules the codebase enforces rather than documents:
+
+- **The engine advances only by an explicit `dt`, never wall-clock time.** `npm run lint` bans `Date`, `performance`, `Math.random`, `window` and `document` inside `packages/shared`. If the engine could read the clock, client and server would stop agreeing.
+- **The client's live scan `dt` *is* the grading `dt`** (50 ms, one shared constant). Boolean puzzles tolerated a mismatch because every process model's timings were exact multiples of both; an integrator does not. Continuous plants integrate on a fixed 10 ms sub-step with a carried remainder on top of that, so a trajectory is identical at any `dt`.
+
+`rungSolver.ts` treats a rung as a graph and floods power from the left rail using disjoint-set union over column-boundary nodes. `scanCycle.ts` evaluates rungs top to bottom and applies coils immediately, so a later rung sees an earlier rung's coil in the *same* scan, and snapshots the previous-bit image at the **end** of each scan, which is what makes edge contacts work.
 
 ## Getting started
 
 ```bash
+git clone https://github.com/CuplexUser/AutomationSolver.git
+cd AutomationSolver
 npm install
 npm run dev        # server on :4000, client on :5173 (Vite proxies /api → :4000)
 ```
 
-Open http://localhost:5173, create an account, start solving.
+Open <http://localhost:5173>, create an account, and start solving.
 
-<details>
-<summary><b>OAuth setup (optional)</b></summary>
-
-Copy `packages/server/.env.example` and set `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` and/or `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`. Providers left blank are simply hidden on the sign-in page.
+Google and GitHub sign-in are optional: copy `packages/server/.env.example`, set `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` and/or `GITHUB_CLIENT_ID`/`GITHUB_CLIENT_SECRET`, and providers left blank are simply hidden on the sign-in page.
 
 - Google callback: `http://localhost:4000/api/auth/google/callback`
 - GitHub callback: `http://localhost:4000/api/auth/github/callback`
 
-</details>
+With SMTP unconfigured, verification and password-reset emails are written to the server console instead of being sent.
 
-<details>
-<summary><b>Layout & tests</b></summary>
+## Zero native dependencies
+
+`npm install` must work on a fresh machine with nothing but Node — no C++ toolchain, no node-gyp, no prebuild roulette. Nothing in this repo compiles native code, and the substitutions are deliberate:
+
+| Instead of | This project uses |
+|---|---|
+| better-sqlite3 / sqlite3 | Node's builtin `node:sqlite` (`DatabaseSync`) |
+| argon2 / bcrypt | `node:crypto` scrypt, stored as `scrypt$salt$hash` |
+| connect-sqlite3 | a custom session store on `node:sqlite` |
+
+## Project layout
 
 ```
 packages/
-  shared/   ladder model, scan-cycle engine, puzzle schema, processes, grader (+ tests)
-  server/   Express API, auth, node:sqlite data layer, grading endpoint (+ supertest)
-  client/   Vite React SPA: grid ladder editor, live sim + HMI panel (+ Playwright e2e)
+  shared/   ladder model, circuit solver, scan-cycle engine, puzzle specs,
+            process models, validator, grader  (no runtime deps)
+  server/   Express + Passport, node:sqlite data layer, submit + grading API
+  client/   Vite React SPA: ladder editor, cabinet editor, live sim, 3D machines
+docs/       FEATURE-MAP.md (what exists), ROADMAP.md (what's next)
+site/       the GitHub Pages landing page, including a playable rung demo
 ```
+
+The database stores puzzle references by `slug` only; puzzle content is never duplicated into it. A player can keep several named save slots per puzzle, and submitting saves into whichever one is active, so a submission never loses work.
+
+## Tests
 
 ```bash
 npm test                       # shared engine (vitest) + server API (supertest)
 npm run test:shared            # just the simulation-engine unit tests
-npm run test:e2e -w @automationsolver/client   # Playwright: build + solve a puzzle end-to-end
-npm run typecheck              # tsc across all packages
+npm run typecheck              # tsc --noEmit across all packages
+npm run lint                   # oxlint repo-wide + ESLint react-hooks on the client
+npm run test:e2e -w @automationsolver/client   # Playwright: build and solve a puzzle
 ```
 
-The engine tests cover rung power-flow (series/parallel/NC/edge), timers, counters, and prove a canonical solution exists for every shipped puzzle.
+The engine tests cover rung power flow (series, parallel, NC, edge), timers, counters, register saturation and PID behavior. Two of them are the load-bearing ones: `grade.test.ts` and `gradeCabinet.test.ts` hold a canonical solution for **every shipped puzzle**, which is the guardrail against authoring a puzzle nobody can solve.
 
-</details>
+## Adding a puzzle
 
-<details>
-<summary><b>How the simulation works</b></summary>
+Add a `PuzzleSpec` under [`packages/shared/src/puzzle/content/`](packages/shared/src/puzzle/content), register it in `content/index.ts`, and add a canonical solution to `grade.test.ts`. A spec declares its I/O devices, optional working registers, allowed instructions, a process model (`passthrough`, or a stateful one like `drill` or `tank`) and graded scenarios.
 
-A program is a list of rungs; each rung is a grid of cells. Contacts and wires are horizontal conducting edges; vertical links join rows into parallel branches. Each scan, [`rungSolver`](packages/shared/src/sim/rungSolver.ts) treats the grid as a graph and floods power from the left rail — series = AND, parallel = OR. [`SimEngine`](packages/shared/src/sim/scanCycle.ts) advances only by an explicit `dt`, so the client animation and the server grader produce identical traces.
+Process models are small deterministic state machines that react to `Y` outputs and drive `X` inputs. They grow by feature detection off the puzzle's own device list, so one model serves a whole category and an early puzzle never fails an interlock it cannot see.
 
-</details>
+Write the briefing as an instruction manual rather than prose: a short lead paragraph, then `## Section` blocks (`Equipment`, `Sequence of operation`, `Interlocks and safety`, `Field notes`, `Acceptance`).
 
-<details>
-<summary><b>Adding a puzzle</b></summary>
+## Docs
 
-Add a `PuzzleSpec` under [`packages/shared/src/puzzle/content/`](packages/shared/src/puzzle/content) and register it in `content/index.ts`. A puzzle declares its I/O devices, allowed instructions, a process model (`passthrough` or a stateful one like `conveyor`), and graded scenarios (scripted input timelines with expected outputs). Add a canonical solution to `grade.test.ts` to prove it's solvable.
+- [`docs/FEATURE-MAP.md`](docs/FEATURE-MAP.md) — where every capability lives and why it is built that way
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — the phased plan for what comes next
 
-</details>
+## License
 
-## Roadmap
-
-The `shared/puzzle` process-model abstraction is designed to host a second puzzle family — **control-cabinet wiring** (contactors, overloads, AC motor control) — without reworking the engine or API.
+See [LICENSE](LICENSE).

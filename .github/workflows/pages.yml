@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      - 'docs/shots/**'
       - 'docs/preview.png'
       - 'scripts/build-pages.mjs'
       - '.github/workflows/pages.yml'
