@@ -35,6 +35,10 @@ import { tankTwoPosition } from './33-tank-two-position.js';
 import { tankPControl } from './34-tank-p-control.js';
 import { tankPid } from './35-tank-pid.js';
 import { tankAuto } from './36-tank-auto.js';
+import { axisJog } from './37-axis-jog.js';
+import { axisProfile } from './38-axis-profile.js';
+import { axisLoaded } from './39-axis-loaded.js';
+import { axisCrane } from './40-axis-crane.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -73,6 +77,10 @@ export const PUZZLES: PuzzleSpec[] = [
   tankPControl,
   tankPid,
   tankAuto,
+  axisJog,
+  axisProfile,
+  axisLoaded,
+  axisCrane,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

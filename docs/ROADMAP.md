@@ -210,20 +210,39 @@ With replay and traces in place, harder content becomes fair rather than frustra
 **Done means:** ~20 puzzles spanning tutorial → expert, each shipping with a canonical solution
 in `grade.test.ts`.
 
+## Motion — shipped
+
+The second half of the analog plan's first item: a traverse axis with real dynamics, and the
+first plant where the *rate of change* is what the program commands rather than the value.
+
+`processes/axis.ts` integrates position and velocity in milli-counts on the same fixed 10 ms
+sub-step the tank uses. The program writes a speed reference and a direction; the drive ramps
+toward it at whatever **drive parameter registers** `D40`/`D41` currently say. Both facts that
+follow are the category: a speed reference is not a position, so stopping somewhere means seeing
+the target coming; and the ramp rates belong to the *cycle*, not to commissioning, because what a
+motor and a set of forks can survive halves with a pallet on board.
+
+Four puzzles walk it: `axis-jog` (commission the drive — it will not start with a ramp parameter
+at zero — then jog to both limits without hitting one) → `axis-profile` (signed distance-to-go,
+rapid, and an approach that has to start well before the target) → `axis-loaded` (**the** puzzle:
+two ramp tables swapped in flight off the load sensor, *and* the stopping distance they imply,
+which is the number people forget) → `axis-crane` (hoist plus traverse for an ASRS put-away, with
+a load on a rope that is still swinging seconds after the trolley has stopped).
+
+Two details worth keeping. The crane is handed the sway **amplitude**, not the instantaneous
+angle: a pendulum passes through vertical four times a second, so an interlock on the angle would
+go true exactly when the load is moving fastest. And because the sway is a real pendulum, a ramp
+lasting about one swing period cancels its own excitation — so the fastest legal ramp is not the
+fastest cycle, and `parMs` quietly rewards anyone who notices. Six negative tests in
+`grade.test.ts` cover the plausible wrong answers, including the subtle one: swapping the two
+ramp parameters but keeping the empty slow-down distance leaves the drive perfectly happy and
+puts the pallet into the rack face.
+
 ## Next: the rest of the analog plan
 
-Agreed with the analog design but not yet built, in the order they were approved:
+Agreed with the analog design and still to build:
 
-1. **Motion — `axis`, category `motion`.** A traverse axis with real dynamics: commanded
-   velocity → the drive ramps at the *currently selected* accel/decel → position integrates
-   velocity. Accel and decel live in drive **parameter registers** the player `MOV`s into, like a
-   real VFD parameter set, so switching profiles on the fly is the exercise. Four puzzles:
-   `axis-jog` (ramp gently enough not to trip the drive) → `axis-profile` (rapid, then approach
-   speed inside a distance threshold, stop in the in-position window) → `axis-loaded` (**the**
-   puzzle: separate loaded/unloaded tables, and using the unloaded decel with a load on shifts or
-   drops it) → `axis-crane` (traverse plus hoist for an ASRS put-away, with an anti-sway settle).
-   Needs nothing from the PID block, so it could have been built first.
-2. **Paint — `paint`, category `finishing`.** Atomizing pressure and paint flow as lagged loops,
+1. **Paint — `paint`, category `finishing`.** Atomizing pressure and paint flow as lagged loops,
    plus four CMYK dosing pumps trimmed against an inline color sensor sitting *downstream of the
    mixer*, so the color loops have real dead time and a naive high gain oscillates. Four puzzles
    ending in a batch of parts in different colors, with purge waste costing performance marks.

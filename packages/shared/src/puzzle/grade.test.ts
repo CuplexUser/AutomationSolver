@@ -790,6 +790,158 @@ const solutions: Record<string, LadderProgram> = {
       }),
     ],
   },
+
+  // --- motion --------------------------------------------------------------
+  // Every axis solution starts by writing the drive parameters on plain
+  // unconditional rungs. That is not ceremony: the drive refuses to start
+  // without them, exactly like a real inverter with no ramp times commissioned.
+  'axis-jog': {
+    rungs: [
+      R('r1', 1, 2, { '0,0': wire, '0,1': mov('K1200', 'D40') }),
+      R('r2', 1, 2, { '0,0': wire, '0,1': mov('K1500', 'D41') }),
+      R('r3', 1, 2, { '0,0': wire, '0,1': mov('K1200', 'D20') }),
+      R('r4', 1, 3, { '0,0': no('X0'), '0,1': nc('X11'), '0,2': out('Y0') }),
+      R('r5', 1, 3, { '0,0': no('X1'), '0,1': nc('X10'), '0,2': out('Y1') }),
+    ],
+  },
+  'axis-profile': {
+    rungs: [
+      R('r1', 1, 2, { '0,0': wire, '0,1': mov('K2000', 'D40') }),
+      R('r2', 1, 2, { '0,0': wire, '0,1': mov('K2500', 'D41') }),
+      R('r3', 1, 2, { '0,0': no('X0'), '0,1': mov('K3400', 'D30') }),
+      R('r4', 1, 2, { '0,0': nc('X0'), '0,1': mov('K400', 'D30') }),
+      R('r5', 1, 2, { '0,0': wire, '0,1': math('sub', 'D30', 'D0', 'D31') }),
+      // A 40-count deadband, or the carriage hunts either side of the mark
+      // forever: a speed reference has no idea it has arrived.
+      R('r6', 1, 2, { '0,0': cmp('>', 'D31', 'K40'), '0,1': out('Y0') }),
+      R('r7', 1, 2, { '0,0': cmp('<', 'D31', 'K-40'), '0,1': out('Y1') }),
+      // Far from the target either way: rapid. The two rows are the OR.
+      R(
+        'r8',
+        2,
+        2,
+        { '0,0': cmp('>', 'D31', 'K400'), '1,0': cmp('<', 'D31', 'K-400'), '0,1': mov('K4000', 'D20') },
+        [{ row: 0, col: 1 }],
+      ),
+      R('r9', 1, 3, {
+        '0,0': cmp('<=', 'D31', 'K400'),
+        '0,1': cmp('>=', 'D31', 'K-400'),
+        '0,2': mov('K400', 'D20'),
+      }),
+    ],
+  },
+  'axis-loaded': {
+    rungs: [
+      // Two ramp tables and, just as importantly, two slow-down distances.
+      R('r1', 1, 2, { '0,0': no('X14'), '0,1': mov('K1000', 'D40') }),
+      R('r2', 1, 2, { '0,0': no('X14'), '0,1': mov('K1200', 'D41') }),
+      R('r3', 1, 2, { '0,0': no('X14'), '0,1': mov('K1000', 'D32') }),
+      R('r4', 1, 2, { '0,0': nc('X14'), '0,1': mov('K2000', 'D40') }),
+      R('r5', 1, 2, { '0,0': nc('X14'), '0,1': mov('K2500', 'D41') }),
+      R('r6', 1, 2, { '0,0': nc('X14'), '0,1': mov('K400', 'D32') }),
+      // Loaded means "go to the rack", empty means "go back for another".
+      R('r7', 1, 2, { '0,0': no('X14'), '0,1': mov('K3400', 'D30') }),
+      R('r8', 1, 2, { '0,0': nc('X14'), '0,1': mov('K400', 'D30') }),
+      R('r9', 1, 2, { '0,0': wire, '0,1': math('sub', 'D30', 'D0', 'D31') }),
+      R('r10', 1, 2, { '0,0': wire, '0,1': math('sub', 'K0', 'D32', 'D33') }),
+      R('r11', 1, 2, { '0,0': cmp('>', 'D31', 'K40'), '0,1': out('Y0') }),
+      R('r12', 1, 2, { '0,0': cmp('<', 'D31', 'K-40'), '0,1': out('Y1') }),
+      R(
+        'r13',
+        2,
+        2,
+        { '0,0': cmp('>', 'D31', 'D32'), '1,0': cmp('<', 'D31', 'D33'), '0,1': mov('K4000', 'D20') },
+        [{ row: 0, col: 1 }],
+      ),
+      R('r14', 1, 3, {
+        '0,0': cmp('<=', 'D31', 'D32'),
+        '0,1': cmp('>=', 'D31', 'D33'),
+        '0,2': mov('K400', 'D20'),
+      }),
+      // Released-and-heading-home latch. Without it the forks close again on
+      // the way back and the pallet count never advances.
+      R('r15', 1, 4, {
+        '0,0': no('X13'),
+        '0,1': no('X14'),
+        '0,2': cmp('=', 'D1', 'K0'),
+        '0,3': set('M0'),
+      }),
+      R('r16', 1, 4, {
+        '0,0': no('X12'),
+        '0,1': nc('X14'),
+        '0,2': cmp('=', 'D1', 'K0'),
+        '0,3': rst('M0'),
+      }),
+      R('r17', 1, 2, { '0,0': nc('M0'), '0,1': out('Y4') }),
+    ],
+  },
+  'axis-crane': {
+    rungs: [
+      R('r1', 1, 2, { '0,0': no('X14'), '0,1': mov('K1000', 'D40') }),
+      R('r2', 1, 2, { '0,0': no('X14'), '0,1': mov('K1200', 'D41') }),
+      R('r3', 1, 2, { '0,0': no('X14'), '0,1': mov('K1000', 'D32') }),
+      R('r4', 1, 2, { '0,0': nc('X14'), '0,1': mov('K2000', 'D40') }),
+      R('r5', 1, 2, { '0,0': nc('X14'), '0,1': mov('K2500', 'D41') }),
+      R('r6', 1, 2, { '0,0': nc('X14'), '0,1': mov('K400', 'D32') }),
+      R('r7', 1, 2, { '0,0': wire, '0,1': mov('K4000', 'D21') }),
+      R('r8', 1, 2, { '0,0': no('X14'), '0,1': mov('K3400', 'D30') }),
+      R('r9', 1, 2, { '0,0': nc('X14'), '0,1': mov('K400', 'D30') }),
+      R('r10', 1, 2, { '0,0': wire, '0,1': math('sub', 'D30', 'D0', 'D31') }),
+      R('r11', 1, 2, { '0,0': wire, '0,1': math('sub', 'K0', 'D32', 'D33') }),
+      // "A transfer is due here": at a station, stopped, swing settled, and
+      // holding the wrong thing for that station. X17 is what keeps the hook
+      // out of the rack while the pallet is still moving.
+      R(
+        'r12',
+        2,
+        5,
+        {
+          '0,0': no('X12'), '0,1': nc('X14'),
+          '1,0': no('X13'), '1,1': no('X14'),
+          '0,2': cmp('=', 'D1', 'K0'), '0,3': no('X17'), '0,4': set('M1'),
+        },
+        [{ row: 0, col: 2 }],
+      ),
+      R(
+        'r13',
+        2,
+        3,
+        {
+          '0,0': no('X12'), '0,1': no('X14'),
+          '1,0': no('X13'), '1,1': nc('X14'),
+          '0,2': rst('M1'),
+        },
+        [{ row: 0, col: 2 }],
+      ),
+      R('r14', 1, 4, { '0,0': no('X0'), '0,1': no('M1'), '0,2': nc('X16'), '0,3': out('Y3') }),
+      R('r15', 1, 4, { '0,0': no('X0'), '0,1': nc('M1'), '0,2': nc('X15'), '0,3': out('Y2') }),
+      R('r16', 1, 4, { '0,0': no('M1'), '0,1': no('X16'), '0,2': no('X12'), '0,3': set('M2') }),
+      R('r17', 1, 4, { '0,0': no('M1'), '0,1': no('X16'), '0,2': no('X13'), '0,3': rst('M2') }),
+      R('r18', 1, 2, { '0,0': no('M2'), '0,1': out('Y4') }),
+      // The trolley only runs with the hook up and nothing pending, which is
+      // the interlock against traversing with the rope paid out.
+      R('r19', 1, 5, {
+        '0,0': no('X0'), '0,1': no('X15'), '0,2': nc('M1'),
+        '0,3': cmp('>', 'D31', 'K40'), '0,4': out('Y0'),
+      }),
+      R('r20', 1, 5, {
+        '0,0': no('X0'), '0,1': no('X15'), '0,2': nc('M1'),
+        '0,3': cmp('<', 'D31', 'K-40'), '0,4': out('Y1'),
+      }),
+      R(
+        'r21',
+        2,
+        2,
+        { '0,0': cmp('>', 'D31', 'D32'), '1,0': cmp('<', 'D31', 'D33'), '0,1': mov('K4000', 'D20') },
+        [{ row: 0, col: 1 }],
+      ),
+      R('r22', 1, 3, {
+        '0,0': cmp('<=', 'D31', 'D32'),
+        '0,1': cmp('>=', 'D31', 'D33'),
+        '0,2': mov('K400', 'D20'),
+      }),
+    ],
+  },
 };
 
 describe('gradeProgram — canonical solutions solve every puzzle', () => {
@@ -1054,6 +1206,128 @@ describe('gradeProgram — analog puzzles reject the plausible wrong answer', ()
     expect(result.solved).toBe(false);
     const trip = result.scenarios.find((s) => s.name.startsWith('Hand mode overfills'))!;
     expect(trip.passed).toBe(false);
+  });
+});
+
+describe('gradeProgram — motion puzzles reject the plausible wrong answer', () => {
+  /** Swap one cell of a canonical solution, without disturbing the original. */
+  function variant(slug: string, patch: (rungs: Rung[]) => void): LadderProgram {
+    const program = structuredClone(solutions[slug]!);
+    patch(program.rungs);
+    return program;
+  }
+
+  /**
+   * The drive is not a motor contactor. It has to be commissioned before it
+   * will turn at all, and both ramp parameters are part of that — which is the
+   * first thing this whole category has to teach.
+   */
+  it('axis-jog: a drive with no ramp parameters refuses to start', () => {
+    const spec = getLadderPuzzle('axis-jog')!;
+    const noParams: LadderProgram = {
+      rungs: [
+        R('r1', 1, 2, { '0,0': wire, '0,1': mov('K1200', 'D20') }),
+        R('r2', 1, 3, { '0,0': no('X0'), '0,1': nc('X11'), '0,2': out('Y0') }),
+        R('r3', 1, 3, { '0,0': no('X1'), '0,1': nc('X10'), '0,2': out('Y1') }),
+      ],
+    };
+    const result = gradeProgram(spec, noParams);
+    expect(result.solved).toBe(false);
+    const failures = result.scenarios.flatMap((s) => s.steps).flatMap((s) => s.failures).join(' ');
+    expect(failures).toContain('parameters were loaded');
+  });
+
+  it('axis-jog: ramping harder than the motor can pull trips it on overcurrent', () => {
+    const spec = getLadderPuzzle('axis-jog')!;
+    const tooHard = variant('axis-jog', (rungs) => {
+      rungs[0]!.cells[0]![1] = mov('K4000', 'D40');
+    });
+    const result = gradeProgram(spec, tooHard);
+    expect(result.solved).toBe(false);
+    const failures = result.scenarios.flatMap((s) => s.steps).flatMap((s) => s.failures).join(' ');
+    expect(failures).toContain('overcurrent');
+  });
+
+  /**
+   * The discriminator for the profile puzzle. Rapid all the way is the answer a
+   * bit-logic instinct gives you: drop the coil when you get there. The drive
+   * does not stop when the coil drops, it starts a ramp, and the carriage is
+   * hundreds of counts past the station window by the time that ramp finishes.
+   */
+  it('axis-profile: rapid all the way sails past the station window', () => {
+    const spec = getLadderPuzzle('axis-profile')!;
+    const noApproach = variant('axis-profile', (rungs) => {
+      // Both speed-reference rungs write full reference: no approach phase.
+      rungs[8]!.cells[0]![2] = mov('K4000', 'D20');
+    });
+    const result = gradeProgram(spec, noApproach);
+    expect(result.solved).toBe(false);
+  });
+
+  /**
+   * The discriminator for the loaded puzzle, in its blunt form: the empty ramp
+   * table asks the motor for torque it does not have the moment a pallet is on
+   * the forks.
+   */
+  it('axis-loaded: the empty ramp table trips the drive as soon as it is loaded', () => {
+    const spec = getLadderPuzzle('axis-loaded')!;
+    const oneTable = variant('axis-loaded', (rungs) => {
+      rungs[0]!.cells[0]![1] = mov('K2000', 'D40');
+      rungs[1]!.cells[0]![1] = mov('K2500', 'D41');
+    });
+    const result = gradeProgram(spec, oneTable);
+    expect(result.solved).toBe(false);
+    const failures = result.scenarios.flatMap((s) => s.steps).flatMap((s) => s.failures).join(' ');
+    expect(failures).toContain('overcurrent');
+  });
+
+  /**
+   * And in its subtle form, which is the one the puzzle is really about: the
+   * ramp *parameters* get swapped, because those are the two numbers the
+   * briefing hands you, but the slow-down distance they imply does not. The
+   * drive is perfectly happy. The pallet still ends up in the wrong place,
+   * because half the ramp rate is twice the stopping distance.
+   */
+  it('axis-loaded: keeping the empty slow-down distance overshoots the drop station', () => {
+    const spec = getLadderPuzzle('axis-loaded')!;
+    const oneDistance = variant('axis-loaded', (rungs) => {
+      rungs[2]!.cells[0]![1] = mov('K400', 'D32');
+    });
+    const result = gradeProgram(spec, oneDistance);
+    expect(result.solved).toBe(false);
+  });
+
+  /**
+   * The discriminator for the crane. Everything about this program is right
+   * except that it treats "stopped" as "settled" — and a load on a rope is
+   * still swinging several seconds after the trolley has stopped dead.
+   */
+  it('axis-crane: lowering before the swing dies catches the rack', () => {
+    const spec = getLadderPuzzle('axis-crane')!;
+    const noWait = variant('axis-crane', (rungs) => {
+      // Same transfer-pending latch, minus the X17 permission.
+      rungs[11]!.cells[0]![3] = wire;
+    });
+    const result = gradeProgram(spec, noWait);
+    expect(result.solved).toBe(false);
+    const failures = result.scenarios.flatMap((s) => s.steps).flatMap((s) => s.failures).join(' ');
+    expect(failures).toContain('swinging');
+  });
+
+  /**
+   * Using the gentle table for everything is not wrong, it is just timid: the
+   * pallets all arrive, nothing trips, and the cycle is slow enough to cost
+   * part of the throughput weight. Same property the packaging cycle times
+   * have, on a puzzle where the temptation to over-derate is much stronger.
+   */
+  it('axis-loaded: derating the empty moves too still solves, but scores less', () => {
+    const spec = getLadderPuzzle('axis-loaded')!;
+    const timid = variant('axis-loaded', (rungs) => {
+      rungs[3]!.cells[0]![1] = mov('K1000', 'D40');
+      rungs[4]!.cells[0]![1] = mov('K1200', 'D41');
+      rungs[5]!.cells[0]![1] = mov('K1000', 'D32');
+    });
+    expectSolvedButNotOptimal(spec, timid);
   });
 });
 

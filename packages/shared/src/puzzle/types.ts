@@ -12,7 +12,8 @@ export type PuzzleCategory =
   | 'packaging'
   | 'pick-place'
   | 'drill'
-  | 'process-control';
+  | 'process-control'
+  | 'motion';
 
 /** Display order of category sections on the puzzle list. */
 export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
@@ -25,6 +26,7 @@ export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
   'pick-place',
   'drill',
   'process-control',
+  'motion',
 ];
 
 export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
@@ -37,6 +39,7 @@ export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
   'pick-place': 'Pick & Place',
   drill: 'Drill Station',
   'process-control': 'Process Control',
+  motion: 'Motion Control',
 };
 
 /** One-line blurb per category for the puzzle-list section headers / nav. */
@@ -51,6 +54,8 @@ export const CATEGORY_BLURBS: Record<PuzzleCategory, string> = {
   drill: 'Clamp, spin up, drill and sort mixed stock through one automatic station.',
   'process-control':
     'Analog signals and regulators: scale a transmitter, then hold a level on setpoint.',
+  motion:
+    'Speed references, ramp parameters and stopping distance on a drive that carries a load.',
 };
 
 /** How a device is drawn/driven on the HMI panel. */

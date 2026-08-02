@@ -152,6 +152,34 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     for integral action and the thing the category is built around. Overflowing the vessel or
     running the discharge pump dry latches the packaging-style `jam`; the pump (and so the
     dry-run fault) is feature-detected off `Y0`, elevator5-door style.
+  - `axis` — the transfer carriage on a variable-frequency drive: the second continuous plant,
+    and the first where the *rate of change* is what the program commands. Position and velocity
+    are carried in milli-counts on the same fixed 10 ms sub-step the tank uses. The program
+    writes a speed reference (`D20`) and a direction (`Y0`/`Y1`); the drive ramps the actual
+    speed toward it at whatever **drive parameter registers** `D40`/`D41` currently say, and
+    position integrates what comes out. Two consequences carry the whole category: a speed
+    reference is not a position (stopping somewhere means seeing the target coming), and the
+    ramp rates are part of the *cycle* rather than constants, because the accel and decel a
+    motor and a set of forks can survive both halve with a pallet on board.
+    - Fixed I/O convention: `D0` position (0..4000 counts of a 2 m stroke), `D1` **signed**
+      actual speed, `D2` hoist, `D3` sway amplitude, `D20`/`D21` speed references, `D40`/`D41`
+      ramp parameters, `X10`/`X11` overtravel limits, `X12`/`X13` station proximity, `X14` load
+      on forks, `X15`–`X17` hook up / hook down / sway OK, `Y0`–`Y4` forward, reverse, hoist up,
+      hoist down, forks. Forks (`Y4`) and hoist (`Y2`) are feature-detected, so one model serves
+      the whole ramp and a puzzle that never wires them cannot fail an interlock it can't see.
+    - **What trips it**: running with a ramp parameter still at zero (a real inverter is not
+      commissioned either), exceeding the accel or decel limit for the *current* load, arriving
+      at a hard end stop above `CRASH_SPEED`, operating the forks with the carriage moving,
+      setting a pallet down anywhere but the drop station, running a *loaded* carriage past the
+      drop station into the rack face, and lowering the crane's hook while the load still swings.
+    - **Sway** is a fixed-point pendulum driven by the trolley's change in speed, with a ~2 s
+      period and a ~1.4 s decay. The program is handed the **amplitude** (`sqrt(x² + (v/ω)²)`),
+      not the instantaneous angle: a swinging load passes through vertical four times a second,
+      so an interlock on the angle would go true at exactly the moment the load moves fastest.
+      `Math.sqrt` is the one transcendental IEEE-754 specifies exactly, so this stays bit-exact.
+      A side effect that falls out of the physics rather than being written in: a ramp lasting
+      about one pendulum period cancels its own excitation, so the *fastest* legal ramp is not
+      the fastest cycle. The crane's `parMs` quietly rewards finding that.
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
   - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
     buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by
@@ -284,10 +312,14 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 35 | `tank-p-control` | medium | a P regulator hand-built from SUB/MUL/ADD, whole-number gain, manual-reset bias | tank |
 | 36 | `tank-pid` | hard | the PID block: integral kills the offset, anti-windup keeps the fill from overshooting | tank |
 | 37 | `tank-auto` | hard | capstone: two recipe setpoints, hand mode, and a high-level trip that latches over both | tank |
+| 38 | `axis-jog` | easy | commission a drive: ramp parameters into D40/D41 before it will start, then jog to both limits | axis |
+| 39 | `axis-profile` | medium | position from a speed reference: signed distance-to-go, rapid, then an approach that starts before the target | axis |
+| 40 | `axis-loaded` | hard | two ramp tables swapped in flight off X14, *and* the stopping distance they imply | axis |
+| 41 | `axis-crane` | hard | capstone: hoist plus traverse, and a load on a rope that is still swinging after the trolley stops | axis |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 `elevator`,
 15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`, 29–32 `drill`,
-33–37 `process-control`.
+33–37 `process-control`, 38–41 `motion`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -435,6 +467,15 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
       correctly against opaque contents and skips a whole scene pass.
     - The bright surface disc floats `SURFACE_LIFT` above the liquid cylinder's top cap rather
       than sitting on it; coplanar the two z-fight and the surface strobes as the level moves.
+  - **`AxisRig3D.tsx`** (`processId: 'axis'`, `interactive`) — procedural for the same reason:
+    the subject is a number moving along a line, and a carriage whose x *is* that number says it
+    better than geometry would. One scene serves all four motion puzzles, growing fork prongs
+    and a hoist rope by feature detection off the machine state exactly as the process model
+    grows its interlocks (`typeof machine.forks === 'number'`, `typeof machine.hoist === 'number'`).
+    The rope is a unit cylinder scaled and re-seated to grow downward (the tank's liquid trick),
+    hung in a group that pivots by `machine.sway` so the swing is a thing you watch rather than
+    a number you read. The rack upright is drawn where the process model's rack face actually
+    is, so overshooting the drop station loaded looks like what it is.
   - **`PickPlaceArm3D.tsx`** (`processId: 'pickPlace'`, `interactive`) — renders the
     Blender-authored `pick-place-arm.glb` (source: `D:\Code\Claude\Design\PickPlaceArm.blend`;
     see the pack/elevator entries above — node names are load-bearing the same way).

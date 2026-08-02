@@ -19,6 +19,7 @@ const PickPlaceArm3D = lazy(() =>
 const TankVessel3D = lazy(() =>
   import('./TankVessel3D').then((m) => ({ default: m.TankVessel3D })),
 );
+const AxisRig3D = lazy(() => import('./AxisRig3D').then((m) => ({ default: m.AxisRig3D })));
 
 /** Reserves the scene's footprint while its chunk downloads (no layout shift). */
 const sceneFallback = <div className="machine3d" style={{ height: 300 }} />;
@@ -28,6 +29,8 @@ const boolOf = (v: unknown): boolean => v === true;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 /** Raw counts as the percent of full scale they stand for: "62% (2480)". */
 const counts = (v: number) => `${Math.round((v / 4000) * 100)}% (${Math.round(v)})`;
+/** The same, keeping the sign, for a drive that runs both ways. */
+const signedCounts = (v: number) => `${v > 0 ? '+' : ''}${counts(v)}`;
 
 /**
  * Puzzle-specific machine visualization. Falls back to nothing when a puzzle has
@@ -144,6 +147,38 @@ export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: 
           {hasPump && (
             <Readout label="Discharge" value={counts(numOf(m.outflow))} on={boolOf(m.pumping)} />
           )}
+        </div>
+      </div>
+    );
+  }
+  if (spec.processId === 'axis') {
+    const m = runner.machine;
+    const hasForks = typeof m.forks === 'number';
+    const hasHoist = typeof m.hoist === 'number';
+    const vel = numOf(m.vel);
+    return (
+      <div className="machine-view panel">
+        <div className="mv-head">
+          <span className="eyebrow">Transfer Carriage</span>
+          <StatusTag tag={axisTag(m)} />
+        </div>
+        <Suspense fallback={sceneFallback}>
+          <AxisRig3D machine={m} height={300} />
+        </Suspense>
+        <div className="mv-readout">
+          <Readout label="Position" value={counts(numOf(m.pos))} on={numOf(m.pos) > 0} />
+          {/* Speed is signed, so it says direction as well as magnitude. */}
+          <Readout label="Speed" value={signedCounts(vel)} on={vel !== 0} />
+          {/* The ramp parameters are the puzzle, so they belong on the panel. */}
+          <Readout label="Ramp" value={`${numOf(m.accel)} / ${numOf(m.decel)}`} on={numOf(m.accel) > 0} />
+          {hasForks && (
+            <Readout label="Load" value={boolOf(m.loaded) ? 'ON FORKS' : '—'} on={boolOf(m.loaded)} />
+          )}
+          {hasHoist && <Readout label="Hook" value={counts(numOf(m.hoist))} on={numOf(m.hoist) > 0} />}
+          {hasHoist && (
+            <Readout label="Sway" value={`${numOf(m.swayAmp)}`} on={numOf(m.swayAmp) > 60} />
+          )}
+          {hasForks && <Readout label="Put away" value={`${numOf(m.placed)}`} on={numOf(m.placed) > 0} />}
         </div>
       </div>
     );
@@ -358,6 +393,21 @@ function tankTag(m: MachineState): MachineTag {
   if (valve >= 3960) return { text: 'valve wide open', icon: 'up' };
   if (valve > 0) return { text: 'filling', icon: 'up' };
   if (boolOf(m.pumping)) return { text: 'discharging', icon: 'down' };
+  return { text: 'idle' };
+}
+
+// --- Traverse axis ------------------------------------------------------------
+
+function axisTag(m: MachineState): MachineTag {
+  if (m.jam === true) return jamTag(m);
+  const vel = numOf(m.vel);
+  if (typeof m.hoist === 'number') {
+    if (numOf(m.swayAmp) > 60 && vel === 0) return { text: 'swinging', icon: 'swing', warn: false };
+    if (numOf(m.hoist) > 0 && numOf(m.hoist) < 4000) return { text: 'hoisting', icon: 'up' };
+  }
+  if (vel > 0) return { text: 'traversing', icon: 'right' };
+  if (vel < 0) return { text: 'returning', icon: 'left' };
+  if (boolOf(m.loaded)) return { text: 'loaded', icon: 'box' };
   return { text: 'idle' };
 }
 

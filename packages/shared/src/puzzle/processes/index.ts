@@ -1,13 +1,14 @@
 import type { PuzzleDevice } from '../types.js';
-// The tank lives in its own file because it is the first plant with continuous
-// state, and its fixed-point contract needs the room to be explained. Its import
-// back here is type-only, so there is no runtime cycle.
+// The two continuous plants live in their own files because their fixed-point
+// contracts need the room to be explained. Their imports back here are
+// type-only, so there is no runtime cycle.
 import { tank } from './tank.js';
+import { axis } from './axis.js';
 
 /** Arbitrary per-puzzle machine state (positions, speeds, flags). */
 export type MachineState = Record<string, number | boolean | string>;
 
-export { tank };
+export { tank, axis };
 
 export interface ProcessStepCtx {
   outputs: Record<string, boolean>; // current Y bits from the PLC
@@ -966,6 +967,7 @@ const pickPlace: ProcessModel = {
 const registry = new Map<string, ProcessModel>([
   [passthrough.id, passthrough],
   [tank.id, tank],
+  [axis.id, axis],
   [conveyor.id, conveyor],
   [drill.id, drill],
   [press.id, press],
