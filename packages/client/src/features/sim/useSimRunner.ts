@@ -10,6 +10,7 @@ import {
   type RungEvalResult,
   type SimSnapshot,
 } from '@automationsolver/shared';
+import { trimDevMeasures } from './devMeasures';
 
 /**
  * Scan interval / dt in ms. Deliberately *the grader's* dt: booleans survived a
@@ -158,7 +159,11 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
   useEffect(() => {
     if (!running) return;
     const id = setInterval(stepOnce, DT);
-    return () => clearInterval(id);
+    const stopTrim = trimDevMeasures();
+    return () => {
+      clearInterval(id);
+      stopTrim();
+    };
   }, [running, stepOnce]);
 
   const setInput = useCallback((address: string, value: boolean) => {

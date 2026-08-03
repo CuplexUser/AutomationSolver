@@ -7,6 +7,7 @@ import {
   type CabinetSimResult,
   type WiringDoc,
 } from '@automationsolver/shared';
+import { trimDevMeasures } from '../sim/devMeasures';
 import type { HmiRunner } from '../sim/useSimRunner';
 
 const DT = GRADE_DT; // solve interval / dt in ms, matching the ladder runner cadence
@@ -57,7 +58,11 @@ export function useCabinetSim(wiring: WiringDoc, spec: CabinetPuzzleSpec): Cabin
   useEffect(() => {
     if (!running) return;
     const id = setInterval(stepOnce, DT);
-    return () => clearInterval(id);
+    const stopTrim = trimDevMeasures();
+    return () => {
+      clearInterval(id);
+      stopTrim();
+    };
   }, [running, stepOnce]);
 
   const setInput = useCallback((address: string, value: boolean) => {

@@ -5,6 +5,7 @@ import {
   type LadderPuzzleSpec,
   type ScenarioTrace,
 } from '@automationsolver/shared';
+import { trimDevMeasures } from './devMeasures';
 import type { SimRunner } from './useSimRunner';
 
 const PLAY_INTERVAL_MS = 80;
@@ -88,7 +89,11 @@ export function useReplay(): ReplayController {
         return i + 1;
       });
     }, PLAY_INTERVAL_MS);
-    return () => clearInterval(id);
+    const stopTrim = trimDevMeasures();
+    return () => {
+      clearInterval(id);
+      stopTrim();
+    };
   }, [playing, trace]);
 
   const history = useMemo(
