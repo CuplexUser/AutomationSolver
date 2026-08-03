@@ -467,15 +467,31 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
       correctly against opaque contents and skips a whole scene pass.
     - The bright surface disc floats `SURFACE_LIFT` above the liquid cylinder's top cap rather
       than sitting on it; coplanar the two z-fight and the surface strobes as the level moves.
-  - **`AxisRig3D.tsx`** (`processId: 'axis'`, `interactive`) — procedural for the same reason:
-    the subject is a number moving along a line, and a carriage whose x *is* that number says it
-    better than geometry would. One scene serves all four motion puzzles, growing fork prongs
-    and a hoist rope by feature detection off the machine state exactly as the process model
-    grows its interlocks (`typeof machine.forks === 'number'`, `typeof machine.hoist === 'number'`).
-    The rope is a unit cylinder scaled and re-seated to grow downward (the tank's liquid trick),
-    hung in a group that pivots by `machine.sway` so the swing is a thing you watch rather than
-    a number you read. The rack upright is drawn where the process model's rack face actually
-    is, so overshooting the drop station loaded looks like what it is.
+  - **`AxisRig3D.tsx`** (`processId: 'axis'`, `interactive` + `panBounds`) —
+    `transfer-carriage.glb`: a portal gantry with a traversing trolley, a rope hoist and a pair
+    of fork arms that close **across the aisle** on a `ForkHead` turned 90°. That one shape
+    decision is what makes the machine buildable — whatever is wide along the travel sweeps the
+    whole stroke and has to clear every column, rack frame and end stop, while whatever is wide
+    across it only has to fit the aisle once. One scene serves all four motion puzzles, parking
+    the hoist and the forks by feature detection off the machine state exactly as the process
+    model grows its interlocks (`machine.hasForks`, `machine.hasHoist`).
+    - The blend is dimensioned **from** the process model, not eyeballed: 0..4000 counts of
+      stroke *is* the runway between the buffers, so `xOf()` is a straight mapping. Wheel
+      rotation is derived from travel (one turn per 2πr), the rope's payout and the drum's
+      rotation are the same number, and the festoon carriers spread evenly between the trolley
+      and the fixed anchor the way a real one does.
+    - Sway pivots `RopeSwing` by `machine.sway` — the *instantaneous* angle, not the amplitude
+      the program interlocks against — over a pendulum of rope length **plus 1.45**, the
+      distance the load hangs below the block. Bare rope length makes the carriage cartwheel
+      with the hook right up under the drum.
+    - The glb is exported Y-up, so Blender's Z became three's Y and a Blender rotation about Y
+      became a three rotation about Z **negated**. That is the only coordinate wrinkle, and it
+      is why the drum, the wheels and the sway all carry a minus sign.
+    - Lamps are driven in place, so each driven lens has its **own material** in the blend
+      (`Stack Green`, `Stack Red`, `LED Pick`, `LED Drop`, `LED Beacon`) and the scene is cloned
+      per instance on top of that. Green/red is healthy-versus-faulted; the two station lamps
+      are X12/X13 read off the same window the process model uses; the trolley beacon flashes
+      while the drive runs, the one thing on the rig with a clock of its own.
   - **`PickPlaceArm3D.tsx`** (`processId: 'pickPlace'`, `interactive`) — renders the
     Blender-authored `pick-place-arm.glb` (source: `D:\Code\Claude\Design\PickPlaceArm.blend`;
     see the pack/elevator entries above — node names are load-bearing the same way).

@@ -1,337 +1,302 @@
 import { useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import type { MachineState } from '@automationsolver/shared';
-import { MachineCanvas } from './MachineCanvas';
+import { MachineCanvas, enableShadows, DRACO_DECODER_PATH } from './MachineCanvas';
 
 /**
- * The traverse rig, built procedurally for the same reason `TankVessel3D` is:
- * its whole subject is a number moving along a line, and a carriage whose x *is*
- * that number says it better than a hero model would. One scene serves the whole
- * motion ramp, growing forks and a hoist rope by feature detection off the
- * machine state, exactly as the process model grows its interlocks.
+ * The transfer carriage: a portal gantry with a traversing trolley, a rope
+ * hoist and a pair of fork arms that close across the aisle onto a pallet.
  *
- * Nothing animates on its own. Position, speed, fork opening, hook height and
- * rope angle are pure functions of `machine.*` every frame.
+ * Every number below is the model's own, and the model's numbers came from the
+ * process model (`processes/axis.ts`) rather than the other way round — the
+ * blend is dimensioned so that 0..4000 counts of stroke *is* the runway between
+ * the buffers, so `xOf()` here is a straight mapping rather than a fudge factor.
+ * Nothing animates on its own: position, wheel rotation, rope payout, sway
+ * angle, fork opening and every lamp are pure functions of `machine.*`.
+ *
+ * The glb is authored at real scale (a 12.5 m girder over a 9.9 m stroke) and
+ * exported Y-up, so Blender's Z became three's Y and a Blender rotation about Y
+ * became a three rotation about Z, negated. That is the only coordinate wrinkle
+ * in the file, and it is why the drum, the wheels and the sway all carry a
+ * minus sign.
  */
 
-const COUNTS_FULL = 4000;
-
-// Rail geometry, in scene units. The rail spans RAIL_X either side of centre.
-const RAIL_X = 4.2;
-const RAIL_Y = 2.5;
-const CARRIAGE_W = 0.9;
-
-/** Where the two work stations sit, in counts (must match the process model). */
-const PICK_POS = 400;
-const DROP_POS = 3400;
-
-/** How far the hook drops at full hoist travel. */
-const HOOK_DROP = 1.9;
-/** Sway counts to radians. 500 counts is a visibly alarming swing. */
-const SWAY_RAD = 0.0007;
+const MODEL_URL = '/models/transfer-carriage.glb';
 
 const numOf = (v: unknown, f = 0): number => (typeof v === 'number' ? v : f);
 const boolOf = (v: unknown): boolean => v === true;
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
-/** Counts along the stroke to a scene x. */
-const xOf = (counts: number): number => -RAIL_X + (clamp01(counts / COUNTS_FULL) * RAIL_X * 2);
 
-const STEEL = { color: '#9aa4b0', metalness: 0.85, roughness: 0.38 };
-const DARK_STEEL = { color: '#5d6874', metalness: 0.8, roughness: 0.45 };
-const TRIM = { color: '#c2603a', metalness: 0.3, roughness: 0.55 };
+const COUNTS_FULL = 4000;
+/** Where the two work stations sit, in counts (must match the process model). */
+const PICK_POS = 400;
+const DROP_POS = 3400;
+const STATION_WINDOW = 60;
 
-/** Rail, end stops, gantry legs and the floor the whole thing stands on. */
-function Structure() {
-  return (
-    <group>
-      {/* The rail itself. */}
-      <mesh position={[0, RAIL_Y, 0]} rotation={[0, 0, Math.PI / 2]} castShadow receiveShadow>
-        <cylinderGeometry args={[0.09, 0.09, RAIL_X * 2 + 0.6, 20]} />
-        <meshStandardMaterial {...STEEL} />
-      </mesh>
-      {/* A box beam under it, so the rail reads as carried rather than floating. */}
-      <mesh position={[0, RAIL_Y + 0.28, 0]} castShadow receiveShadow>
-        <boxGeometry args={[RAIL_X * 2 + 0.6, 0.26, 0.34]} />
-        <meshStandardMaterial {...DARK_STEEL} />
-      </mesh>
-      {/* End stops: the hard limits the carriage must never arrive at quickly. */}
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * (RAIL_X + 0.22), RAIL_Y, 0]} castShadow>
-          <boxGeometry args={[0.18, 0.44, 0.44]} />
-          <meshStandardMaterial {...TRIM} />
-        </mesh>
-      ))}
-      {/* Gantry legs. */}
-      {[-1, 1].map((side) => (
-        <mesh key={side} position={[side * (RAIL_X + 0.1), RAIL_Y / 2, 0]} castShadow>
-          <boxGeometry args={[0.22, RAIL_Y, 0.22]} />
-          <meshStandardMaterial {...DARK_STEEL} />
-        </mesh>
-      ))}
-      <mesh position={[0, -0.02, 0]} receiveShadow>
-        <boxGeometry args={[RAIL_X * 2 + 2, 0.04, 3.4]} />
-        <meshStandardMaterial color="#39414c" roughness={0.95} metalness={0} />
-      </mesh>
-    </group>
-  );
-}
+/** Half the stroke, in model units: the buffers meet at exactly +/-HALF_X. */
+const HALF_X = 4.95;
+/** Counts along the stroke to a model x. */
+const xOf = (counts: number): number => -HALF_X + clamp01(counts / COUNTS_FULL) * HALF_X * 2;
 
+// --- hoist ----------------------------------------------------------------
+/** Height the falls leave the drum, and the top of the rope sockets below. */
+const ROPE_TOP = 3.56;
+const SOCKET_TOP = 0.14;
+/** Rope block height at full hoist (4000 counts) and the travel above it. */
+const BLOCK_DOWN = 2.1325;
+const HOIST_TRAVEL = 1.14;
+const BLOCK_UP = BLOCK_DOWN + HOIST_TRAVEL;
+const DRUM_R = 0.185;
+const WHEEL_R = 0.13;
+
+/** 1000 counts of sway is half a metre of swing at the trolley. */
+const SWAY_PER_COUNT = 0.0005;
 /**
- * The two work stations. The pick station is a plain pedestal; the drop station
- * is a rack, and its upright is the thing a loaded carriage hits if it overshoots
- * — so it is drawn where the process model's rack face actually is.
+ * How far below the rope block the swinging mass sits — the fork carriage, the
+ * arms and whatever is on them. Added to the rope to get the pendulum length,
+ * because with the hook right up under the drum the bare rope is a few
+ * centimetres and the load would appear to cartwheel rather than lean.
  */
-function Stations() {
-  return (
-    <group>
-      <mesh position={[xOf(PICK_POS), 0.35, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.7, 0.7, 0.7]} />
-        <meshStandardMaterial color="#4b5563" metalness={0.3} roughness={0.7} />
-      </mesh>
-      <mesh position={[xOf(DROP_POS), 0.35, 0]} castShadow receiveShadow>
-        <boxGeometry args={[0.7, 0.7, 0.7]} />
-        <meshStandardMaterial color="#4b5563" metalness={0.3} roughness={0.7} />
-      </mesh>
-      {/* Rack upright just past the drop station. */}
-      <mesh position={[xOf(DROP_POS) + 0.55, 0.95, 0]} castShadow>
-        <boxGeometry args={[0.12, 1.9, 0.8]} />
-        <meshStandardMaterial {...TRIM} />
-      </mesh>
-      {/* Station marks painted on the floor. */}
-      {[PICK_POS, DROP_POS].map((p) => (
-        <mesh key={p} position={[xOf(p), 0.012, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[0.52, 0.6, 32]} />
-          <meshStandardMaterial color="#fbbf24" emissive="#fbbf24" emissiveIntensity={0.3} />
-        </mesh>
-      ))}
-    </group>
-  );
+const LOAD_CG_BELOW_BLOCK = 1.45;
+
+// --- fork arms ------------------------------------------------------------
+// The arms close ACROSS the aisle, on a head turned 90 degrees, so these are
+// local x on that head. Open, the tips clear the pallet; shut, the tines are
+// home in its fork pockets.
+const FORK_OPEN_X = 1.01;
+const FORK_SHUT_X = 0.58;
+/** Positioner rod: where it leaves its gland, and where it lands on the shank. */
+const ROD_ANCHOR_X = 0.398;
+const ROD_TIP_INSET = 0.075;
+
+// --- festoon --------------------------------------------------------------
+// Cable carriers spread evenly between the trolley's tow arm and the fixed
+// anchor at the far end, which is what a real festoon does on its own; the
+// straight spans between them are unit boxes scaled to bridge each gap.
+const FEST_ANCHOR_X = 12.5 / 2 - 0.22;
+const FEST_CARRIERS = 7;
+const FEST_TOW_DX = 0.34;
+
+/** Beacon flash period while the drive is running, in seconds. */
+const BEACON_PERIOD = 0.9;
+
+interface Lamp {
+  mat: THREE.MeshStandardMaterial;
+  on: string;
+  off: string;
+  lit: number;
 }
 
 interface Refs {
-  carriage: THREE.Group | null;
-  forkL: THREE.Mesh | null;
-  forkR: THREE.Mesh | null;
-  rope: THREE.Group | null;
-  ropeMesh: THREE.Mesh | null;
-  hook: THREE.Group | null;
-  pallet: THREE.Mesh | null;
-  palletMat: THREE.MeshStandardMaterial | null;
-  placedPallet: THREE.Mesh | null;
-  waitingPallet: THREE.Mesh | null;
+  trolley?: THREE.Object3D;
+  wheels: THREE.Object3D[];
+  drum?: THREE.Object3D;
+  swing?: THREE.Object3D;
+  ropes: THREE.Object3D[];
+  block?: THREE.Object3D;
+  forkL?: THREE.Object3D;
+  forkR?: THREE.Object3D;
+  rods: THREE.Object3D[];
+  carriers: THREE.Object3D[];
+  spans: THREE.Object3D[];
+  carried?: THREE.Object3D;
+  waiting?: THREE.Object3D;
+  placed?: THREE.Object3D;
+  lamps: Partial<Record<'green' | 'red' | 'pick' | 'drop' | 'beacon', Lamp>>;
 }
 
-function Scene({ machine }: { machine: MachineState }) {
-  const refs = useRef<Refs>({
-    carriage: null,
-    forkL: null,
-    forkR: null,
-    rope: null,
-    ropeMesh: null,
-    hook: null,
-    pallet: null,
-    palletMat: null,
-    placedPallet: null,
-    waitingPallet: null,
-  });
-
-  // Feature detection, mirroring the process model's own: a puzzle with no
-  // forks has no `forks` key, and the rig simply does not grow them.
-  const hasForks = typeof machine.forks === 'number';
-  const hasHoist = typeof machine.hoist === 'number';
-
-  const loadColor = useMemo(() => new THREE.Color('#c2905a'), []);
-  const faultColor = useMemo(() => new THREE.Color('#d4442f'), []);
-
-  useFrame(() => {
-    const r = refs.current;
-    const pos = numOf(machine.pos);
-    const faulted = boolOf(machine.jam);
-
-    if (r.carriage) r.carriage.position.x = xOf(pos);
-
-    // Forks: the two prongs slide together as the command closes them.
-    const open = 1 - clamp01(numOf(machine.forks));
-    const gap = 0.16 + open * 0.22;
-    if (r.forkL) {
-      r.forkL.position.x = -gap;
-      r.forkL.visible = hasForks;
-    }
-    if (r.forkR) {
-      r.forkR.position.x = gap;
-      r.forkR.visible = hasForks;
-    }
-
-    // Hoist: the rope pays out and the load hangs at the bottom of it. The rope
-    // is a unit cylinder scaled and re-seated so it grows downward from the
-    // carriage, the same trick the tank's liquid column uses.
-    const drop = hasHoist ? 0.28 + (clamp01(numOf(machine.hoist) / COUNTS_FULL) * HOOK_DROP) : 0.28;
-    if (r.ropeMesh) {
-      r.ropeMesh.scale.y = drop;
-      r.ropeMesh.position.y = -drop / 2;
-    }
-    if (r.hook) r.hook.position.y = -drop;
-    // Sway pivots the whole rope about where it leaves the carriage.
-    if (r.rope) r.rope.rotation.z = hasHoist ? numOf(machine.sway) * SWAY_RAD : 0;
-
-    const carrying = boolOf(machine.loaded);
-    if (r.pallet) r.pallet.visible = hasForks && carrying;
-    if (r.palletMat) r.palletMat.color.copy(faulted ? faultColor : loadColor);
-    // The infeed is bottomless in the process model, so a fresh pallet is always
-    // waiting unless this one is already on the forks.
-    if (r.waitingPallet) r.waitingPallet.visible = hasForks && !carrying;
-    // Whatever has already been put away sits on the rack.
-    if (r.placedPallet) r.placedPallet.visible = hasForks && numOf(machine.placed) > 0;
-  });
-
-  return (
-    <group position={[0, -1.4, 0]}>
-      <Structure />
-      <Stations />
-
-      {/* Pallet waiting at the pick station, unless it is on the forks. */}
-      <mesh
-        ref={(m) => {
-          refs.current.waitingPallet = m;
-        }}
-        position={[xOf(PICK_POS), 0.82, 0]}
-        castShadow
-      >
-        <boxGeometry args={[0.5, 0.24, 0.5]} />
-        <meshStandardMaterial color="#8a6a44" roughness={0.85} metalness={0} />
-      </mesh>
-      <mesh
-        ref={(m) => {
-          refs.current.placedPallet = m;
-        }}
-        position={[xOf(DROP_POS), 0.82, 0]}
-        castShadow
-      >
-        <boxGeometry args={[0.5, 0.24, 0.5]} />
-        <meshStandardMaterial color="#8a6a44" roughness={0.85} metalness={0} />
-      </mesh>
-
-      <group
-        ref={(g) => {
-          refs.current.carriage = g;
-        }}
-        position={[xOf(PICK_POS), RAIL_Y, 0]}
-      >
-        {/* Trolley body straddling the rail. */}
-        <mesh castShadow>
-          <boxGeometry args={[CARRIAGE_W, 0.42, 0.6]} />
-          <meshStandardMaterial color="#6b7683" metalness={0.7} roughness={0.4} />
-        </mesh>
-        <mesh position={[0, 0.26, 0]} castShadow>
-          <boxGeometry args={[CARRIAGE_W * 0.6, 0.14, 0.5]} />
-          <meshStandardMaterial {...TRIM} />
-        </mesh>
-
-        {/* Rope and everything hanging off it, pivoted at the trolley. */}
-        <group
-          ref={(g) => {
-            refs.current.rope = g;
-          }}
-          position={[0, -0.2, 0]}
-        >
-          <mesh
-            ref={(m) => {
-              refs.current.ropeMesh = m;
-            }}
-          >
-            <cylinderGeometry args={[0.025, 0.025, 1, 8]} />
-            <meshStandardMaterial color="#cbd5e1" metalness={0.6} roughness={0.5} />
-          </mesh>
-          <group
-            ref={(g) => {
-              refs.current.hook = g;
-            }}
-          >
-            <mesh castShadow>
-              <boxGeometry args={[0.42, 0.14, 0.42]} />
-              <meshStandardMaterial {...DARK_STEEL} />
-            </mesh>
-            {/* Fork prongs. */}
-            <mesh
-              ref={(m) => {
-                refs.current.forkL = m;
-              }}
-              position={[-0.24, -0.12, 0]}
-              castShadow
-            >
-              <boxGeometry args={[0.08, 0.12, 0.52]} />
-              <meshStandardMaterial {...STEEL} />
-            </mesh>
-            <mesh
-              ref={(m) => {
-                refs.current.forkR = m;
-              }}
-              position={[0.24, -0.12, 0]}
-              castShadow
-            >
-              <boxGeometry args={[0.08, 0.12, 0.52]} />
-              <meshStandardMaterial {...STEEL} />
-            </mesh>
-            {/* The pallet, once the forks have it. */}
-            <mesh
-              ref={(m) => {
-                refs.current.pallet = m;
-              }}
-              position={[0, -0.3, 0]}
-              castShadow
-            >
-              <boxGeometry args={[0.5, 0.24, 0.5]} />
-              <meshStandardMaterial
-                ref={(m) => {
-                  refs.current.palletMat = m;
-                }}
-                color="#c2905a"
-                roughness={0.85}
-                metalness={0}
-              />
-            </mesh>
-          </group>
-        </group>
-      </group>
-    </group>
-  );
+/** Collects `Name_0`, `Name_1`, ... until the first gap. */
+function series(scene: THREE.Object3D, prefix: string): THREE.Object3D[] {
+  const found: THREE.Object3D[] = [];
+  for (let i = 0; ; i++) {
+    const obj = scene.getObjectByName(`${prefix}${i}`);
+    if (!obj) return found;
+    found.push(obj);
+  }
 }
 
-const VIEW_TARGET: [number, number, number] = [0, 0.5, 0];
-/** Which way the camera sits from the target. Only the direction matters. */
-const VIEW_DIR: [number, number, number] = [-1.5, 2.1, 6.8];
 /**
- * How far out the view opens, which is *not* the same thing as `minDistance`.
- * OrbitControls clamps the initial camera into its zoom range on the first
- * update, so a `cameraPosition` written closer than `minDistance` silently
- * opens hard against the near stop rather than where it was put.
+ * Gives a lens its own copy of its material so it can be lit in isolation.
+ *
+ * Idempotent for the same reason the drill station's is: the memo that calls
+ * this can run more than once for one scene (React deliberately double-invokes
+ * memo factories in dev), and cloning afresh each time would leave the mesh
+ * wearing a material the refs no longer point at.
  */
-const VIEW_DISTANCE = 12;
+function lamp(obj: THREE.Object3D | undefined, on: string, off: string): Lamp | undefined {
+  const mesh = obj as THREE.Mesh | undefined;
+  const base = mesh?.material as THREE.MeshStandardMaterial | undefined;
+  if (!mesh || !base) return undefined;
+  const mat =
+    base.userData.lampOwner === true
+      ? base
+      : (() => {
+          const copy = base.clone();
+          copy.userData = { ...copy.userData, lampOwner: true };
+          mesh.material = copy;
+          return copy;
+        })();
+  return { mat, on, off, lit: 0 };
+}
 
-/** Place a camera `distance` from `target`, along the direction `dir` points. */
-function orbitPos(
-  target: [number, number, number],
-  dir: [number, number, number],
-  distance: number,
-): [number, number, number] {
-  const k = distance / Math.hypot(...dir);
-  return [target[0] + dir[0] * k, target[1] + dir[1] * k, target[2] + dir[2] * k];
+/** Drives one lens between its dark and lit colors. */
+function light(l: Lamp | undefined, on: boolean): void {
+  if (!l) return;
+  l.mat.color.set(on ? l.on : l.off);
+  l.mat.emissive.set(on ? l.on : l.off);
+  l.mat.emissiveIntensity = on ? 1.2 : 0.15;
+}
+
+function TransferCarriageScene({ machine }: { machine: MachineState }) {
+  const { scene: cached } = useGLTF(MODEL_URL, DRACO_DECODER_PATH);
+  // useGLTF hands out one cached scene per URL and this scene both poses nodes
+  // and repaints lamp materials every frame. Cloning per instance keeps the
+  // cache pristine; geometries and untouched materials are still shared.
+  const scene = useMemo(() => cached.clone(true), [cached]);
+
+  const refs = useMemo<Refs>(() => {
+    enableShadows(scene);
+    const find = (name: string) => scene.getObjectByName(name) ?? undefined;
+    return {
+      trolley: find('Trolley'),
+      wheels: series(scene, 'TrolleyWheel_'),
+      drum: find('HoistDrum'),
+      swing: find('RopeSwing'),
+      ropes: [find('RopeA'), find('RopeB')].filter((o): o is THREE.Object3D => o != null),
+      block: find('HoistBlock'),
+      forkL: find('ForkL'),
+      forkR: find('ForkR'),
+      rods: [find('PosRod_L'), find('PosRod_R')].filter((o): o is THREE.Object3D => o != null),
+      carriers: series(scene, 'FestoonCarrier_'),
+      spans: series(scene, 'FestoonSpan_'),
+      carried: find('PalletCarried'),
+      waiting: find('PalletWaiting'),
+      placed: find('PalletPlaced'),
+      lamps: {
+        green: lamp(find('StackLightGreen'), '#00c040', '#0a2410'),
+        red: lamp(find('StackLightRed'), '#ff2020', '#3a0a0a'),
+        pick: lamp(find('ProxLedPick'), '#ffb020', '#3a2408'),
+        drop: lamp(find('ProxLedDrop'), '#ffb020', '#3a2408'),
+        beacon: lamp(find('TrolleyBeacon'), '#ffb020', '#3a2408'),
+      },
+    };
+  }, [scene]);
+
+  /** Beacon phase. A flashing lamp is the clearest "this is moving" cue there
+      is at this canvas size, and it is the one thing on the rig that needs a
+      clock of its own rather than a machine value. */
+  const beacon = useRef(0);
+
+  // The loaded glTF scene graph is external-system state — posing it
+  // imperatively every frame is the standard r3f pattern and avoids
+  // re-rendering the React tree on every sim tick.
+  /* eslint-disable react-hooks/immutability */
+  useFrame((_state, dt) => {
+    const r = refs;
+    const pos = numOf(machine.pos);
+    const jam = boolOf(machine.jam);
+    const running = boolOf(machine.running);
+    // Feature detection mirrors the process model's own: a puzzle that never
+    // wires the hoist or the forks reports neither, and the rig simply parks
+    // them rather than inventing motion.
+    const hasForks = boolOf(machine.hasForks);
+    const hasHoist = boolOf(machine.hasHoist);
+
+    const tx = xOf(pos);
+    if (r.trolley) r.trolley.position.x = tx;
+    // Wheels roll rather than skid: one turn per 2*pi*r of runway.
+    for (const w of r.wheels) w.rotation.z = -tx / WHEEL_R;
+
+    // Hoist. The rope is a unit cylinder scaled to the gap between the drum and
+    // the block, so the block's height and the rope's length are one number.
+    const hoist01 = hasHoist ? clamp01(numOf(machine.hoist) / COUNTS_FULL) : 0;
+    const blockY = BLOCK_UP - hoist01 * HOIST_TRAVEL;
+    const ropeLen = Math.max(0.02, ROPE_TOP - (blockY + SOCKET_TOP));
+    if (r.block) r.block.position.y = blockY - ROPE_TOP;
+    for (const rope of r.ropes) rope.scale.y = ropeLen;
+    // The drum turns by exactly the rope it has let out.
+    if (r.drum) r.drum.rotation.z = -ropeLen / DRUM_R;
+
+    // Sway swings the whole fall about where the rope leaves the drum. This is
+    // the instantaneous angle (`machine.sway`), not the amplitude the program
+    // interlocks against — the load is what it is, whatever the meter reports.
+    if (r.swing) {
+      const lateral = hasHoist ? numOf(machine.sway) * SWAY_PER_COUNT : 0;
+      const ratio = lateral / (ropeLen + LOAD_CG_BELOW_BLOCK);
+      r.swing.rotation.z = Math.asin(Math.max(-0.5, Math.min(0.5, ratio)));
+    }
+
+    const forks = hasForks ? clamp01(numOf(machine.forks)) : 0;
+    const fx = FORK_OPEN_X - forks * (FORK_OPEN_X - FORK_SHUT_X);
+    if (r.forkL) r.forkL.position.x = -fx;
+    if (r.forkR) r.forkR.position.x = fx;
+    const rod = Math.max(0.01, fx - ROD_TIP_INSET - ROD_ANCHOR_X);
+    for (const p of r.rods) p.scale.x = rod;
+
+    // Festoon: carriers spread evenly between the trolley and the fixed end,
+    // and each span bridges one gap.
+    const tow = tx + FEST_TOW_DX;
+    let from = tow;
+    for (let i = 0; i <= FEST_CARRIERS; i++) {
+      const to =
+        i === FEST_CARRIERS
+          ? FEST_ANCHOR_X
+          : tow + ((FEST_ANCHOR_X - tow) * (i + 1)) / (FEST_CARRIERS + 1);
+      const carrier = r.carriers[i];
+      if (carrier) carrier.position.x = to;
+      const span = r.spans[i];
+      if (span) {
+        span.position.x = from;
+        span.scale.x = Math.max(0.02, to - from);
+      }
+      from = to;
+    }
+
+    const carrying = hasForks && boolOf(machine.loaded);
+    if (r.carried) r.carried.visible = carrying;
+    // The infeed is bottomless in the process model, so a fresh pallet is
+    // always waiting unless this one is already on the forks.
+    if (r.waiting) r.waiting.visible = hasForks && !carrying;
+    if (r.placed) r.placed.visible = hasForks && numOf(machine.placed) > 0;
+
+    // Lamps. Green is the machine's own "healthy" light and red is the fault,
+    // exactly as on the drill station; the two station lamps are X12 and X13,
+    // read off the same window the process model uses.
+    light(r.lamps.green, !jam);
+    light(r.lamps.red, jam);
+    light(r.lamps.pick, Math.abs(pos - PICK_POS) <= STATION_WINDOW);
+    light(r.lamps.drop, Math.abs(pos - DROP_POS) <= STATION_WINDOW);
+    beacon.current = running || jam ? (beacon.current + dt) % BEACON_PERIOD : 0;
+    light(r.lamps.beacon, beacon.current < BEACON_PERIOD / 2);
+  });
+  /* eslint-enable react-hooks/immutability */
+
+  return <primitive object={scene} />;
 }
 
 export function AxisRig3D({ machine, height = 300 }: { machine: MachineState; height?: number }) {
   return (
     <MachineCanvas
       height={height}
-      cameraPosition={orbitPos(VIEW_TARGET, VIEW_DIR, VIEW_DISTANCE)}
-      fov={45}
-      target={VIEW_TARGET}
-      minDistance={10}
-      maxDistance={20}
-      polarRange={[0.5, 1.4]}
-      interactive
+      // Three quarters on, and low: the whole subject is a carriage travelling
+      // along a line, which an overhead view flattens away. Framed to hold all
+      // 12.5 m of girder across a panel-width canvas.
+      cameraPosition={[6.4, 5.6, 13.1]}
+      fov={28}
+      target={[0, 2.2, 0]}
+      minDistance={8}
+      maxDistance={40}
+      polarRange={[0.35, 1.45]}
+      // The machine is twelve metres of runway with two stations at opposite
+      // ends of it, so a zoomed-in view has to be able to travel to the end
+      // being watched rather than only orbiting the middle.
+      panBounds={{ x: [-7, 7], y: [0.5, 6], z: [-4, 4] }}
     >
-      <Scene machine={machine} />
+      <TransferCarriageScene machine={machine} />
     </MachineCanvas>
   );
 }
+
+useGLTF.preload(MODEL_URL, DRACO_DECODER_PATH);
