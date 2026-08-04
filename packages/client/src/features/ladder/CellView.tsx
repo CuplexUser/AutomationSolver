@@ -66,7 +66,11 @@ interface CellText {
  * alone.
  */
 function cellText(element: LadderElement): CellText {
-  const [a = '?', b = '?'] = element.operands ?? [];
+  // A block can be placed before it is fully named, so every slot falls back to
+  // `?` — an unfilled field should read as an unfilled field on the rung, not as
+  // a blank space that looks finished.
+  const a = element.operands?.[0] || '?';
+  const b = element.operands?.[1] || '?';
   const dest = element.device || '?';
   switch (element.type) {
     case 'compare':
@@ -80,7 +84,7 @@ function cellText(element: LadderElement): CellText {
       return { top: [a, '/', b], dest };
     default:
       return {
-        top: [element.device],
+        top: [element.device || '?'],
         preset:
           (element.type === 'timer' || element.type === 'counter') && element.preset != null
             ? `K${element.preset}`
@@ -91,18 +95,20 @@ function cellText(element: LadderElement): CellText {
 
 /** Spoken form for the cell button's aria-label, since the glyphs are terse. */
 export function describeElement(element: LadderElement): string {
-  const [a = '?', b = '?'] = element.operands ?? [];
+  const a = element.operands?.[0] || 'nothing yet';
+  const b = element.operands?.[1] || 'nothing yet';
+  const dest = element.device || 'nothing yet';
   switch (element.type) {
     case 'compare':
       return `compare ${a} ${element.op ?? '='} ${b}`;
     case 'mov':
-      return `move ${a} into ${element.device}`;
+      return `move ${a} into ${dest}`;
     case 'math':
-      return `${MATH_MNEMONIC[(element.op as MathOp) ?? 'add']} ${a} and ${b} into ${element.device}`;
+      return `${MATH_MNEMONIC[(element.op as MathOp) ?? 'add']} ${a} and ${b} into ${dest}`;
     case 'pid':
-      return `PID loop, setpoint ${a}, measured ${b}, output ${element.device}`;
+      return `PID loop, setpoint ${a}, measured ${b}, output ${dest}`;
     default:
-      return `${element.type} ${element.device}`;
+      return `${element.type} ${dest}`;
   }
 }
 

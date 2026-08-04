@@ -67,6 +67,23 @@ describe('MOV', () => {
     engine.scan(50);
     expect(engine.getRegister('D0')).toBe(0);
   });
+
+  it('stacks after one condition: several writes, one contact', () => {
+    // X0 --[MOV K10 D30]--[MOV K20 D33]--( Y0 )--
+    const engine = new SimEngine(
+      program(rung('r1', [no('X0'), mov('K10', 'D30'), mov('K20', 'D33'), out('Y0')])),
+    );
+    engine.scan(50);
+    expect(engine.getRegister('D30')).toBe(0);
+    expect(engine.getRegister('D33')).toBe(0);
+    expect(engine.getBit('Y0')).toBe(false);
+
+    engine.setInput('X0', true);
+    engine.scan(50);
+    expect(engine.getRegister('D30')).toBe(10);
+    expect(engine.getRegister('D33')).toBe(20);
+    expect(engine.getBit('Y0')).toBe(true);
+  });
 });
 
 describe('arithmetic', () => {

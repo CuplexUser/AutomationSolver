@@ -1,5 +1,6 @@
 import { parseAddress } from '../ladder/address.js';
 import {
+  allowedDeviceKinds,
   COMPARE_OPS,
   isConducting,
   isOutput,
@@ -19,27 +20,6 @@ export interface ValidationResult {
   errors: string[];
   /** Non-blocking advice: the program still grades, but something looks wrong. */
   warnings: string[];
-}
-
-/** Device kinds each element role may legally reference. */
-function allowedKinds(type: ElementType): ReadonlySet<string> {
-  switch (type) {
-    case 'coil-out':
-    case 'coil-set':
-      return new Set(['Y', 'M']);
-    case 'coil-reset':
-      return new Set(['Y', 'M', 'T', 'C', 'D']);
-    case 'timer':
-      return new Set(['T']);
-    case 'counter':
-      return new Set(['C']);
-    case 'mov':
-    case 'math':
-    case 'pid':
-      return new Set(['D']);
-    default: // contacts
-      return new Set(['X', 'Y', 'M', 'T', 'C']);
-  }
 }
 
 /** How many word operands each instruction takes. */
@@ -104,10 +84,16 @@ function checkElement(el: LadderElement, where: string, errors: string[]): void 
 
   const ref = parseAddress(el.device);
   if (!ref) {
-    errors.push(`${where}: invalid device address "${el.device}"`);
+    // The editor lets a block be placed before it is addressed, so an empty
+    // device is the ordinary "not finished yet" case, not a corrupt program.
+    errors.push(
+      el.device.trim() === ''
+        ? `${where}: ${el.type} has no device address yet`
+        : `${where}: invalid device address "${el.device}"`,
+    );
     return;
   }
-  const kinds = allowedKinds(el.type);
+  const kinds = allowedDeviceKinds(el.type);
   if (!kinds.has(ref.kind)) {
     errors.push(`${where}: ${el.type} cannot reference ${ref.kind} device (${el.device})`);
   }
@@ -139,7 +125,9 @@ function duplicateOutputWarnings(program: LadderProgram): string[] {
     const seen = new Set<string>();
     for (const row of rung.cells) {
       for (const el of row) {
-        if (!el || !LAST_WRITER_WINS.has(el.type) || seen.has(el.device)) continue;
+        // A block placed but not yet addressed isn't a double coil; the
+        // per-element check already asks it for an address.
+        if (!el || !el.device || !LAST_WRITER_WINS.has(el.type) || seen.has(el.device)) continue;
         seen.add(el.device);
         const rungs = rungsByDevice.get(el.device);
         if (rungs) rungs.push(ri + 1);

@@ -2,17 +2,20 @@
 .ladder-editor {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 8px;
   flex: 1 1 auto;
   /* min-height stays auto (min-content): shrinking below the palette + the ladder
-     viewport's 160px minimum spills the rungs under the trace strip — the scaled
+     viewport's minimum spills the rungs under the trace strip — the scaled
      ladder canvas is a stacking context, so it paints on top of later panels. */
 }
+/* The toolbar is chrome, and every pixel of it is a pixel of ladder the player
+   doesn't get: one dense row of controls, one rack of instruction buttons that
+   folds away, one line of hint. */
 .palette {
-  padding: 10px 12px;
+  padding: 7px 9px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   flex: 0 0 auto;
 }
 /* .play-main (not .ladder-scroll) is what actually scrolls once a program's
@@ -27,17 +30,34 @@
 .palette-row {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
+/* Fields, device chips, zoom and prefs share one row and wrap only when the
+   window is genuinely too narrow for them. */
 .palette-fields {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
 }
+/* A labelled box, so the eyebrow and its input travel together when the row
+   wraps and the chip-target ring can enclose both. */
+.cf-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+/* Where a device chip would land right now. */
+.cf-slot.is-target {
+  border-color: color-mix(in srgb, var(--live) 45%, transparent);
+  background: color-mix(in srgb, var(--live) 7%, transparent);
+}
 .field.compact {
-  width: 90px;
-  padding: 7px 9px;
+  width: 84px;
+  padding: 6px 8px;
 }
 .field.preset {
   width: 70px;
@@ -47,8 +67,10 @@
   width: 76px;
   text-transform: uppercase;
 }
-.palette-hint.error {
-  color: var(--stop, #e5484d);
+/* "Placed — now give it an address." Advisory, not a rejection: amber like a
+   caution lamp, never the red of a failure. */
+.palette-hint.note {
+  color: var(--live);
 }
 .op-select {
   width: 74px;
@@ -59,9 +81,9 @@
 .pid-tuning {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   flex-wrap: wrap;
-  padding: 8px 10px;
+  padding: 5px 8px;
   border: 1px solid var(--edge);
   border-radius: 8px;
   background: color-mix(in srgb, var(--panel) 70%, transparent);
@@ -77,24 +99,29 @@
 .pid-tuning .field.preset {
   width: 76px;
 }
+/* Zoom and prefs ride at the right-hand end of the field row. */
 .palette-controls {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 14px;
+  gap: 10px;
   flex-wrap: wrap;
+  margin-left: auto;
 }
 .dev-quick {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 .dev-quick .dev-chip {
   cursor: pointer;
 }
+.dev-quick .dev-chip:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
 .palette-instr {
   display: flex;
-  gap: 6px;
+  gap: 5px;
   flex-wrap: wrap;
 }
 .instr-btn {
@@ -102,9 +129,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 5px 8px 4px;
-  min-width: 58px;
+  gap: 1px;
+  padding: 3px 7px 3px;
+  min-width: 54px;
   background: linear-gradient(180deg, var(--rail-2), var(--rail));
   border: 1px solid var(--edge);
   border-radius: var(--radius);
@@ -201,12 +228,6 @@
   color: var(--live);
 }
 
-.palette-controls {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-}
 .zoom-ctl {
   display: flex;
   align-items: center;
@@ -220,22 +241,21 @@
   text-align: center;
 }
 
+/* Two icon toggles rather than two labelled checkboxes: they were costing a
+   whole row of the toolbar to say something the tooltip says just as well. */
 .editor-prefs {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
 }
-.pref-toggle {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  font-size: 11px;
-  color: var(--muted);
-  cursor: pointer;
-  user-select: none;
+.pref-btn {
+  font-size: 12px;
+  line-height: 1.2;
+  padding: 2px 6px;
 }
-.pref-toggle input {
-  cursor: pointer;
+.pref-btn.on {
+  border-color: var(--live);
+  color: var(--live);
 }
 
 /* A pinned corner echo of the Address/Preset fields for when the toolbar
@@ -255,16 +275,20 @@
   bottom: 12px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 7px 9px;
+  flex-wrap: wrap;
+  max-width: 340px;
   box-shadow: var(--shadow-lg, var(--shadow));
 }
 
 .ladder-scroll {
-  padding: 12px;
+  padding: 10px;
   overflow: auto;
   flex: 1 1 auto;
-  min-height: 160px;
+  /* The ladder is the point of the screen: give it a floor well above the two
+     rows it used to be squeezed to before the column starts scrolling. */
+  min-height: 280px;
 }
 .ladder-canvas {
   transform-origin: top left;

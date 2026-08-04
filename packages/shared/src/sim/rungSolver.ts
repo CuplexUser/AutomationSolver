@@ -15,6 +15,14 @@ import { isConducting, isOutput, type LadderElement, type Rung } from '../ladder
  * An output element energizes when its left node (row, col) is reachable from the
  * left rail through conducting edges. This naturally yields series = AND and
  * parallel (via vertical links) = OR.
+ *
+ * An energized output then passes power on to its own right node, so a row of
+ * them after one contact all fire from that same condition — `LD X0 / OUT Y0 /
+ * MOV K10 D30` is one rung on a real controller, and stacking the blocks left to
+ * right is how it reads here. That pass-through is a fixpoint rather than a
+ * plain edge: an output only conducts once its *left* node is live, because
+ * unioning it unconditionally would let power flow backwards through a block
+ * that never fired.
  */
 
 export interface EnergizedOutput {
@@ -92,6 +100,27 @@ export function evaluateRung(
     if (link.row < 0 || link.row >= rows - 1) continue;
     if (link.col < 0 || link.col > cols) continue;
     dsu.union(nodeId(link.row, link.col), nodeId(link.row + 1, link.col));
+  }
+
+  // Outputs pass power through once they are live. Energizing one can complete a
+  // path to the next, so repeat until nothing new lights up.
+  const outputCells: { row: number; col: number }[] = [];
+  for (let row = 0; row < rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const el = rung.cells[row]?.[col];
+      if (el && isOutput(el.type)) outputCells.push({ row, col });
+    }
+  }
+  const passed = new Set<number>();
+  for (let changed = true; changed; ) {
+    changed = false;
+    for (const [i, cell] of outputCells.entries()) {
+      if (passed.has(i)) continue;
+      if (dsu.find(nodeId(cell.row, cell.col)) !== dsu.find(source)) continue;
+      dsu.union(nodeId(cell.row, cell.col), nodeId(cell.row, cell.col + 1));
+      passed.add(i);
+      changed = true;
+    }
   }
 
   const sourceRoot = dsu.find(source);

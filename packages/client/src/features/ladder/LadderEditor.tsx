@@ -4,8 +4,6 @@ import {
   formatValueOperand,
   isValueOperand,
   isWordInstruction,
-  MATH_OPS,
-  MATH_MNEMONIC,
   MATH_SYMBOL,
   parseValueOperand,
   type CompareOp,
@@ -18,11 +16,18 @@ import {
   type PuzzleRegister,
   type RungEvalResult,
 } from '@automationsolver/shared';
+import {
+  CellFields,
+  chipTarget,
+  fieldsFor,
+  PidTuning,
+  slotAccepts,
+  slotsFor,
+  type FieldSlot,
+} from './CellFields';
 import { CELL_H, CELL_W } from './CellView';
 import { useEditor } from './editorStore';
 import { RungView } from './RungView';
-
-const ADDRESS_RE = /^[XYMTCD]\d{1,4}$/i;
 
 interface InstrMeta {
   type: ElementType;
@@ -65,53 +70,10 @@ const DEFAULT_PID: PidParams = {
   outMax: 4000,
 };
 
-/**
- * Which fields an instruction actually uses, and what to call them.
- *
- * The toolbar shows *only* these. Leaving every field on screen for every
- * instruction was actively misleading: a Preset K box beside a DIV block reads
- * as though it were part of the division, and an operator dropdown beside a MOV
- * reads as though a move could compare something. Naming them per instruction
- * does the rest of the work — a MOV's two boxes say "Source" and "Dest" rather
- * than "A" and "Address".
- */
-interface FieldConfig {
-  /** Label for the device field, or absent when the instruction addresses nothing. */
-  address?: string;
-  /** True when the device field is a destination register rather than a bit. */
-  writesRegister?: boolean;
-  preset?: boolean;
-  /** Labels for the word operands, in order. */
-  operands?: string[];
-  op?: 'compare' | 'math';
-}
-
-function fieldsFor(type: ElementType | null): FieldConfig {
-  switch (type) {
-    case 'timer':
-    case 'counter':
-      return { address: 'Address', preset: true };
-    case 'compare':
-      return { operands: ['A', 'B'], op: 'compare' };
-    case 'mov':
-      return { operands: ['Source'], address: 'Dest', writesRegister: true };
-    case 'math':
-      return { operands: ['A', 'B'], op: 'math', address: 'Dest', writesRegister: true };
-    case 'pid':
-      return { operands: ['Setpoint', 'Measured'], address: 'Output', writesRegister: true };
-    case 'hwire':
-      return {};
-    default:
-      return { address: 'Address' };
-  }
-}
-
-/** A word instruction's destination has to be a data register, never a bit. */
-const REGISTER_RE = /^D\d{1,4}$/i;
-
 /** "D0 ÷ K4 into D10" — the selected word instruction, spelled out in the hint. */
 function wordSummary(el: LadderElement): string {
-  const [a = '?', b = '?'] = el.operands ?? [];
+  const a = el.operands?.[0] || '?';
+  const b = el.operands?.[1] || '?';
   switch (el.type) {
     case 'compare':
       return `${a} ${el.op ?? '='} ${b}`;
@@ -210,12 +172,14 @@ export function LadderEditor({
   const [cmpOp, setCmpOp] = useState<CompareOp>('>=');
   const [mathOp, setMathOp] = useState<MathOp>('add');
   const [tuning, setTuning] = useState<PidParams>(DEFAULT_PID);
-  const [paletteOpen, setPaletteOpen] = useState(true);
   // The instruction whose fields the toolbar is showing: whatever is selected,
   // falling back to the last thing placed so the fields stay put after a
   // placement instead of snapping back to a generic Address box.
   const [lastPlaced, setLastPlaced] = useState<ElementType | null>(null);
-  const [placeError, setPlaceError] = useState<string | null>(null);
+  // Which field the device chips fill. Follows the caret, so clicking into a
+  // MOV's Source and then clicking D20 fills Source rather than the destination.
+  const [focusSlot, setFocusSlot] = useState<FieldSlot | null>(null);
+  const [note, setNote] = useState<string | null>(null);
   const addressRef = useRef<HTMLInputElement>(null);
   const operandRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -229,12 +193,15 @@ export function LadderEditor({
     if (typeof localStorage !== 'undefined') localStorage.setItem(zoomKey, String(zoom));
   }, [zoomKey, zoom]);
 
-  // Two independent, user-toggleable ways to reach Address/Preset K without
-  // scrolling back to the top of a long program: pin the whole toolbar, and/or
-  // float a small echo of the same fields in the corner. Global (not per-puzzle)
-  // since they're editor preferences, not something a specific puzzle needs.
+  // Two independent, user-toggleable ways to reach the selected cell's fields
+  // without scrolling back to the top of a long program: pin the whole toolbar,
+  // and/or float a small echo of the same fields in the corner. Global (not
+  // per-puzzle) since they're editor preferences. So is the instruction rack:
+  // once the keys are in the fingers, folding it away is two more rungs of
+  // ladder on screen, and it should stay folded.
   const [stickyPalette, setStickyPalette] = usePersistedBool('ladder.stickyPalette', true);
   const [floatingEditor, setFloatingEditor] = usePersistedBool('ladder.floatingEditor', false);
+  const [paletteOpen, setPaletteOpen] = usePersistedBool('ladder.paletteOpen', true);
 
   /** Scale the ladder so the whole program fills the visible area — big on a short program. */
   const fitZoom = useCallback(() => {
@@ -278,22 +245,19 @@ export function LadderEditor({
 
   const changeAddress = (v: string) => {
     setAddress(v);
-    setPlaceError(null);
+    setNote(null);
     if (!retypeDevice) return;
-    // Retyping a word block's destination is held to the same rule placing one
-    // is: it writes a register, so only a D address takes effect.
-    const re = fieldsFor(selectedEl?.type ?? null).writesRegister ? REGISTER_RE : ADDRESS_RE;
-    if (re.test(v.trim())) patchSelected({ device: v.trim().toUpperCase() });
+    // Retyping is held to the same rule as placing: the address has to be one
+    // this element can legally act on, so a MOV's destination only ever takes a
+    // D and a timer only ever a T.
+    if (slotAccepts('device', fields, selectedEl?.type ?? null, v)) {
+      patchSelected({ device: v.trim().toUpperCase() });
+    }
   };
 
   const changePreset = (v: number) => {
     setPreset(v);
     if (retypePreset) patchSelected({ preset: v });
-  };
-
-  const applyAddress = (addr: string) => {
-    setAddress(addr);
-    if (retypeDevice) patchSelected({ device: addr });
   };
 
   /**
@@ -306,7 +270,7 @@ export function LadderEditor({
   const changeOperand = (index: 0 | 1, v: string) => {
     if (index === 0) setOpA(v);
     else setOpB(v);
-    setPlaceError(null);
+    setNote(null);
     const ref = parseValueOperand(v);
     if (!retypeWord || !ref) return;
     const next = [...(selectedEl?.operands ?? [])];
@@ -336,6 +300,49 @@ export function LadderEditor({
     if (retypeWord && selectedEl?.type === 'pid') patchSelected({ pid: next });
   };
 
+  /**
+   * A click on a device chip, routed to the field that can take it.
+   *
+   * Chips used to write the Address box whatever was selected, which is how a
+   * PID ends up with `X0` as its output register — a value that block can never
+   * legally write. Now the address decides where it lands, and a chip with
+   * nowhere to go is disabled rather than silently wrong.
+   */
+  const applyChip = (addr: string) => {
+    const slot = chipTarget(addr, fields, activeType, focusSlot);
+    if (slot === 'device') changeAddress(addr);
+    else if (slot === 'a') changeOperand(0, addr);
+    else if (slot === 'b') changeOperand(1, addr);
+  };
+
+  const fieldHandlers = {
+    onOperand: changeOperand,
+    onOperandBlur: normalizeOperand,
+    onAddress: changeAddress,
+    onPreset: changePreset,
+    onOp: changeOp,
+    onFocusSlot: setFocusSlot,
+  };
+
+  // Where the chips are aiming: the field the caret is in, else the one the
+  // instruction is "about". Ringed in the toolbar so the aim is never a guess.
+  const slots = slotsFor(fields);
+  const chipSlot: FieldSlot | null =
+    focusSlot && slots.includes(focusSlot)
+      ? focusSlot
+      : slots.includes('device')
+        ? 'device'
+        : (slots[0] ?? null);
+
+  const chips = [...devices.map((d) => ({ address: d.address, label: d.label })), ...registers].map(
+    (d) => {
+      const slot = chipTarget(d.address, fields, activeType, focusSlot);
+      const into =
+        slot === 'device' ? fields.address : slot ? fields.operands?.[slot === 'a' ? 0 : 1] : null;
+      return { ...d, slot, into };
+    },
+  );
+
   /** The operand/op/tuning payload a word instruction is placed with. */
   const wordPayload = useCallback(
     (type: ElementType): Partial<LadderElement> => {
@@ -343,8 +350,11 @@ export function LadderEditor({
         const ref = parseValueOperand(raw);
         return ref ? formatValueOperand(ref) : raw.trim().toUpperCase();
       };
-      const a = norm(opA);
-      const b = norm(opB);
+      // An operand the box can't parse is stored empty rather than as a literal
+      // string, so the block shows a "?" for it and the validator can say what
+      // is missing instead of what is malformed.
+      const a = isValueOperand(opA) ? norm(opA) : '';
+      const b = isValueOperand(opB) ? norm(opB) : '';
       switch (type) {
         case 'compare':
           return { operands: [a, b], op: cmpOp };
@@ -361,47 +371,58 @@ export function LadderEditor({
     [opA, opB, cmpOp, mathOp, tuning],
   );
 
+  /**
+   * Put an instruction in the selected cell — always, even half-addressed.
+   *
+   * Placing used to be refused whenever the Address box held something the
+   * instruction could not act on, which made MOV, MATH and PID the only
+   * instructions you had to fill in a field *before* you could lay one down.
+   * Every other one places first and gets retyped after, so these do too: what
+   * doesn't fit is dropped rather than stored (a PID never inherits `X0` as its
+   * output), the block draws the gap as `?`, and the toolbar says which field
+   * still wants a value with the caret already in it.
+   */
   const place = useCallback(
     (meta: InstrMeta) => {
       if (!selected) return;
       const cfg = fieldsFor(meta.type);
-      const addr = address.trim();
+      const addr = address.trim().toUpperCase();
+      const fits = slotAccepts('device', cfg, meta.type, addr);
 
-      // A word instruction writes a *register*. Without this check the leftover
-      // Address value silently becomes the destination, so a DIV placed after a
-      // contact would quietly try to write its result into X0.
-      if (cfg.address) {
-        const re = cfg.writesRegister ? REGISTER_RE : ADDRESS_RE;
-        if (!re.test(addr)) {
-          setPlaceError(
-            cfg.writesRegister
-              ? `${meta.label} writes a data register. Put a D address (like D10) in ${cfg.address}.`
-              : `${meta.label} needs a device address in ${cfg.address}.`,
-          );
-          addressRef.current?.focus();
-          addressRef.current?.select();
-          return;
-        }
-      }
-      // Same for the operands: a half-typed one would land as a literal string
-      // and only surface as a validation error at submit time.
-      for (const [i, label] of (cfg.operands ?? []).entries()) {
-        if (!isValueOperand(i === 0 ? opA : opB)) {
-          setPlaceError(`${label} must be a register (D10) or a constant (K500).`);
-          operandRef.current?.focus();
-          operandRef.current?.select();
-          return;
-        }
-      }
-
-      setPlaceError(null);
       setLastPlaced(meta.type);
       placeSelected(
         meta.type,
-        cfg.address ? addr.toUpperCase() : '',
+        cfg.address && fits ? addr : '',
         cfg.preset ? preset : undefined,
         meta.word ? wordPayload(meta.type) : undefined,
       );
+
+      // Name the first field left blank and aim the chips (and, where there is
+      // one box to aim at, the caret) there — filling it in is the next
+      // keystroke rather than a hunt.
+      const blankOperand = slotsFor(cfg).find(
+        (s) => s !== 'device' && !isValueOperand(s === 'a' ? opA : opB),
+      );
+      if (cfg.address && !fits) {
+        setNote(
+          cfg.writesRegister
+            ? `${meta.label} placed. Its ${cfg.address} is a data register — pick a D address.`
+            : `${meta.label} placed. Give it an address.`,
+        );
+        setFocusSlot('device');
+        addressRef.current?.focus();
+        addressRef.current?.select();
+      } else if (blankOperand) {
+        const label = cfg.operands?.[blankOperand === 'a' ? 0 : 1] ?? 'operand';
+        setNote(`${meta.label} placed. ${label} takes a register (D10) or a constant (K500).`);
+        setFocusSlot(blankOperand);
+        if (blankOperand === 'a') {
+          operandRef.current?.focus();
+          operandRef.current?.select();
+        }
+      } else {
+        setNote(null);
+      }
     },
     [selected, address, preset, placeSelected, wordPayload, opA, opB],
   );
@@ -541,213 +562,92 @@ export function LadderEditor({
   return (
     <div className="ladder-editor">
       <div className={`palette panel${stickyPalette ? ' palette-pinned' : ''}`}>
+        {/* One row, not four: fields, chips, prefs and zoom share it and wrap
+            only when they must. Every row of chrome here is a row of ladder the
+            player doesn't get. */}
         <div className="palette-row">
           <div className="palette-fields">
             <button
               className="icon-btn palette-fold"
-              onClick={() => setPaletteOpen((v) => !v)}
-              title={paletteOpen ? 'Collapse the palette' : 'Expand the palette'}
+              onClick={() => setPaletteOpen(!paletteOpen)}
+              title={paletteOpen ? 'Hide the instruction buttons' : 'Show the instruction buttons'}
               aria-expanded={paletteOpen}
             >
               {paletteOpen ? '▾' : '▸'}
             </button>
             {/* Only the fields the active instruction actually uses, in the
                 order it reads: operands, then operator, then destination. */}
-            {fields.operands?.[0] && (
-              <>
-                <span className="eyebrow">{fields.operands[0]}</span>
-                <input
-                  ref={operandRef}
-                  className="field mono compact operand"
-                  value={opA}
-                  onChange={(e) => changeOperand(0, e.target.value)}
-                  onBlur={() => normalizeOperand(0)}
-                  disabled={!editable}
-                  aria-label={fields.operands[0]}
-                  title="A register (D10) or a constant (K500)"
-                />
-              </>
-            )}
-            {fields.op && (
-              <>
-                <span className="eyebrow">Op</span>
-                <select
-                  className="field mono compact op-select"
-                  value={fields.op === 'math' ? mathOp : cmpOp}
-                  onChange={(e) => changeOp(e.target.value as CompareOp | MathOp)}
-                  disabled={!editable}
-                  aria-label={fields.op === 'math' ? 'Arithmetic operator' : 'Comparison'}
+            <CellFields
+              fields={fields}
+              values={{ opA, opB, address, preset, cmpOp, mathOp }}
+              handlers={fieldHandlers}
+              editable={editable}
+              target={chipSlot}
+              addressRef={addressRef}
+              operandRef={operandRef}
+            />
+            {/* Chips fill whichever field can take the address they carry. */}
+            <div className="dev-quick">
+              {chips.map((d) => (
+                <button
+                  key={d.address}
+                  className={`dev-chip dev-${d.address[0]}`}
+                  onClick={() => applyChip(d.address)}
+                  disabled={!editable || !d.slot}
+                  title={d.slot ? `${d.label} → ${d.into}` : `${d.label} — no field here takes a ${d.address[0]} address`}
                 >
-                  {fields.op === 'math'
-                    ? MATH_OPS.map((o) => (
-                        <option key={o} value={o}>
-                          {MATH_MNEMONIC[o]}
-                        </option>
-                      ))
-                    : COMPARE_OPS.map((o) => (
-                        <option key={o} value={o}>
-                          {o}
-                        </option>
-                      ))}
-                </select>
-              </>
-            )}
-            {fields.operands?.[1] && (
-              <>
-                <span className="eyebrow">{fields.operands[1]}</span>
-                <input
-                  className="field mono compact operand"
-                  value={opB}
-                  onChange={(e) => changeOperand(1, e.target.value)}
-                  onBlur={() => normalizeOperand(1)}
-                  disabled={!editable}
-                  aria-label={fields.operands[1]}
-                  title="A register (D10) or a constant (K500)"
-                />
-              </>
-            )}
-            {fields.address && (
-              <>
-                <span className="eyebrow">{fields.writesRegister ? `→ ${fields.address}` : fields.address}</span>
-                <input
-                  ref={addressRef}
-                  className="field mono compact"
-                  value={address}
-                  onChange={(e) => changeAddress(e.target.value)}
-                  disabled={!editable}
-                  aria-label={fields.address}
-                  title={fields.writesRegister ? 'The data register this block writes' : undefined}
-                />
-              </>
-            )}
-            {fields.preset && (
-              <>
-                <span className="eyebrow">Preset K</span>
-                <input
-                  className="field mono compact preset"
-                  type="number"
-                  min={1}
-                  value={preset}
-                  onChange={(e) => changePreset(Math.max(1, Number(e.target.value)))}
-                  disabled={!editable}
-                  aria-label="Timer/counter preset"
-                />
-              </>
-            )}
-          </div>
-          <div className="palette-controls">
-            <div className="editor-prefs" role="group" aria-label="Editor preferences">
-              <label className="pref-toggle" title="Keep this toolbar pinned to the top while scrolling a long program">
-                <input type="checkbox" checked={stickyPalette} onChange={(e) => setStickyPalette(e.target.checked)} />
-                Pin toolbar
-              </label>
-              <label
-                className="pref-toggle"
-                title="Show a floating Address/Preset K editor in the corner, so you can retype a cell without scrolling"
-              >
-                <input type="checkbox" checked={floatingEditor} onChange={(e) => setFloatingEditor(e.target.checked)} />
-                Floating editor
-              </label>
+                  {d.address}
+                </button>
+              ))}
             </div>
-            <div className="zoom-ctl" role="group" aria-label="Ladder zoom">
-              <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z - 0.1))} title="Zoom out (Ctrl −)">
-                −
-              </button>
-              <span className="zoom-val">{Math.round(zoom * 100)}%</span>
-              <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z + 0.1))} title="Zoom in (Ctrl +)">
-                +
-              </button>
-              <button className="icon-btn" onClick={fitZoom} title="Fit the program to the window">
-                Fit
-              </button>
-              <button className="icon-btn" onClick={() => setZoom(1)} title="Reset zoom (Ctrl 0)">
-                100%
-              </button>
+            <div className="palette-controls">
+              <div className="zoom-ctl" role="group" aria-label="Ladder zoom">
+                <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z - 0.1))} title="Zoom out (Ctrl −)">
+                  −
+                </button>
+                <span className="zoom-val">{Math.round(zoom * 100)}%</span>
+                <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z + 0.1))} title="Zoom in (Ctrl +)">
+                  +
+                </button>
+                <button className="icon-btn" onClick={fitZoom} title="Fit the program to the window">
+                  Fit
+                </button>
+                <button className="icon-btn" onClick={() => setZoom(1)} title="Reset zoom (Ctrl 0)">
+                  100%
+                </button>
+              </div>
+              <div className="editor-prefs" role="group" aria-label="Editor preferences">
+                <button
+                  className={`icon-btn pref-btn${stickyPalette ? ' on' : ''}`}
+                  onClick={() => setStickyPalette(!stickyPalette)}
+                  aria-pressed={stickyPalette}
+                  aria-label="Pin the toolbar"
+                  title="Keep this toolbar pinned to the top while scrolling a long program"
+                >
+                  📌
+                </button>
+                <button
+                  className={`icon-btn pref-btn${floatingEditor ? ' on' : ''}`}
+                  onClick={() => setFloatingEditor(!floatingEditor)}
+                  aria-pressed={floatingEditor}
+                  aria-label="Floating cell editor"
+                  title="Echo the selected cell's fields in a floating corner editor"
+                >
+                  ⬓
+                </button>
+              </div>
             </div>
           </div>
           {/* Tuning is only meaningful with a loop block in hand, so it appears
               with one and stays out of the way otherwise. */}
           {activeType === 'pid' && (
-            <div className="pid-tuning" role="group" aria-label="PID tuning">
-              <span className="eyebrow">
-                {selectedEl?.type === 'pid' ? 'Tuning this loop' : 'Tuning for the next loop'}
-              </span>
-              <label>
-                Kp
-                <input
-                  className="field mono compact preset"
-                  type="number"
-                  min={0}
-                  step={10}
-                  value={tuning.kp}
-                  onChange={(e) => changeTuning({ kp: Math.max(0, Number(e.target.value)) })}
-                  disabled={!editable}
-                  title="Gain in hundredths: 250 is a gain of 2.50"
-                />
-              </label>
-              <label>
-                Ti ms
-                <input
-                  className="field mono compact preset"
-                  type="number"
-                  min={0}
-                  step={100}
-                  value={tuning.ti}
-                  onChange={(e) => changeTuning({ ti: Math.max(0, Number(e.target.value)) })}
-                  disabled={!editable}
-                  title="Integral time in ms. 0 turns the term off, leaving a P controller"
-                />
-              </label>
-              <label>
-                Td ms
-                <input
-                  className="field mono compact preset"
-                  type="number"
-                  min={0}
-                  step={100}
-                  value={tuning.td}
-                  onChange={(e) => changeTuning({ td: Math.max(0, Number(e.target.value)) })}
-                  disabled={!editable}
-                  title="Derivative time in ms. 0 turns the term off"
-                />
-              </label>
-              <label>
-                Out
-                <input
-                  className="field mono compact preset"
-                  type="number"
-                  value={tuning.outMin}
-                  onChange={(e) => changeTuning({ outMin: Number(e.target.value) })}
-                  disabled={!editable}
-                  title="Lowest value the block will command"
-                />
-              </label>
-              <label>
-                to
-                <input
-                  className="field mono compact preset"
-                  type="number"
-                  value={tuning.outMax}
-                  onChange={(e) => changeTuning({ outMax: Number(e.target.value) })}
-                  disabled={!editable}
-                  title="Highest value the block will command"
-                />
-              </label>
-            </div>
+            <PidTuning
+              tuning={tuning}
+              onChange={changeTuning}
+              editable={editable}
+              editing={selectedEl?.type === 'pid'}
+            />
           )}
-          <div className="dev-quick">
-            {[...devices.map((d) => ({ address: d.address, label: d.label })), ...registers].map((d) => (
-              <button
-                key={d.address}
-                className={`dev-chip dev-${d.address[0]}`}
-                onClick={() => applyAddress(d.address)}
-                disabled={!editable}
-                title={d.label}
-              >
-                {d.address}
-              </button>
-            ))}
-          </div>
         </div>
 
         {paletteOpen && (
@@ -781,8 +681,8 @@ export function LadderEditor({
             <div className="palette-foot">
               {running ? (
                 <p className="palette-hint live">Simulation running — stop to edit.</p>
-              ) : placeError ? (
-                <p className="palette-hint error">{placeError}</p>
+              ) : note ? (
+                <p className="palette-hint note">{note}</p>
               ) : retypeWord && selectedEl ? (
                 <p className="palette-hint">
                   Editing <span className="mono">{wordSummary(selectedEl)}</span>. Operands take a
@@ -884,26 +784,20 @@ export function LadderEditor({
         </div>
       </div>
 
+      {/* The corner echo shows the *same* fields as the toolbar, so a MOV's
+          source or a compare's operator can be retyped from down here too — it
+          used to offer Address and Preset K alone, which are the two fields a
+          word instruction does not have. */}
       {floatingEditor && (
         <div className="cell-float-anchor">
           <div className="cell-float panel">
-            <span className="eyebrow">Addr</span>
-            <input
-              className="field mono compact"
-              value={address}
-              onChange={(e) => changeAddress(e.target.value)}
-              disabled={!editable}
-              aria-label="Device address (floating editor)"
-            />
-            <span className="eyebrow">K</span>
-            <input
-              className="field mono compact preset"
-              type="number"
-              min={1}
-              value={preset}
-              onChange={(e) => changePreset(Math.max(1, Number(e.target.value)))}
-              disabled={!editable}
-              aria-label="Timer/counter preset (floating editor)"
+            <CellFields
+              fields={fields}
+              values={{ opA, opB, address, preset, cmpOp, mathOp }}
+              handlers={fieldHandlers}
+              editable={editable}
+              target={chipSlot}
+              dense
             />
           </div>
         </div>

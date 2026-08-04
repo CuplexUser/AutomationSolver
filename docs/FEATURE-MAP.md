@@ -46,6 +46,8 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 ### 2. Simulation engine — `shared/src/sim/`
 - `rungSolver.ts` — treats a rung as a graph and floods power from the left rail using
   disjoint-set union over column-boundary nodes. Series = AND, vertical links = OR.
+  An energized output passes power on to its right, so outputs stacked left to right after
+  one contact all fire from it (a fixpoint, so a dead block never backfeeds).
   Returns energized coils plus the live nodes/cells the UI highlights.
 - `scanCycle.ts` — `SimEngine`: evaluate rungs top→bottom, apply coils immediately (a later
   rung sees an earlier rung's coil in the *same* scan), tick timers/counters by `dt`.

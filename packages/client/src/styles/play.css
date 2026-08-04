@@ -5,7 +5,7 @@
   display: flex;
   align-items: stretch;
   height: 100%;
-  padding: 16px;
+  padding: 12px 14px;
   gap: 0;
   overflow: hidden;
 }
@@ -369,8 +369,8 @@
   align-items: center;
   gap: 10px;
   flex: 0 0 auto;
-  margin-bottom: 10px;
-  padding: 0 2px 10px;
+  margin-bottom: 8px;
+  padding: 0 2px 7px;
   border-bottom: 1px solid var(--edge);
 }
 .play-nav-back,
@@ -388,7 +388,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   gap: 10px;
   flex: 0 0 auto;
 }

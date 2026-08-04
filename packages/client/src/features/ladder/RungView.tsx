@@ -1,4 +1,4 @@
-import type { RungEvalResult, Rung } from '@automationsolver/shared';
+import { isOutput, type RungEvalResult, type Rung } from '@automationsolver/shared';
 import { CellView, CELL_H, CELL_W, WIRE_Y } from './CellView';
 
 interface Props {
@@ -89,13 +89,15 @@ export function RungView({
               row.map((cell, c) => {
                 const leftLive = energized?.has(nodeId(r, c)) ?? false;
                 const rightLive = energized?.has(nodeId(r, c + 1)) ?? false;
+                // An output lights from the rung solver's verdict on it; a
+                // contact from whether it actually conducted. MOV/MATH/PID were
+                // being asked the contact question, which they can never answer
+                // yes to, so a firing block looked dead.
                 let symbolLive = false;
                 if (cell) {
-                  if (cell.type.startsWith('coil') || cell.type === 'timer' || cell.type === 'counter') {
-                    symbolLive = outputLive(r, c);
-                  } else {
-                    symbolLive = live?.has(`${r}:${c}`) ?? false;
-                  }
+                  symbolLive = isOutput(cell.type)
+                    ? outputLive(r, c)
+                    : (live?.has(`${r}:${c}`) ?? false);
                 }
                 return (
                   <CellView

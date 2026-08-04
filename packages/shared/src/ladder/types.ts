@@ -125,6 +125,37 @@ export function isOutput(type: ElementType): boolean {
 }
 
 /**
+ * Device kinds each element role may legally address.
+ *
+ * The validator holds a submitted program to this; the editor uses the same
+ * table to aim a device chip at the field that can actually take the address, so
+ * a click on `X0` can never land in a PID's output. `compare` and `hwire`
+ * address nothing at all and so accept nothing.
+ */
+export function allowedDeviceKinds(type: ElementType): ReadonlySet<DeviceKind> {
+  switch (type) {
+    case 'coil-out':
+    case 'coil-set':
+      return new Set<DeviceKind>(['Y', 'M']);
+    case 'coil-reset':
+      return new Set<DeviceKind>(['Y', 'M', 'T', 'C', 'D']);
+    case 'timer':
+      return new Set<DeviceKind>(['T']);
+    case 'counter':
+      return new Set<DeviceKind>(['C']);
+    case 'mov':
+    case 'math':
+    case 'pid':
+      return new Set<DeviceKind>(['D']);
+    case 'compare':
+    case 'hwire':
+      return new Set<DeviceKind>();
+    default: // contacts
+      return new Set<DeviceKind>(['X', 'Y', 'M', 'T', 'C']);
+  }
+}
+
+/**
  * A single placed element.
  *
  * `device` is the address the element *acts on*: the bit a contact reads, the

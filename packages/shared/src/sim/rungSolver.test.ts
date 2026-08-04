@@ -84,4 +84,39 @@ describe('evaluateRung', () => {
     const r = rung(1, 2, (_, c) => (c === 0 ? null : el('coil-out', 'Y0')));
     expect(outEnergized(evaluateRung(r, conductsFrom({})), 'Y0')).toBe(false);
   });
+
+  it('outputs in series all fire from the one condition', () => {
+    // X0 --( Y0 )--[MOV]--( Y1 )--
+    const r = rung(1, 4, (_, c) => {
+      if (c === 0) return el('contact-no', 'X0');
+      if (c === 1) return el('coil-out', 'Y0');
+      if (c === 2) return { type: 'mov', device: 'D30', operands: ['K10'] };
+      return el('coil-out', 'Y1');
+    });
+    const on = evaluateRung(r, conductsFrom({ X0: true }));
+    expect(outEnergized(on, 'Y0')).toBe(true);
+    expect(outEnergized(on, 'D30')).toBe(true);
+    expect(outEnergized(on, 'Y1')).toBe(true);
+
+    const off = evaluateRung(r, conductsFrom({ X0: false }));
+    expect(off.outputs.every((o) => !o.energized)).toBe(true);
+  });
+
+  it('a dead output does not backfeed power to its left', () => {
+    // row0: X0 --( Y0 )--     row1: (nothing) --( Y1 )--, joined right of the coils.
+    // Y1's left node is dead, so Y1 stays off even though the node to its right
+    // is live through the link.
+    const r = rung(
+      2,
+      2,
+      (rw, c) => {
+        if (rw === 0) return c === 0 ? el('contact-no', 'X0') : el('coil-out', 'Y0');
+        return c === 1 ? el('coil-out', 'Y1') : null;
+      },
+      [{ row: 0, col: 2 }],
+    );
+    const res = evaluateRung(r, conductsFrom({ X0: true }));
+    expect(outEnergized(res, 'Y0')).toBe(true);
+    expect(outEnergized(res, 'Y1')).toBe(false);
+  });
 });
