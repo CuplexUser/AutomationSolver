@@ -53,8 +53,8 @@ export const rungSchema = z.object({
 export const programSchema = z.object({
   // Transport ceiling only — the real per-puzzle limit is the spec's `maxRungs`,
   // checked in validateProgram. Keep this at or above the largest maxRungs in
-  // content (elevator-full is 32) or those puzzles 400 before they ever grade.
-  rungs: z.array(rungSchema).min(1).max(32),
+  // content (asrs-dual-cycle is 50) or those puzzles 400 before they ever grade.
+  rungs: z.array(rungSchema).min(1).max(50),
 });
 
 export const wireSchema = z.object({

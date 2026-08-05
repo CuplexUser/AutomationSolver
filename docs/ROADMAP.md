@@ -238,6 +238,59 @@ fastest cycle, and `parMs` quietly rewards anyone who notices. Six negative test
 ramp parameters but keeping the empty slow-down distance leaves the drive perfectly happy and
 puts the pallet into the rack face.
 
+## Automated warehouse — shipped
+
+A tenth category, `warehouse`, and the first machine in the game that is not a sequence. One
+stacker crane serves a rack of 4 bays x 2 levels, two production lines call for material from
+opposite ends of the aisle, and goods in keeps pushing pallets at all of it. The correct program
+is a **scheduler**, which nothing before this needed.
+
+Four things are new, and none of them needed an engine change:
+
+1. **Concurrent, asynchronous demand on a shared machine.** Three requesters, one crane. A cycle
+   has to be committed to one of them and held there, because a call can drop mid-aisle.
+2. **Chaotic storage.** Materials are scattered and the WMS publishes the whole slot table, so
+   "which slot" is a search-and-minimize, not a lookup — and because the two lines are at
+   opposite ends, *the nearest slot for a material depends on who asked for it*. Distance from
+   line A is the bay number, from line B it is `5 - bay`.
+3. **Two failure latches beside `jam`.** `starved` (a line ran its conveyor empty) and `blocked`
+   (goods in backed up) are caused by the schedule rather than by a move, and they are what turn
+   "be fair to both lines" from a rule the grader checks into a consequence the machine reports.
+   Both assert through the existing `expectMachine` path, so `grade.ts` was untouched.
+4. **A latched encoder.** `D0`/`D1` hold the last position sensor the crane passed rather than
+   the nearest one rounded, which makes `[= D0 D50]` mean "arrived" and collapses driving
+   anywhere in the aisle into a two-rung move block — deliberately, so the rung budget goes on
+   deciding rather than on driving.
+
+Five puzzles walk it: `asrs-put-away` (the coordinate interface and the fork contract, one
+scripted put-away) → `asrs-retrieval` (search the table for a demanded material and keep a line
+fed) → `asrs-two-lines` (two stations, so the search needs a real distance rather than rung
+order, and a cycle needs a latch) → `asrs-replenish` (a second job running the opposite way,
+with a bounded inbound backlog) → `asrs-dual-cycle` (capstone: all three demands, trips planned
+as a list of stops, a shift-end stop switch, and dual-command cycling). `maxRungs` ramps 20 → 50,
+which also lifted the server's transport ceiling from 32.
+
+Two findings worth recording, because they cut against the original design intent:
+
+- **Throughput scoring is structurally blind here**, so `parMs` is declared only on
+  `asrs-put-away`. Every other scenario is paced by the lines' consume clocks rather than by the
+  crane: a faster program finishes each cycle sooner and then waits for the next call, so
+  elapsed time is identical. Choosing a worse slot eats slack, it does not delay anything.
+  The schema already sanctions omitting par "where pace is not a design goal".
+- **Dual-command cycling is worth roughly a tenth of the crane on this geometry, not a
+  categorical requirement.** Put-aways always start at the aisle head, so a trip serving line B
+  crosses the aisle either way. Attempts to tune the rates until single-command *failed* put the
+  canonical itself on a knife edge (it fails at a 10 % tighter rate and single-command passes at
+  a 7 % looser one), which would have made a brittle puzzle. The capstone is therefore graded on
+  correctness under load, and the briefing says dual command buys back margin rather than
+  claiming it is the only way through.
+
+Five negative tests in `grade.test.ts` cover the mistakes that genuinely fail: searching only the
+nearest bay (the line runs dry), a move block without the fork-home contact (the mast folds),
+delivering everything to the aisle head (line A's conveyor overflows and line B never eats),
+never putting anything away (goods in blocks), and running orders only at full rate (the rack
+empties out from under the lines).
+
 ## Next: the rest of the analog plan
 
 Agreed with the analog design and still to build:

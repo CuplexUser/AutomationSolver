@@ -488,6 +488,123 @@ function drillAutoCycle(mixed: boolean): Rung[] {
   return rungs;
 }
 
+/**
+ * The stacker crane's move block, shared by every warehouse solution.
+ *
+ * Two rungs and the whole aisle is addressable: drive whichever axis disagrees
+ * with its target register, and report arrival when neither does. It works as a
+ * plain comparison only because `D0`/`D1` latch on the position sensors rather
+ * than rounding to the nearest one - a rounded encoder would call itself "there"
+ * half a bay out and stop the crane in mid air. The `X28` contact in every row
+ * is the interlock that keeps the mast off the rack: nothing moves unless the
+ * fork is home.
+ */
+function craneMoveRungs(moveId: string, atTargetId: string): Rung[] {
+  return [
+    R(moveId, 4, 3, {
+      '0,0': cmp('<', 'D0', 'D52'), '0,1': no('X28'), '0,2': out('Y0'),
+      '1,0': cmp('>', 'D0', 'D52'), '1,1': no('X28'), '1,2': out('Y1'),
+      '2,0': cmp('<', 'D1', 'D53'), '2,1': no('X28'), '2,2': out('Y2'),
+      '3,0': cmp('>', 'D1', 'D53'), '3,1': no('X28'), '3,2': out('Y3'),
+    }),
+    R(atTargetId, 1, 3, {
+      '0,0': cmp('=', 'D0', 'D52'),
+      '0,1': cmp('=', 'D1', 'D53'),
+      '0,2': out('M0'),
+    }),
+  ];
+}
+
+/**
+ * The eight WMS slot registers, listed pick-face-first within each bay and in
+ * ascending bay order. From the aisle head that is also nearest-first, which is
+ * the shortcut `asrs-retrieval` is allowed to lean on and `asrs-two-lines`
+ * takes away.
+ */
+const WMS_SLOTS: readonly { reg: string; bay: number; level: number }[] = [
+  { reg: 'D101', bay: 1, level: 1 },
+  { reg: 'D201', bay: 1, level: 2 },
+  { reg: 'D102', bay: 2, level: 1 },
+  { reg: 'D202', bay: 2, level: 2 },
+  { reg: 'D103', bay: 3, level: 1 },
+  { reg: 'D203', bay: 3, level: 2 },
+  { reg: 'D104', bay: 4, level: 1 },
+  { reg: 'D204', bay: 4, level: 2 },
+];
+
+/**
+ * Search the slot table in rung order and keep the first hit: one rung per slot,
+ * each gated on the found relay still being clear. Correct only where rung order
+ * and distance order agree, which is to say only from the aisle head.
+ */
+function slotFirstMatchRungs(
+  prefix: string,
+  want: string,
+  bayDest: string,
+  levelDest: string,
+  found: string,
+  gate: string,
+): Rung[] {
+  return WMS_SLOTS.map((s, i) =>
+    R(`${prefix}${i}`, 1, 6, {
+      '0,0': nc(gate),
+      '0,1': nc(found),
+      '0,2': cmp('=', s.reg, want),
+      '0,3': mov(`K${s.bay}`, bayDest),
+      '0,4': mov(`K${s.level}`, levelDest),
+      '0,5': set(found),
+    }),
+  );
+}
+
+/**
+ * The same search done properly: every slot compares its bay's distance against
+ * the best found so far, so the answer no longer depends on which order the
+ * rungs happen to be in. `D61`..`D64` hold the distance to each bay from
+ * whichever station is being served, which is what lets one block of rungs serve
+ * a line at either end of the aisle.
+ */
+function slotNearestRungs(
+  prefix: string,
+  want: string,
+  bayDest: string,
+  levelDest: string,
+  best: string,
+  found: string,
+  gate: string,
+): Rung[] {
+  return WMS_SLOTS.map((s, i) =>
+    R(`${prefix}${i}`, 1, 7, {
+      '0,0': nc(gate),
+      '0,1': cmp('=', s.reg, want),
+      '0,2': cmp('<', `D6${s.bay}`, best),
+      '0,3': mov(`K${s.bay}`, bayDest),
+      '0,4': mov(`K${s.level}`, levelDest),
+      '0,5': mov(`D6${s.bay}`, best),
+      '0,6': set(found),
+    }),
+  );
+}
+
+/** Distance to each bay from line A's end of the aisle, and from line B's. */
+function bayDistanceRungs(id: string, servingB: string | undefined): Rung {
+  if (!servingB) {
+    return R(id, 1, 5, {
+      '0,0': wire,
+      '0,1': mov('K1', 'D61'), '0,2': mov('K2', 'D62'),
+      '0,3': mov('K3', 'D63'), '0,4': mov('K4', 'D64'),
+    });
+  }
+  return R(id, 2, 5, {
+    '0,0': nc(servingB),
+    '0,1': mov('K1', 'D61'), '0,2': mov('K2', 'D62'),
+    '0,3': mov('K3', 'D63'), '0,4': mov('K4', 'D64'),
+    '1,0': no(servingB),
+    '1,1': mov('K4', 'D61'), '1,2': mov('K3', 'D62'),
+    '1,3': mov('K2', 'D63'), '1,4': mov('K1', 'D64'),
+  });
+}
+
 // --- canonical solutions --------------------------------------------------
 const solutions: Record<string, LadderProgram> = {
   'direct-control': {
@@ -940,6 +1057,283 @@ const solutions: Record<string, LadderProgram> = {
         '0,1': cmp('>=', 'D31', 'D33'),
         '0,2': mov('K400', 'D20'),
       }),
+    ],
+  },
+  'asrs-put-away': {
+    rungs: [
+      R('r1', 1, 6, {
+        '0,0': no('X0'), '0,1': nc('M1'), '0,2': nc('M2'), '0,3': nc('M3'), '0,4': nc('M4'),
+        '0,5': set('M1'),
+      }),
+      R('r2', 1, 2, { '0,0': no('X29'), '0,1': set('M11') }),
+      // Where the crane is going, selected by whichever step is live. Several
+      // rungs writing D52 is the value-selection idiom, not a double coil.
+      R('r3', 3, 4, {
+        '0,0': nc('M1'), '0,1': nc('M2'), '0,2': mov('K0', 'D52'), '0,3': mov('K1', 'D53'),
+        '1,0': no('M1'), '1,1': wire, '1,2': mov('K0', 'D52'), '1,3': mov('K2', 'D53'),
+        '2,0': no('M2'), '2,1': wire, '2,2': mov('K2', 'D52'), '2,3': mov('K2', 'D53'),
+      }),
+      ...craneMoveRungs('r4', 'r5'),
+      R('r6', 1, 2, { '0,0': nc('M0'), '0,1': rst('M11') }),
+      R(
+        'r7',
+        2,
+        4,
+        {
+          '0,0': no('M1'), '0,1': no('M0'), '0,2': nc('M11'), '0,3': out('Y4'),
+          '1,0': no('M2'),
+        },
+        [{ row: 0, col: 1 }],
+      ),
+      // The one-hot chain advances in reverse rung order, so a step that has
+      // just been set cannot also be completed by the rung below it in the same
+      // scan - the target register it depends on has not been reloaded yet.
+      R('r8', 1, 5, {
+        '0,0': no('M3'), '0,1': no('M0'), '0,2': no('X28'), '0,3': rst('M3'), '0,4': set('M4'),
+      }),
+      R('r9', 1, 6, {
+        '0,0': no('M2'), '0,1': no('M11'), '0,2': no('X28'), '0,3': rst('M2'), '0,4': set('M3'),
+        '0,5': rst('M11'),
+      }),
+      R('r10', 1, 6, {
+        '0,0': no('M1'), '0,1': no('M11'), '0,2': no('X28'), '0,3': rst('M1'), '0,4': set('M2'),
+        '0,5': rst('M11'),
+      }),
+    ],
+  },
+  'asrs-retrieval': {
+    rungs: [
+      // The search only runs between cycles, so the table cannot shift under a
+      // trip that is already committed to a slot.
+      R('s1', 1, 2, { '0,0': nc('M1'), '0,1': rst('M2') }),
+      ...slotFirstMatchRungs('s2_', 'D10', 'D50', 'D51', 'M2', 'M1'),
+      // Start on the call AND a hit, never on the call alone.
+      R('s3', 1, 4, { '0,0': no('X10'), '0,1': no('M2'), '0,2': nc('M1'), '0,3': set('M1') }),
+      R('s4', 1, 2, { '0,0': no('X29'), '0,1': set('M11') }),
+      // Latched, not X3 direct: the instant the pallet is handed over X3 drops,
+      // and an unlatched target would send the crane back down the aisle with
+      // its fork still in the conveyor.
+      R('s5', 1, 2, { '0,0': no('X3'), '0,1': set('M3') }),
+      // Gated on the cycle relay, so the target can only change while the crane
+      // is committed to a trip. Left ungated, an idle crane sets off after a
+      // target the search is still revising, and can end up "arrived" - D0
+      // holding a sensor it passed a moment ago - while it is half way between
+      // two bays. The fork then goes out into a rack upright.
+      R('s6', 2, 4, {
+        '0,0': no('M1'), '0,1': nc('M3'), '0,2': mov('D50', 'D52'), '0,3': mov('D51', 'D53'),
+        '1,0': no('M1'), '1,1': no('M3'), '1,2': mov('K0', 'D52'), '1,3': mov('K1', 'D53'),
+      }),
+      ...craneMoveRungs('s7', 's8'),
+      R('s9', 1, 2, { '0,0': nc('M0'), '0,1': rst('M11') }),
+      R('s10', 1, 4, { '0,0': no('M1'), '0,1': no('M0'), '0,2': nc('M11'), '0,3': out('Y4') }),
+      R('s11', 1, 9, {
+        '0,0': no('M1'), '0,1': no('M3'), '0,2': no('M11'), '0,3': no('X28'), '0,4': nc('X3'),
+        '0,5': rst('M1'), '0,6': rst('M2'), '0,7': rst('M3'), '0,8': rst('M11'),
+      }),
+      R('s12', 1, 3, { '0,0': no('X10'), '0,1': nc('M2'), '0,2': out('Y5') }),
+    ],
+  },
+  'asrs-two-lines': {
+    rungs: [
+      R('t1', 1, 3, { '0,0': nc('M1'), '0,1': rst('M2'), '0,2': mov('K99', 'D65') }),
+      // Commit to a line while idle and hold it: line A first when both call,
+      // which there is just enough crane for.
+      R('t2', 2, 4, {
+        '0,0': nc('M1'), '0,1': no('X10'), '0,2': wire, '0,3': rst('M5'),
+        '1,0': nc('M1'), '1,1': nc('X10'), '1,2': no('X11'), '1,3': set('M5'),
+      }),
+      R('t3', 2, 2, {
+        '0,0': nc('M5'), '0,1': mov('D10', 'D70'),
+        '1,0': no('M5'), '1,1': mov('D11', 'D70'),
+      }),
+      bayDistanceRungs('t4', 'M5'),
+      ...slotNearestRungs('t5_', 'D70', 'D50', 'D51', 'D65', 'M2', 'M1'),
+      R(
+        't6',
+        2,
+        4,
+        {
+          '0,0': no('X10'), '0,1': no('M2'), '0,2': nc('M1'), '0,3': set('M1'),
+          '1,0': no('X11'),
+        },
+        [{ row: 0, col: 1 }],
+      ),
+      R('t7', 1, 2, { '0,0': no('X29'), '0,1': set('M11') }),
+      R('t8', 1, 2, { '0,0': no('X3'), '0,1': set('M3') }),
+      R('t9', 3, 5, {
+        '0,0': no('M1'), '0,1': nc('M3'), '0,2': wire,
+        '0,3': mov('D50', 'D52'), '0,4': mov('D51', 'D53'),
+        '1,0': no('M1'), '1,1': no('M3'), '1,2': nc('M5'),
+        '1,3': mov('K0', 'D52'), '1,4': mov('K1', 'D53'),
+        '2,0': no('M1'), '2,1': no('M3'), '2,2': no('M5'),
+        '2,3': mov('K5', 'D52'), '2,4': mov('K1', 'D53'),
+      }),
+      ...craneMoveRungs('t10', 't11'),
+      R('t12', 1, 2, { '0,0': nc('M0'), '0,1': rst('M11') }),
+      R('t13', 1, 4, { '0,0': no('M1'), '0,1': no('M0'), '0,2': nc('M11'), '0,3': out('Y4') }),
+      R('t14', 1, 9, {
+        '0,0': no('M1'), '0,1': no('M3'), '0,2': no('M11'), '0,3': no('X28'), '0,4': nc('X3'),
+        '0,5': rst('M1'), '0,6': rst('M2'), '0,7': rst('M3'), '0,8': rst('M11'),
+      }),
+      R(
+        't15',
+        2,
+        3,
+        { '0,0': no('X10'), '0,1': nc('M2'), '0,2': out('Y5'), '1,0': no('X11') },
+        [{ row: 0, col: 1 }],
+      ),
+    ],
+  },
+  'asrs-replenish': {
+    rungs: [
+      R('u1', 1, 5, {
+        '0,0': nc('M1'), '0,1': rst('M2'), '0,2': rst('M4'),
+        '0,3': mov('K99', 'D65'), '0,4': mov('K99', 'D66'),
+      }),
+      bayDistanceRungs('u2', undefined),
+      ...slotNearestRungs('u3_', 'D10', 'D50', 'D51', 'D65', 'M2', 'M1'),
+      // The same eight tests find a home for an inbound pallet: an empty slot is
+      // just a slot whose register reads zero.
+      ...slotNearestRungs('u4_', 'K0', 'D56', 'D57', 'D66', 'M4', 'M1'),
+      // Retrieval when the line is calling for something in stock; put-away when
+      // it is not, and also when it is calling for something that has run out.
+      R('u5', 3, 6, {
+        '0,0': nc('M1'), '0,1': no('X10'), '0,2': no('M2'), '0,3': wire, '0,4': wire,
+        '0,5': rst('M6'),
+        '1,0': nc('M1'), '1,1': nc('X10'), '1,2': no('X12'), '1,3': no('M4'), '1,4': wire,
+        '1,5': set('M6'),
+        '2,0': nc('M1'), '2,1': no('X10'), '2,2': nc('M2'), '2,3': no('X12'), '2,4': no('M4'),
+        '2,5': set('M6'),
+      }),
+      R('u6', 2, 5, {
+        '0,0': nc('M1'), '0,1': nc('M6'), '0,2': no('X10'), '0,3': no('M2'), '0,4': set('M1'),
+        '1,0': nc('M1'), '1,1': no('M6'), '1,2': no('X12'), '1,3': no('M4'), '1,4': set('M1'),
+      }),
+      R('u7', 1, 2, { '0,0': no('X29'), '0,1': set('M11') }),
+      R('u8', 1, 2, { '0,0': no('X3'), '0,1': set('M3') }),
+      // Both jobs are "collect somewhere, deliver somewhere"; only the two
+      // somewheres swap over.
+      R('u9', 4, 5, {
+        '0,0': no('M1'), '0,1': nc('M3'), '0,2': nc('M6'),
+        '0,3': mov('D50', 'D52'), '0,4': mov('D51', 'D53'),
+        '1,0': no('M1'), '1,1': nc('M3'), '1,2': no('M6'),
+        '1,3': mov('K0', 'D52'), '1,4': mov('K2', 'D53'),
+        '2,0': no('M1'), '2,1': no('M3'), '2,2': nc('M6'),
+        '2,3': mov('K0', 'D52'), '2,4': mov('K1', 'D53'),
+        '3,0': no('M1'), '3,1': no('M3'), '3,2': no('M6'),
+        '3,3': mov('D56', 'D52'), '3,4': mov('D57', 'D53'),
+      }),
+      ...craneMoveRungs('u10', 'u11'),
+      R('u12', 1, 2, { '0,0': nc('M0'), '0,1': rst('M11') }),
+      R('u13', 1, 4, { '0,0': no('M1'), '0,1': no('M0'), '0,2': nc('M11'), '0,3': out('Y4') }),
+      R('u14', 1, 11, {
+        '0,0': no('M1'), '0,1': no('M3'), '0,2': no('M11'), '0,3': no('X28'), '0,4': nc('X3'),
+        '0,5': rst('M1'), '0,6': rst('M2'), '0,7': rst('M3'), '0,8': rst('M4'), '0,9': rst('M6'),
+        '0,10': rst('M11'),
+      }),
+      R('u15', 1, 3, { '0,0': no('X10'), '0,1': nc('M2'), '0,2': out('Y5') }),
+      R('u16', 1, 2, { '0,0': no('M6'), '0,1': out('Y6') }),
+    ],
+  },
+  'asrs-dual-cycle': {
+    rungs: [
+      R('v1', 1, 4, {
+        '0,0': nc('M1'), '0,1': rst('M2'), '0,2': rst('M4'), '0,3': mov('K99', 'D65'),
+      }),
+      // Take turns. Strict priority for line A works while there is crane to
+      // spare, and at full rate it simply never yields - A is calling again
+      // before B has been reached, and B stops. M9 remembers who went last.
+      R('v2', 4, 5, {
+        '0,0': nc('M1'), '0,1': no('X10'), '0,2': nc('X11'), '0,3': wire, '0,4': rst('M5'),
+        '1,0': nc('M1'), '1,1': nc('X10'), '1,2': no('X11'), '1,3': wire, '1,4': set('M5'),
+        '2,0': nc('M1'), '2,1': no('X10'), '2,2': no('X11'), '2,3': no('M9'), '2,4': set('M5'),
+        '3,0': nc('M1'), '3,1': no('X10'), '3,2': no('X11'), '3,3': nc('M9'), '3,4': rst('M5'),
+      }),
+      R('v3', 2, 2, {
+        '0,0': nc('M5'), '0,1': mov('D10', 'D70'),
+        '1,0': no('M5'), '1,1': mov('D11', 'D70'),
+      }),
+      bayDistanceRungs('v4', 'M5'),
+      ...slotNearestRungs('v5_', 'D70', 'D56', 'D57', 'D65', 'M4', 'M1'),
+      // The put-away leg always starts from goods in at the aisle head, so bay
+      // order is distance order for it and the cheap search is the right one.
+      ...slotFirstMatchRungs('v6_', 'K0', 'D50', 'D51', 'M2', 'M1'),
+      R('v7', 2, 2, { '0,0': no('X10'), '0,1': out('M8'), '1,0': no('X11') }, [
+        { row: 0, col: 1 },
+      ]),
+      // Which legs this trip has. Both is the whole point of the puzzle.
+      R('v8', 3, 6, {
+        '0,0': nc('M1'), '0,1': nc('X6'), '0,2': no('M8'), '0,3': no('M4'), '0,4': wire,
+        '0,5': set('M7'),
+        // The put-away leg is only worth adding to a trip when the crane is
+        // already near the aisle head. Bolting it onto a trip that starts at the
+        // far end means driving the whole aisle back empty first, which is the
+        // deadhead a dual cycle exists to avoid.
+        '1,0': nc('M1'), '1,1': nc('X6'), '1,2': no('X12'), '1,3': no('M2'),
+        '1,4': cmp('<=', 'D0', 'K2'), '1,5': set('M6'),
+        // But never stand still for it. With no order to fetch, the crane must
+        // go and do the put-away from wherever it is - otherwise it parks at the
+        // far end waiting for stock that only a put-away could deliver, and the
+        // whole aisle deadlocks.
+        '2,0': nc('M1'), '2,1': nc('X6'), '2,2': no('X12'), '2,3': no('M2'), '2,4': nc('M7'),
+        '2,5': set('M6'),
+      }),
+      R('v9', 2, 5, {
+        '0,0': nc('M1'), '0,1': no('M6'), '0,2': wire, '0,3': set('M1'), '0,4': mov('K1', 'D40'),
+        '1,0': nc('M1'), '1,1': nc('M6'), '1,2': no('M7'), '1,3': set('M1'),
+        '1,4': mov('K3', 'D40'),
+      }),
+      // Remember which line this trip's order leg belongs to, for the next
+      // time both of them are calling at once.
+      R('v9b', 2, 4, {
+        '0,0': no('M1'), '0,1': no('M7'), '0,2': nc('M5'), '0,3': set('M9'),
+        '1,0': no('M1'), '1,1': no('M7'), '1,2': no('M5'), '1,3': rst('M9'),
+      }),
+      R('v10', 1, 2, { '0,0': no('X29'), '0,1': set('M11') }),
+      // A trip is a list of stops, and the step counter says which one is next.
+      R('v11', 6, 5, {
+        '0,0': no('M1'), '0,1': cmp('=', 'D40', 'K1'), '0,2': wire,
+        '0,3': mov('K0', 'D52'), '0,4': mov('K2', 'D53'),
+        '1,0': no('M1'), '1,1': cmp('=', 'D40', 'K2'), '1,2': wire,
+        '1,3': mov('D50', 'D52'), '1,4': mov('D51', 'D53'),
+        '2,0': no('M1'), '2,1': cmp('=', 'D40', 'K3'), '2,2': wire,
+        '2,3': mov('D56', 'D52'), '2,4': mov('D57', 'D53'),
+        '3,0': no('M1'), '3,1': cmp('=', 'D40', 'K4'), '3,2': nc('M5'),
+        '3,3': mov('K0', 'D52'), '3,4': mov('K1', 'D53'),
+        '4,0': no('M1'), '4,1': cmp('=', 'D40', 'K4'), '4,2': no('M5'),
+        '4,3': mov('K5', 'D52'), '4,4': mov('K1', 'D53'),
+        // Idle and not stopping: stay where the last trip left you. Driving home
+        // between trips is a whole aisle of travel nobody asked for.
+        '5,0': nc('M1'), '5,1': no('X6'), '5,2': wire,
+        '5,3': mov('K0', 'D52'), '5,4': mov('K1', 'D53'),
+      }),
+      ...craneMoveRungs('v12', 'v13'),
+      R('v14', 1, 2, { '0,0': nc('M0'), '0,1': rst('M11') }),
+      R('v15', 1, 4, { '0,0': no('M1'), '0,1': no('M0'), '0,2': nc('M11'), '0,3': out('Y4') }),
+      // Stepped in reverse rung order, so a stop just arrived at cannot also be
+      // completed in the same scan.
+      R('v16', 1, 10, {
+        '0,0': no('M1'), '0,1': cmp('=', 'D40', 'K4'), '0,2': no('M11'), '0,3': no('X28'),
+        '0,4': nc('X3'), '0,5': rst('M1'), '0,6': rst('M6'), '0,7': rst('M7'), '0,8': rst('M11'),
+        '0,9': rst('M2'),
+      }),
+      R('v17', 1, 7, {
+        '0,0': no('M1'), '0,1': cmp('=', 'D40', 'K3'), '0,2': no('M11'), '0,3': no('X28'),
+        '0,4': no('X3'), '0,5': mov('K4', 'D40'), '0,6': rst('M11'),
+      }),
+      R('v18', 2, 9, {
+        '0,0': no('M1'), '0,1': cmp('=', 'D40', 'K2'), '0,2': no('M11'), '0,3': no('X28'),
+        '0,4': no('M7'), '0,5': mov('K3', 'D40'), '0,6': rst('M11'), '0,7': wire, '0,8': wire,
+        '1,0': no('M1'), '1,1': cmp('=', 'D40', 'K2'), '1,2': no('M11'), '1,3': no('X28'),
+        '1,4': nc('M7'), '1,5': rst('M1'), '1,6': rst('M6'), '1,7': rst('M11'), '1,8': rst('M2'),
+      }),
+      R('v19', 1, 7, {
+        '0,0': no('M1'), '0,1': cmp('=', 'D40', 'K1'), '0,2': no('M11'), '0,3': no('X28'),
+        '0,4': no('X3'), '0,5': mov('K2', 'D40'), '0,6': rst('M11'),
+      }),
+      R('v20', 1, 3, { '0,0': no('M8'), '0,1': nc('M4'), '0,2': out('Y5') }),
+      R('v21', 1, 2, { '0,0': no('M6'), '0,1': out('Y6') }),
+      R('v22', 1, 2, { '0,0': no('M1'), '0,1': out('Y7') }),
     ],
   },
 };
@@ -1654,6 +2048,126 @@ describe('traceScenario', () => {
   it('returns undefined for an unknown scenario name', () => {
     const spec = getLadderPuzzle('direct-control')!;
     expect(traceScenario(spec, solutions['direct-control'], 'nope')).toBeUndefined();
+  });
+});
+
+/**
+ * The warehouse category is about deciding, not about driving, so every one of
+ * these is a program that drives the crane perfectly well and decides badly.
+ * Each failure is a consequence the machine reports - a stopped line, a backed-up
+ * conveyor, a folded mast - rather than a rule the grader is checking.
+ */
+describe('gradeProgram — warehouse puzzles reject the plausible wrong answer', () => {
+  function variant(slug: string, patch: (rungs: Rung[]) => Rung[]): LadderProgram {
+    return { rungs: patch(structuredClone(solutions[slug]!).rungs) };
+  }
+
+  const failureText = (result: ReturnType<typeof gradeProgram>): string =>
+    result.scenarios.flatMap((s) => s.steps).flatMap((s) => s.failures).join(' ');
+
+  /**
+   * The whole point of the WMS table. Bay 1 holds what line A asks for twice
+   * running, so a program that only ever looks there gets two deliveries in
+   * before it has nothing left to find and the line stops.
+   */
+  it('asrs-retrieval: only ever searching the nearest bay runs the line dry', () => {
+    const spec = getLadderPuzzle('asrs-retrieval')!;
+    const bayOneOnly = variant('asrs-retrieval', (rungs) =>
+      rungs.filter((r) => !r.id.startsWith('s2_') || r.id === 's2_0' || r.id === 's2_1'),
+    );
+    const result = gradeProgram(spec, bayOneOnly);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('starved');
+  });
+
+  /**
+   * A cycle belongs to the line that asked for it. Search the right slot, fetch
+   * the right material, and then hand every pallet over at the aisle head
+   * regardless of who ordered it, and line A's conveyor takes the two it has
+   * room for and then has pallets pushed onto the floor - while line B, at the
+   * other end, never sees anything at all.
+   */
+  it('asrs-two-lines: delivering everything to the aisle head buries line A', () => {
+    const spec = getLadderPuzzle('asrs-two-lines')!;
+    const oneStation = variant('asrs-two-lines', (rungs) =>
+      rungs.map((r) =>
+        r.id === 't9'
+          ? R('t9', 2, 5, {
+              '0,0': no('M1'), '0,1': nc('M3'), '0,2': wire,
+              '0,3': mov('D50', 'D52'), '0,4': mov('D51', 'D53'),
+              '1,0': no('M1'), '1,1': no('M3'), '1,2': wire,
+              '1,3': mov('K0', 'D52'), '1,4': mov('K1', 'D53'),
+            })
+          : r,
+      ),
+    );
+    const result = gradeProgram(spec, oneStation);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain("line A's infeed conveyor, which was already full");
+  });
+
+  /**
+   * The signature interlock, and the one thing in this category that is a crash
+   * rather than a cost. Drop the fork-home contact out of the move block and the
+   * crane sets off down the aisle with its fork still inside a rack upright.
+   */
+  it('asrs-two-lines: a move block without the fork-home contact folds the mast', () => {
+    const spec = getLadderPuzzle('asrs-two-lines')!;
+    const noInterlock = variant('asrs-two-lines', (rungs) =>
+      rungs.map((r) =>
+        r.id === 't10'
+          ? R('t10', 4, 2, {
+              '0,0': cmp('<', 'D0', 'D52'), '0,1': out('Y0'),
+              '1,0': cmp('>', 'D0', 'D52'), '1,1': out('Y1'),
+              '2,0': cmp('<', 'D1', 'D53'), '2,1': out('Y2'),
+              '3,0': cmp('>', 'D1', 'D53'), '3,1': out('Y3'),
+            })
+          : r,
+      ),
+    );
+    const result = gradeProgram(spec, noInterlock);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('fork still out');
+  });
+
+  /**
+   * Feeding the line first is right. Feeding the line *only* is not: the inbound
+   * conveyor holds two pallets and then goods in stops, which fails the run just
+   * as surely as a stopped line does.
+   */
+  it('asrs-replenish: never putting anything away backs the inbound conveyor up', () => {
+    const spec = getLadderPuzzle('asrs-replenish')!;
+    const ordersOnly = variant('asrs-replenish', (rungs) =>
+      rungs.map((r) =>
+        // Kill the put-away leg: the mode relay can now only ever be cleared.
+        r.id === 'u5' ? R('u5', 1, 2, { '0,0': nc('M1'), '0,1': rst('M6') }) : r,
+      ),
+    );
+    const result = gradeProgram(spec, ordersOnly);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('blocked');
+  });
+
+  /**
+   * At full rate every pallet the lines eat has to be replaced, so a crane that
+   * only ever runs orders is not merely leaving stock on the dock - it is
+   * emptying the rack it is picking from. Goods in backs up and the lines run
+   * out of the very material sitting on the conveyor above them.
+   */
+  it('asrs-dual-cycle: running orders only empties the rack and blocks goods in', () => {
+    const spec = getLadderPuzzle('asrs-dual-cycle')!;
+    const ordersOnly = variant('asrs-dual-cycle', (rungs) =>
+      rungs.map((r) =>
+        r.id === 'v8'
+          ? R('v8', 1, 5, {
+              '0,0': nc('M1'), '0,1': nc('X6'), '0,2': no('M8'), '0,3': no('M4'),
+              '0,4': set('M7'),
+            })
+          : r,
+      ),
+    );
+    const result = gradeProgram(spec, ordersOnly);
+    expect(result.solved).toBe(false);
   });
 });
 

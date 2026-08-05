@@ -182,6 +182,46 @@ never wall-clock time. Everything else in the system is arranged around keeping 
       A side effect that falls out of the physics rather than being written in: a ramp lasting
       about one pendulum period cancels its own excitation, so the *fastest* legal ramp is not
       the fastest cycle. The crane's `parMs` quietly rewards finding that.
+  - `warehouse` — one stacker crane in one aisle, a rack of 4 bays x 2 levels, and two
+    production lines that both want feeding from it. Every other model runs a *sequence*; this
+    one runs a **schedule**, which is the whole category. Three things demand the crane at once
+    (line A, line B, goods in), there is one crane, and what serving any of them costs depends
+    on where the crane is standing.
+    - **The aisle** is six positions, `0`..`5`, and two levels. Position 0 level 1 is line A's
+      infeed conveyor and level 2 above it is the goods-in conveyor; bays 1–4 are the rack
+      (level 1 pick face, level 2 reserve); position 5 level 1 is line B. The two lines sit at
+      opposite ends deliberately: distance from A is the bay number and from B it is `5 - bay`,
+      so *the nearest slot holding a material differs depending on who asked for it*.
+    - **Chaotic storage.** Materials are not assigned to bays. The WMS scatters them and
+      publishes the whole table, one register per slot (`D101`–`D104` pick face, `D201`–`D204`
+      reserve, `0` = empty), so finding stock is a search-and-minimize rather than a lookup —
+      and the answer moves as stock is drawn down and put back.
+    - **Driven, not commanded**: `Y0`/`Y1` traverse, `Y2`/`Y3` lift, `Y4` fork, and the program
+      stops itself on the position sensors (`X20`–`X25`, `X26`/`X27`) the way `elevator5` stops
+      on its floors. Travel and lift run together, so a move costs
+      `max(bays x 800ms, levels x 600ms)`. `D0`/`D1` report the same sensor chain as a number —
+      **the last sensor passed, latched, not the nearest one rounded** — which is what makes
+      `[= D0 D50]` mean "arrived" instead of "more than half way there", and what collapses
+      driving anywhere into one small rung block. End stops simply hold the crane.
+    - **The fork** is one stroke on the `pickPlace` contract: the transfer lands when the
+      out-stroke completes, and whether it picks or places is implied by what the crane is
+      carrying. `X13` is a carriage photo-eye that reads the slot in front of the fork — a
+      confirmation of the table, never a substitute, since you only get it after driving there.
+    - **What trips it**: moving with the fork out (the mast folds) and stroking the fork
+      between slots are the two signature interlocks; after that the faults are all logistics —
+      a pallet into an occupied slot, onto a full infeed conveyor, into a line that asked for
+      something else, or back out onto the inbound conveyor. All latch `jam` with a reason.
+    - **Two failure latches beside `jam`**, because these are caused by the *schedule* rather
+      than by a move: `starved` (a line's consume tick found its infeed conveyor empty) and
+      `blocked` (a pallet reached goods in with nowhere to go). Both are asserted exactly the
+      way `jam` is, so the grader needed no changes — and they are what turns "be fair to both
+      lines" from a rule into a consequence.
+    - Line demand, and what arrives at goods in, are deterministic sequences in the
+      `DRILL_STOCK` tradition. A line's demand register names the material for the *next* pallet
+      it will accept and advances on delivery, so a program has to re-read it every cycle.
+      Rates are the category's difficulty dial: goods in supplies at half a line's consume
+      period so two lines and the inbound flow roughly balance, and the capstone then sits at
+      about nine tenths of the crane.
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
   - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
     buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by
@@ -318,10 +358,15 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 39 | `axis-profile` | medium | position from a speed reference: signed distance-to-go, rapid, then an approach that starts before the target | axis |
 | 40 | `axis-loaded` | hard | two ramp tables swapped in flight off X14, *and* the stopping distance they imply | axis |
 | 41 | `axis-crane` | hard | capstone: hoist plus traverse, and a load on a rope that is still swinging after the trolley stops | axis |
+| 42 | `asrs-put-away` | medium | the crane's coordinate interface: drive on the position sensors, one scripted put-away | warehouse |
+| 43 | `asrs-retrieval` | hard | search the WMS slot table for a demanded material, nearest slot first, and keep a line fed | warehouse |
+| 44 | `asrs-two-lines` | hard | two lines at opposite ends: latch which one a cycle belongs to, and compute distance from *its* station | warehouse |
+| 45 | `asrs-replenish` | hard | a second job in the opposite direction — put-away into the nearest empty slot, without letting goods in back up | warehouse |
+| 46 | `asrs-dual-cycle` | hard | capstone: three demands on one crane, trips planned as a list of stops, a stop switch, and dual-command cycling | warehouse |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 `elevator`,
 15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`, 29–32 `drill`,
-33–37 `process-control`, 38–41 `motion`.
+33–37 `process-control`, 38–41 `motion`, 42–46 `warehouse`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -505,6 +550,16 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     `ConveyorPart` lerps along the infeed conveyor whenever a fresh part is due; the mast's
     `JamLamp`/`TrayFullLamp` materials are mutated red/green. Every transform is still a pure
     function of `machine.*`, same contract the other Blender-backed scenes follow.
+  - **`Warehouse3D.tsx`** (`processId: 'warehouse'`, `interactive`) — built **procedurally**
+    rather than from a glTF, the `TankVessel3D` precedent for the same reason: a rack is a grid
+    of boxes on a grid of steelwork, and what has to be readable off it is *where the stock is*.
+    Color and position say that; geometry adds nothing. Eight slot pallets are colored by
+    material code straight from the WMS registers (empty slots draw only their outline, so a
+    free slot reads as a place rather than a gap), the mast/carriage/fork are positioned from
+    `pos`/`level`/`fork`, the passed position sensor lights, and the three conveyors show how
+    many pallets are standing on them. The whole scene is a pure function of the machine state
+    with no clock of its own, so replay scrubbing shows exactly what the live run showed — and
+    it stays swappable for a hero model later without touching puzzle logic.
 - **Resizable workspace** (`features/layout/Resizable.tsx`) — the play view is a full-height
   three-column workbench. The brief and operator panels are drag-resizable (widths persisted to
   `localStorage`, arrow keys when the divider is focused, double-click to collapse) and

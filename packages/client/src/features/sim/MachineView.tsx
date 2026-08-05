@@ -20,6 +20,7 @@ const TankVessel3D = lazy(() =>
   import('./TankVessel3D').then((m) => ({ default: m.TankVessel3D })),
 );
 const AxisRig3D = lazy(() => import('./AxisRig3D').then((m) => ({ default: m.AxisRig3D })));
+const Warehouse3D = lazy(() => import('./Warehouse3D').then((m) => ({ default: m.Warehouse3D })));
 
 /** Reserves the scene's footprint while its chunk downloads (no layout shift). */
 const sceneFallback = <div className="machine3d" style={{ height: 300 }} />;
@@ -179,6 +180,61 @@ export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: 
             <Readout label="Sway" value={`${numOf(m.swayAmp)}`} on={numOf(m.swayAmp) > 60} />
           )}
           {hasForks && <Readout label="Put away" value={`${numOf(m.placed)}`} on={numOf(m.placed) > 0} />}
+        </div>
+      </div>
+    );
+  }
+  if (spec.processId === 'warehouse') {
+    const m = runner.machine;
+    const hasLineA = typeof m.bufferA === 'number';
+    const hasLineB = typeof m.bufferB === 'number';
+    const hasGoodsIn = typeof m.goodsWaiting === 'number';
+    const slots = [11, 12, 21, 22, 31, 32, 41, 42];
+    const filled = slots.filter((k) => numOf(m[`slot${k}`]) > 0).length;
+    return (
+      <div className="machine-view panel">
+        <div className="mv-head">
+          <span className="eyebrow">Aisle Crane</span>
+          <StatusTag tag={warehouseTag(m)} />
+        </div>
+        <Suspense fallback={sceneFallback}>
+          <Warehouse3D machine={m} height={300} />
+        </Suspense>
+        <div className="mv-readout">
+          {/* The crane's own coordinate, in the same numbers the program uses. */}
+          <Readout
+            label="At"
+            value={`${numOf(m.pos).toFixed(1)} / L${Math.round(numOf(m.level, 1))}`}
+            on={numOf(m.dir) !== 0 || numOf(m.liftDir) !== 0}
+          />
+          <Readout label="Fork" value={pct(numOf(m.fork))} on={numOf(m.fork) > 0} />
+          <Readout
+            label="Carrying"
+            value={boolOf(m.carrying) ? materialName(numOf(m.loadCode)) : '—'}
+            on={boolOf(m.carrying)}
+          />
+          <Readout label="Rack" value={`${filled}/8`} on={filled > 0} />
+          {hasLineA && (
+            <Readout
+              label="Line A"
+              value={`${numOf(m.bufferA)} · ${numOf(m.deliveredA)} out`}
+              on={numOf(m.bufferA) > 0}
+            />
+          )}
+          {hasLineB && (
+            <Readout
+              label="Line B"
+              value={`${numOf(m.bufferB)} · ${numOf(m.deliveredB)} out`}
+              on={numOf(m.bufferB) > 0}
+            />
+          )}
+          {hasGoodsIn && (
+            <Readout
+              label="Goods in"
+              value={`${numOf(m.goodsWaiting)}/2 · ${numOf(m.storedAway)} away`}
+              on={numOf(m.goodsWaiting) > 0}
+            />
+          )}
         </div>
       </div>
     );
@@ -408,6 +464,48 @@ function axisTag(m: MachineState): MachineTag {
   if (vel > 0) return { text: 'traversing', icon: 'right' };
   if (vel < 0) return { text: 'returning', icon: 'left' };
   if (boolOf(m.loaded)) return { text: 'loaded', icon: 'box' };
+  return { text: 'idle' };
+}
+
+// --- Automated warehouse --------------------------------------------------------
+
+const WAREHOUSE_MATERIAL_NAMES = ['—', 'Steel', 'Brass', 'Nylon', 'Alloy'];
+
+function materialName(code: number): string {
+  return WAREHOUSE_MATERIAL_NAMES[code] ?? `#${code}`;
+}
+
+/**
+ * A starved line and a blocked goods-in are latches like `jam`, but they are not
+ * crashes: the crane is still driveable and the picture is still moving, so they
+ * need saying out loud or the run just looks like it is going fine.
+ */
+function warehouseTag(m: MachineState): MachineTag {
+  if (m.jam === true) return jamTag(m);
+  if (m.starved === true) {
+    return {
+      text: 'line stopped',
+      icon: 'warn',
+      warn: true,
+      tip: 'A production line ran its infeed conveyor empty and stopped. The crane is still working, but the run has already failed.',
+    };
+  }
+  if (m.blocked === true) {
+    return {
+      text: 'goods in blocked',
+      icon: 'warn',
+      warn: true,
+      tip: 'A pallet arrived at goods in with nowhere to go, so the inbound conveyor stopped. The run has already failed.',
+    };
+  }
+  if (numOf(m.fork) > 0.01) {
+    return boolOf(m.carrying) ? { text: 'depositing', icon: 'right' } : { text: 'collecting', icon: 'right' };
+  }
+  if (numOf(m.dir) > 0) return { text: 'travelling', icon: 'right' };
+  if (numOf(m.dir) < 0) return { text: 'returning', icon: 'left' };
+  if (numOf(m.liftDir) > 0) return { text: 'hoisting', icon: 'up' };
+  if (numOf(m.liftDir) < 0) return { text: 'lowering', icon: 'down' };
+  if (boolOf(m.carrying)) return { text: 'loaded', icon: 'box' };
   return { text: 'idle' };
 }
 

@@ -1,14 +1,24 @@
 import type { PuzzleDevice } from '../types.js';
 // The two continuous plants live in their own files because their fixed-point
-// contracts need the room to be explained. Their imports back here are
-// type-only, so there is no runtime cycle.
+// contracts need the room to be explained, and the warehouse in its own because
+// its rack layout and demand sequences are content as much as code. Their
+// imports back here are type-only, so there is no runtime cycle.
 import { tank } from './tank.js';
 import { axis } from './axis.js';
+import { warehouse } from './warehouse.js';
 
 /** Arbitrary per-puzzle machine state (positions, speeds, flags). */
 export type MachineState = Record<string, number | boolean | string>;
 
-export { tank, axis };
+export { tank, axis, warehouse };
+// The rack layout and the inbound sequence are content the machine view reads
+// to place and colour pallets, so they travel with the model.
+export {
+  GOODS_IN_QUEUE,
+  WAREHOUSE_MATERIALS,
+  WAREHOUSE_SLOTS,
+  slotRegister,
+} from './warehouse.js';
 
 export interface ProcessStepCtx {
   outputs: Record<string, boolean>; // current Y bits from the PLC
@@ -968,6 +978,7 @@ const registry = new Map<string, ProcessModel>([
   [passthrough.id, passthrough],
   [tank.id, tank],
   [axis.id, axis],
+  [warehouse.id, warehouse],
   [conveyor.id, conveyor],
   [drill.id, drill],
   [press.id, press],
