@@ -53,6 +53,50 @@ function SceneEnvironment() {
   return null;
 }
 
+/**
+ * The half-size of the scene, in scene units, that the camera must show.
+ *
+ * A fixed `cameraPosition` frames whatever the panel's aspect ratio happened to
+ * be when it was tuned, so a wide machine gets cropped the moment the layout is
+ * narrower than that. Giving the extent instead lets the distance be *derived*
+ * from the live viewport: the scene is always fully in frame, at any panel size.
+ */
+export interface FitExtent {
+  halfWidth: number;
+  halfHeight: number;
+}
+
+/**
+ * Dollies the camera along its current view direction until `extent` fits.
+ *
+ * Distance only, and only ever *outward* — the direction is read back from
+ * wherever the player has orbited to, and a re-fit on resize pushes the camera
+ * back until the scene fits again without undoing a zoom they chose. Pulling in
+ * to the ideal distance would fight every drag of the workspace divider.
+ */
+function FitCamera({ extent, target }: { extent: FitExtent; target: [number, number, number] }) {
+  const camera = useThree((s) => s.camera);
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
+  const [tx, ty, tz] = target;
+  const { halfWidth, halfHeight } = extent;
+
+  useEffect(() => {
+    const cam = camera as THREE.PerspectiveCamera;
+    if (!cam.isPerspectiveCamera || width === 0 || height === 0) return;
+    const vTan = Math.tan((cam.fov * Math.PI) / 360);
+    const hTan = vTan * (width / height);
+    const dist = Math.max(halfWidth / hTan, halfHeight / vTan);
+    const focus = new THREE.Vector3(tx, ty, tz);
+    const dir = cam.position.clone().sub(focus);
+    if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);
+    if (dir.length() >= dist) return;
+    cam.position.copy(focus).addScaledVector(dir.normalize(), dist);
+  }, [camera, width, height, halfWidth, halfHeight, tx, ty, tz]);
+
+  return null;
+}
+
 /** Scene-space box the view center is confined to while panning. */
 export interface PanBounds {
   x: [min: number, max: number];
@@ -90,6 +134,7 @@ export function MachineCanvas({
   interactive = true,
   zoomable = false,
   panBounds,
+  fitExtent,
   children,
 }: {
   height?: number;
@@ -112,6 +157,12 @@ export function MachineCanvas({
    * When not `interactive`, left-drag pans.
    */
   panBounds?: PanBounds;
+  /**
+   * Frames the scene from the live viewport instead of trusting
+   * `cameraPosition`'s distance. Keep `maxDistance` above the widest fit this
+   * can ask for, or OrbitControls will pull the camera back in and re-crop.
+   */
+  fitExtent?: FitExtent;
   children: ReactNode;
 }) {
   const showControls = interactive || zoomable || !!panBounds;
@@ -152,6 +203,7 @@ export function MachineCanvas({
         onCreated={({ camera }) => camera.lookAt(...target)}
       >
         <SceneEnvironment />
+        {fitExtent && <FitCamera extent={fitExtent} target={target} />}
         {/* Sky/ground hemisphere instead of flat ambient, plus one shadow-casting
             key light — the raking sun is what gives walls their nuance. */}
         <hemisphereLight color="#dbe8ff" groundColor="#8a7a6a" intensity={0.5} />

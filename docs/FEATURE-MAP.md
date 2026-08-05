@@ -474,7 +474,13 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     `OrbitControls` rig both scenes render into, parameterized by camera position/fov/target/
     distance bounds/height. Three control modes: `interactive` (drag-to-rotate + scroll-to-zoom,
     the drill station's contract), `zoomable` (fixed camera angle, scroll still zooms — the
-    elevator's contract, via `OrbitControls` with `enableRotate={false}`), or neither.
+    elevator's contract, via `OrbitControls` with `enableRotate={false}`), or neither. `panBounds`
+    adds screen-plane panning with the view center clamped to a scene-space box (the camera is
+    shifted by the same delta as the target, or clamping alone would tilt it). `fitExtent`
+    (`{halfWidth, halfHeight}`) makes `cameraPosition` a *direction* only: the distance is derived
+    from the live viewport each resize, so a wide machine can't be cropped by a narrow panel. It
+    dollies along the current view direction, so re-fitting never resets an orbit — but
+    `maxDistance` has to sit above the widest fit or `OrbitControls` pulls the camera back in.
   - **`DrillStation3D.tsx`** (`interactive`) — `drill-station.glb`; named nodes
     (`scene.getObjectByName(...)`) looked up once and driven imperatively from `machine.clamp` /
     `machine.drill` / `machine.spinning` / `machine.push`. The work piece runs through a small
@@ -550,16 +556,25 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     `ConveyorPart` lerps along the infeed conveyor whenever a fresh part is due; the mast's
     `JamLamp`/`TrayFullLamp` materials are mutated red/green. Every transform is still a pure
     function of `machine.*`, same contract the other Blender-backed scenes follow.
-  - **`Warehouse3D.tsx`** (`processId: 'warehouse'`, `interactive`) — built **procedurally**
-    rather than from a glTF, the `TankVessel3D` precedent for the same reason: a rack is a grid
-    of boxes on a grid of steelwork, and what has to be readable off it is *where the stock is*.
-    Color and position say that; geometry adds nothing. Eight slot pallets are colored by
-    material code straight from the WMS registers (empty slots draw only their outline, so a
-    free slot reads as a place rather than a gap), the mast/carriage/fork are positioned from
-    `pos`/`level`/`fork`, the passed position sensor lights, and the three conveyors show how
-    many pallets are standing on them. The whole scene is a pure function of the machine state
-    with no clock of its own, so replay scrubbing shows exactly what the live run showed — and
-    it stays swappable for a hero model later without touching puzzle logic.
+  - **`Warehouse3D.tsx`** (`processId: 'warehouse'`, `interactive` + `panBounds` + `fitExtent`) —
+    built **procedurally** rather than from a glTF, the `TankVessel3D` precedent for the same
+    reason. What has to be readable off it is *where the stock is*, so the plant is modelled as a
+    real aisle: braced upright frames in racking livery, beams and deck slats, a floor rail with
+    sleeper plate, a top guide rail on stub columns off the rack, a twin-mast stacker crane whose
+    load rides *between* the columns on a three-stage telescopic fork, hoist chains that pay out
+    with the carriage, roller conveyors on legs (the goods-in deck straddles Line A's rather than
+    standing legs through it), and a clad building wall behind. Legibility is carried by four
+    devices: every slot wears a placard with its **WMS register name** (`D101`..`D204`), each
+    material has its **own load shape** as well as its color (plate / drums / sacks / bar), each
+    station's lamp shows the **material that line is calling for** (and goes red when it stops),
+    and the crane's beacon reads green / amber / red. The fork's full stroke lands a pallet
+    exactly where the slot draws its own, so a transfer reads as continuous. Signage is painted
+    into `CanvasTexture`s rather than fetched as a font, which keeps the scene offline-clean.
+    Everything that doesn't move (`Plant`, `StationFrame`, and `Pallet`, which takes scalar
+    x/y/z so the memo actually holds) sits behind `memo`, because the sim re-renders this tree
+    20 times a second and only the crane, the lamps and the pallets that changed should
+    reconcile. The whole scene is still a pure function of the machine state with no clock of its
+    own, so replay scrubbing shows exactly what the live run showed.
 - **Resizable workspace** (`features/layout/Resizable.tsx`) — the play view is a full-height
   three-column workbench. The brief and operator panels are drag-resizable (widths persisted to
   `localStorage`, arrow keys when the divider is focused, double-click to collapse) and

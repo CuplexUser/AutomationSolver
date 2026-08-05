@@ -73,6 +73,10 @@ function cellText(element: LadderElement): CellText {
   const b = element.operands?.[1] || '?';
   const dest = element.device || '?';
   switch (element.type) {
+    // A wire is the one element with nothing to name, so it gets no address
+    // line at all — a `?` there reads as a field still waiting to be filled in.
+    case 'hwire':
+      return { top: [] };
     case 'compare':
       return { top: [a, element.op ?? '?', b] };
     case 'mov':
@@ -99,6 +103,8 @@ export function describeElement(element: LadderElement): string {
   const b = element.operands?.[1] || 'nothing yet';
   const dest = element.device || 'nothing yet';
   switch (element.type) {
+    case 'hwire':
+      return 'wire';
     case 'compare':
       return `compare ${a} ${element.op ?? '='} ${b}`;
     case 'mov':
@@ -126,7 +132,20 @@ export function CellView({ element, selected, leftLive, rightLive, symbolLive, o
       aria-label={element ? describeElement(element) : 'empty cell'}
     >
       <svg width={CELL_W} height={CELL_H} viewBox={`0 0 ${CELL_W} ${CELL_H}`}>
-        {element ? (
+        {element?.type === 'hwire' ? (
+          // A wire is drawn, not symbolized: one unbroken conductor across the
+          // cell. It lights from the *node* either side of it rather than from
+          // `symbolLive`, which a wire always sets — it conducts by definition,
+          // which is not the same as carrying power.
+          <line
+            x1={0}
+            y1={WIRE_Y}
+            x2={CELL_W}
+            y2={WIRE_Y}
+            strokeWidth={2}
+            style={{ stroke: leftColor, ...glow(leftLive) }}
+          />
+        ) : element ? (
           <>
             <line x1={0} y1={WIRE_Y} x2={26} y2={WIRE_Y} strokeWidth={2} style={{ stroke: leftColor, ...glow(leftLive) }} />
             <line
@@ -279,7 +298,9 @@ function Symbol({ element, color, live }: { element: LadderElement; color: strin
     );
   }
 
-  // Timer / counter: function block box
+  // Timer / counter: function block box. Explicitly the last two types rather
+  // than a catch-all — a wire used to land here and draw itself as a counter.
+  if (t !== 'timer' && t !== 'counter') return null;
   const letter = t === 'timer' ? 'T' : 'C';
   return (
     <g strokeWidth={sw} style={s} fill="none">
