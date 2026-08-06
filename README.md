@@ -1,10 +1,10 @@
 # ⚡ AutomationSolver
 
-**A puzzle game where the puzzle piece is ladder logic.** Program a Mitsubishi-style PLC on a grid editor, hit Run, and watch power flood the rung while a real machine moves in 3D beside it. Forty work orders across ten categories take you from a single contact driving a single coil to a PID loop holding a tank on setpoint and a gantry crane that has to wait out the swing of its own load.
+**A puzzle game where the puzzle piece is ladder logic.** Program a Mitsubishi-style PLC on a grid editor, hit Run, and watch power flood the rung while a real machine moves in 3D beside it. Forty-five work orders across eleven categories take you from a single contact driving a single coil to a PID loop holding a tank on setpoint, and on to a stacker crane that has to keep two production lines fed out of one aisle of racking.
 
 [![TypeScript](https://badgen.net/badge/TypeScript/React%20%2B%20Express/3178c6)]()
 [![No native deps](https://badgen.net/badge/npm%20install/no%20C%2B%2B%20toolchain/2ea44f)]()
-[![Puzzles](https://badgen.net/badge/work%20orders/40%20across%2010%20categories/ffb020)]()
+[![Puzzles](https://badgen.net/badge/work%20orders/45%20across%2011%20categories/ffb020)]()
 
 [**Play the demo rung →**](https://cuplexuser.github.io/AutomationSolver/) · a real solver and grader running in the page, no install
 
@@ -26,13 +26,17 @@ Press **Run** and the rung lights up cell by cell as power floods it from the le
 
 ## The machines
 
-Every puzzle family drives a machine visualization that is a diagnostic instrument rather than decoration: nothing animates on its own, and every transform is a pure function of the deterministic state the process model computed from `dt`. Four scenes are hero models authored in Blender and loaded as glTF; two are procedural, because their subject is a number moving and a shape that *is* that number reads better than geometry would.
+Every puzzle family drives a machine visualization that is a diagnostic instrument rather than decoration: nothing animates on its own, and every transform is a pure function of the deterministic state the process model computed from `dt`. Five scenes are hero models authored in Blender and loaded as glTF; two are procedural, because their subject is a number moving, or a grid of stock, and a shape that *is* that number reads better than geometry would.
+
+![The automated warehouse: a stacker crane in an aisle of racking, carrying a pallet of alloy bar](docs/shots/machine-warehouse.webp)
+
+*The newest category and the hardest. Eight rack slots wearing the WMS register names the program reads (`D101`..`D204`), a twin-mast crane carrying the load between its columns on a three-stage telescopic fork, and two production lines calling for material at either end of the aisle. Each material has its own load shape as well as its own color, so a mis-delivery is visible before the grader says so.*
 
 | | |
 |---|---|
 | ![Drill station](docs/shots/machine-drill.webp)<br>**Drill Station** · clamp, spindle spin-up, feed and eject, sorting aluminum from hardened steel through a reject gate | ![Packaging machine](docs/shots/machine-pack.webp)<br>**Packaging Machine** · six pneumatic actuators group boxes 2 → 4 → 16, with a lift that flips cartons on end |
 | ![Pick and place arm](docs/shots/machine-pickplace.webp)<br>**Pick & Place** · a two-link arm swings between infeed and tray, reaching on an IK path so the gripper hangs plumb | ![Elevator shaft](docs/shots/machine-elevator.webp)<br>**Elevator** · five floors, call buttons, and doors the car physically will not move against |
-| ![Tank vessel](docs/shots/machine-tank.webp)<br>**Process Control** · the liquid column *is* the register, the inlet stream's radius *is* the valve opening | ![Traverse axis and crane](docs/shots/machine-axis.webp)<br>**Motion Control** · a VFD carriage on ramp parameters, with a load swinging on a rope after the trolley stops |
+| ![Tank vessel](docs/shots/machine-tank.webp)<br>**Process Control** · the liquid column *is* the register, the inlet stream's radius *is* the valve opening | ![Transfer carriage](docs/shots/machine-axis.webp)<br>**Motion Control** · a VFD gantry on ramp parameters, with a pallet swinging on the hoist after the trolley stops |
 
 ## Two ways to program
 
@@ -78,6 +82,7 @@ Submitting runs every scenario the puzzle declares: a scripted input timeline wi
 | **Drill Station** (4) | Clamp, spin up, drill and sort mixed stock through one automatic station. |
 | **Process Control** (5) | Scale a transmitter, build a P regulator by hand out of SUB/MUL/ADD, then let a PID block kill the offset. |
 | **Motion Control** (4) | Speed references, drive ramp parameters, and the stopping distance a loaded carriage implies. |
+| **Automated Warehouse** (5) | Drive a stacker crane by position sensor, search a WMS table for the nearest slot holding what was asked for, and keep two lines fed from one aisle. |
 
 Categories unlock sequentially — each one's first puzzle is always open, and the rest gate on the previous solve. Enforced on the API, not just hidden in the UI.
 

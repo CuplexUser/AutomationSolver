@@ -6,7 +6,7 @@
 <title>AutomationSolver — a ladder-logic puzzle game</title>
 <meta name="description" content="Program a Mitsubishi-style PLC in ladder logic to solve real motor-control problems. Build the rung, run the scan, watch the power flow, and get graded against scripted test scenarios." />
 <meta property="og:title" content="AutomationSolver" />
-<meta property="og:description" content="A puzzle game where you program a PLC in ladder logic: seal-ins, e-stops, timers, counters, a drill station, a packaging machine, a PID loop and a gantry crane." />
+<meta property="og:description" content="A puzzle game where you program a PLC in ladder logic: seal-ins, e-stops, timers, counters, a drill station, a packaging machine, a PID loop, a gantry crane and an automated warehouse." />
 <meta property="og:image" content="https://cuplexuser.github.io/AutomationSolver/preview.png" />
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f141b' stroke='%232b3a4b'/%3E%3Crect x='4' y='6' width='2.5' height='20' rx='1.2' fill='%23ffb020'/%3E%3Crect x='25.5' y='6' width='2.5' height='20' rx='1.2' fill='%233a4d61'/%3E%3Cpath d='M6.5 16 H12.5' stroke='%23ffb020' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M19.5 16 H25.5' stroke='%233a4d61' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M12.5 10 V22' stroke='%23ffb020' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M19.5 10 V22' stroke='%234a5f74' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -237,6 +237,8 @@
 
   /* ---- machine gallery ---- */
   .machines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+  /* The seventh scene would otherwise sit alone in a two-up grid. */
+  .machine-wide { grid-column: 1 / -1; }
   .machine {
     background: var(--iron-900); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
     display: flex; flex-direction: column;
@@ -333,17 +335,17 @@
       <h1>Make the rung <span class="lit">remember</span></h1>
       <p class="lede">
         Program a <strong>Mitsubishi-style PLC</strong> on a grid editor, hit Run, and watch power
-        flood the rung while a real machine moves in 3D beside it. Forty work orders take you from
-        one contact driving one coil to a PID loop holding a tank on setpoint and a gantry crane
-        that has to wait out the swing of its own load.
+        flood the rung while a real machine moves in 3D beside it. Forty-five work orders take you
+        from one contact driving one coil to a PID loop holding a tank on setpoint, and on to a
+        stacker crane keeping two production lines fed out of one aisle of racking.
       </p>
       <div class="cta-row">
         <a class="btn btn-amber" href="#try">Build a rung now</a>
         <a class="btn btn-ghost" href="https://github.com/CuplexUser/AutomationSolver">View on GitHub</a>
       </div>
       <dl class="spec">
-        <div><dt>Work orders</dt><dd>40</dd></div>
-        <div><dt>Categories</dt><dd>10</dd></div>
+        <div><dt>Work orders</dt><dd>45</dd></div>
+        <div><dt>Categories</dt><dd>11</dd></div>
         <div><dt>Scan cycle</dt><dd>50 ms</dd></div>
       </dl>
     </div>
@@ -425,10 +427,10 @@
     <h2>The 3D view is an instrument, not a cutscene</h2>
     <p class="section-lede">
       Nothing animates on its own. Every transform is a pure function of the state the process model
-      computed from this scan's <code>dt</code>, so what you see is what the grader saw. Four scenes
+      computed from this scan's <code>dt</code>, so what you see is what the grader saw. Five scenes
       are hero models authored in Blender and loaded as glTF; two are drawn procedurally, because
-      when the subject is a number moving, a shape that <strong>is</strong> that number reads better
-      than geometry would.
+      when the subject is a number moving, or a grid of stock, a shape that <strong>is</strong> that
+      number reads better than geometry would.
     </p>
     <div class="machines">
       <figure class="machine">
@@ -477,12 +479,22 @@
         </figcaption>
       </figure>
       <figure class="machine">
-        <img src="shots/machine-axis.webp" width="1438" height="798" alt="The 3D transfer carriage: a gantry with a carriage on a rail, a hoist rope and a load on forks." loading="lazy" />
+        <img src="shots/machine-axis.webp" width="1440" height="798" alt="The 3D transfer carriage: a gantry crane with a hoist trolley carrying a pallet on forks, above a pick conveyor and a rack." loading="lazy" />
         <figcaption class="machine-body">
-          <p class="machine-tag">Motion Control <span class="render">procedural</span></p>
+          <p class="machine-tag">Motion Control <span class="render">glTF</span></p>
           <h3>A speed reference is not a position</h3>
           <p>The drive ramps toward whatever the accel and decel parameter registers currently say,
              and the load keeps swinging on its rope after the trolley stops.</p>
+        </figcaption>
+      </figure>
+      <figure class="machine machine-wide">
+        <img src="shots/machine-warehouse.webp" width="1440" height="798" alt="The 3D automated warehouse: a twin-mast stacker crane in an aisle of blue and orange racking, carrying a pallet of alloy bar past eight loaded slots." loading="lazy" />
+        <figcaption class="machine-body">
+          <p class="machine-tag">Automated Warehouse <span class="render">procedural</span></p>
+          <h3>Eight slots, two lines, one crane</h3>
+          <p>Every slot wears the WMS register the program reads, and every material has its own
+             load shape as well as its own color, so a mis-delivery is visible before the grader
+             says so.</p>
         </figcaption>
       </figure>
     </div>
@@ -525,7 +537,7 @@
 <section id="orders">
   <div class="wrap">
     <p class="panel-label">Work orders</p>
-    <h2>Forty jobs, ten categories</h2>
+    <h2>Forty-five jobs, eleven categories</h2>
     <p class="section-lede">
       Each category is its own ladder of difficulty, starting from something you can finish in a
       minute and ending in a capstone that combines everything in it.
@@ -541,6 +553,7 @@
       <div class="order"><span class="name">Drill Station</span><span class="count">4 jobs</span><span class="desc">Clamp, spin up, drill and sort mixed stock through one automatic station.</span></div>
       <div class="order"><span class="name">Process Control</span><span class="count">5 jobs</span><span class="desc">Scale a transmitter, build a P regulator by hand, then let a PID block kill the offset.</span></div>
       <div class="order"><span class="name">Motion Control</span><span class="count">4 jobs</span><span class="desc">Speed references, drive ramp parameters and the stopping distance a load implies.</span></div>
+      <div class="order"><span class="name">Automated Warehouse</span><span class="count">5 jobs</span><span class="desc">Drive a stacker crane by position sensor, search the stock table for the nearest slot, and keep two lines fed.</span></div>
     </div>
     <p class="lock-note">
       Scoring is 85 marks for scenarios passed plus 15 for performance, and the performance marks

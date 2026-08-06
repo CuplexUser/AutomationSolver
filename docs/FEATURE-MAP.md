@@ -504,8 +504,8 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
   - Both scenes share the same silent-failure risk: a node name typo in the `.glb` is a no-op, not
     an error — `scene.getObjectByName(...)` just returns `undefined` and that part of the scene
     stops animating.
-  - **`TankVessel3D.tsx`** (`processId: 'tank'`, `interactive`) — the one scene built
-    **procedurally** rather than from a `.glb`, on purpose: every other machine's interest is in
+  - **`TankVessel3D.tsx`** (`processId: 'tank'`, `interactive`) — the first of the two scenes built
+    **procedurally** rather than from a `.glb`, on purpose: the Blender machines' interest is in
     linkages and shapes, while this one's whole subject is a number moving, and a cylinder of
     liquid whose height *is* that number says it better than geometry would. Level scales a
     unit-height liquid cylinder re-seated to grow from the vessel floor; the inlet stream's

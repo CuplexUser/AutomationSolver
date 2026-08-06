@@ -50,10 +50,14 @@ const BEAM_H = 0.12;
 const UPRIGHT_W = 0.13;
 const RACK_TOP = 3.45;
 
-/** Twin mast: the load rides *between* the columns, as on a real stacker crane. */
+/**
+ * Twin mast: the load rides *between* the columns, as on a real stacker crane.
+ * The top rail sits just clear of the rack, the way it does on a real machine —
+ * carried higher it opens a band of empty air across the middle of the picture.
+ */
 const MAST_X = 0.88;
-const MAST_TOP = 4.25;
-const TOP_RAIL_Y = 4.52;
+const MAST_TOP = 3.95;
+const TOP_RAIL_Y = 4.15;
 const RAIL_TOP = 0.22;
 
 /** Pitch of the pallets queued on a station's roller deck. */
@@ -71,6 +75,12 @@ const MATERIAL_COLOR = ['#334155', '#38bdf8', '#fbbf24', '#4ade80', '#c084fc'] a
 
 const STEEL = { color: '#8b95a3', metalness: 0.8, roughness: 0.42 };
 const DARK_STEEL = { color: '#4b5563', metalness: 0.7, roughness: 0.5 };
+/**
+ * The crane's structure. Deliberately less metallic than `STEEL`: a mast column
+ * is a thin box, and at high metalness it mirrors the environment so evenly
+ * that it reads as glass rather than as the heaviest thing in the aisle.
+ */
+const CRANE_PAINT = { color: '#6b7686', metalness: 0.35, roughness: 0.55 };
 /** Classic racking livery: blue uprights, orange beams. */
 const UPRIGHT_PAINT = { color: '#1d4ed8', metalness: 0.3, roughness: 0.6 };
 const BEAM_PAINT = { color: '#ea7317', metalness: 0.3, roughness: 0.58 };
@@ -165,11 +175,13 @@ function claddingTexture(): THREE.CanvasTexture {
   canvas.height = 8;
   const ctx = canvas.getContext('2d');
   if (ctx) {
+    // Deliberately dim: the wall is depth, not subject. Lit any brighter it
+    // competes with the racking for the eye.
     const grad = ctx.createLinearGradient(0, 0, 64, 0);
-    grad.addColorStop(0, '#39424f');
-    grad.addColorStop(0.45, '#4d5867');
-    grad.addColorStop(0.55, '#5a6675');
-    grad.addColorStop(1, '#333b47');
+    grad.addColorStop(0, '#232a34');
+    grad.addColorStop(0.45, '#2e3743');
+    grad.addColorStop(0.55, '#37414e');
+    grad.addColorStop(1, '#1e242d');
     ctx.fillStyle = grad;
     ctx.fillRect(0, 0, 64, 8);
   }
@@ -191,12 +203,14 @@ interface Textures {
 function useTextures(): Textures {
   const textures = useMemo<Textures>(() => {
     const signs: Record<string, THREE.CanvasTexture> = {};
+    // Light plate, dark text — the way a real location placard is printed, and
+    // the only way a label this small stays readable when it falls into shade.
     for (const slot of WAREHOUSE_SLOTS) {
       const reg = slotRegister(slot.bay, slot.level);
-      signs[reg] = signTexture(reg, '#0f172a', '#e2e8f0');
+      signs[reg] = signTexture(reg, '#e8edf4', '#0f172a');
     }
     for (const name of ['LINE A', 'LINE B', 'GOODS IN']) {
-      signs[name] = signTexture(name, '#111827', '#fbbf24', true);
+      signs[name] = signTexture(name, '#facc15', '#1c1917', true);
     }
     return { concrete: concreteTexture(), cladding: claddingTexture(), signs };
   }, []);
@@ -486,7 +500,7 @@ function Bay({ bay, level, sign }: { bay: number; level: number; sign?: THREE.Te
           <meshStandardMaterial color="#94a3b8" metalness={0.5} roughness={0.6} />
         </mesh>
       ))}
-      <Sign map={sign} position={[x - 0.6, y - 0.17, zf - 0.05]} width={0.56} height={0.21} />
+      <Sign map={sign} position={[x - 0.55, y - 0.2, zf - 0.05]} width={0.72} height={0.27} />
     </group>
   );
 }
@@ -625,13 +639,13 @@ const Plant = memo(function Plant({ tex }: { tex: Textures }) {
           <meshStandardMaterial color="#facc15" roughness={0.8} />
         </mesh>
       ))}
-      <mesh position={[mid, 3.6, -4.2]} receiveShadow>
+      <mesh position={[mid, 3.6, -5.2]} receiveShadow>
         <planeGeometry args={[30, 7.2]} />
-        <meshStandardMaterial map={tex.cladding} roughness={0.8} metalness={0.25} />
+        <meshStandardMaterial map={tex.cladding} roughness={0.9} metalness={0.1} />
       </mesh>
-      <mesh position={[mid, 0.3, -4.16]}>
+      <mesh position={[mid, 0.3, -5.16]}>
         <boxGeometry args={[30, 0.6, 0.08]} />
-        <meshStandardMaterial color="#1f2937" roughness={0.85} />
+        <meshStandardMaterial color="#151b23" roughness={0.9} />
       </mesh>
 
       {/* Travel rail on its sleeper plate, and the top guide rail. */}
@@ -679,9 +693,9 @@ const Plant = memo(function Plant({ tex }: { tex: Textures }) {
       {/* Aisle-end guarding, so the runway reads as ending somewhere. */}
       {[-1.25, posX(POS_MAX) + 1.25].map((x) => (
         <group key={x} position={[x, 0, 0]}>
-          <mesh position={[0, 0.6, 0]} castShadow>
-            <boxGeometry args={[0.1, 1.2, 1.5]} />
-            <meshStandardMaterial color="#eab308" metalness={0.2} roughness={0.7} />
+          <mesh position={[0, 0.45, 0]} castShadow>
+            <boxGeometry args={[0.1, 0.9, 1.1]} />
+            <meshStandardMaterial color="#a16207" metalness={0.2} roughness={0.75} />
           </mesh>
           <mesh position={[0, RAIL_TOP + 0.1, 0]} castShadow>
             <boxGeometry args={[0.22, 0.3, 0.4]} />
@@ -737,7 +751,7 @@ function Crane({
       {[-MAST_X, MAST_X].map((dx) => (
         <mesh key={dx} position={[dx, (RAIL_TOP + 0.36 + MAST_TOP) / 2, 0]} castShadow receiveShadow>
           <boxGeometry args={[0.2, MAST_TOP - RAIL_TOP - 0.36, 0.36]} />
-          <meshStandardMaterial {...STEEL} />
+          <meshStandardMaterial {...CRANE_PAINT} />
         </mesh>
       ))}
       <mesh position={[0, MAST_TOP + 0.1, 0]} castShadow>
@@ -940,10 +954,10 @@ export function Warehouse3D({
       height={height}
       // Direction only: `fitExtent` sets the distance from the live viewport, so
       // the whole aisle is in frame whatever shape the panel is.
-      cameraPosition={[2.6, 4.8, 12]}
+      cameraPosition={[2.2, 5.2, 12]}
       fov={34}
-      target={[0, 0.75, 0]}
-      fitExtent={{ halfWidth: 6.9, halfHeight: 2.7 }}
+      target={[0, 0.55, 0]}
+      fitExtent={{ halfWidth: 6.9, halfHeight: 2.4 }}
       minDistance={5}
       maxDistance={40}
       polarRange={[0.45, 1.4]}
