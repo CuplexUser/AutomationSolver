@@ -126,7 +126,7 @@
   /* ---- the playable rung ---- */
   .demo {
     background: var(--iron-900); border: 1px solid var(--line); border-radius: 10px;
-    padding: 18px 20px 20px;
+    padding: 18px 20px 20px; position: relative;
     background-image: radial-gradient(circle, #1c2836 1px, transparent 1px);
     background-size: 22px 22px;
   }
@@ -153,23 +153,42 @@
     border: 1px solid var(--line-soft); border-radius: 3px; padding: 1px 4px;
   }
 
+  /* One shared tooltip, positioned by script and clamped inside the panel, so
+     the first and last tools do not hang off the edge of the demo. */
+  .tip {
+    position: absolute; z-index: 6; max-width: 264px;
+    background: var(--iron-850); border: 1px solid var(--line); border-radius: 6px;
+    padding: 9px 11px; font-size: 12.5px; line-height: 1.45; color: var(--muted);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.55); pointer-events: none;
+  }
+  .tip b { display: block; color: var(--text); font-weight: 600; margin-bottom: 3px; }
+  .tip code { font-family: var(--mono); font-size: 11.5px; color: var(--amber); }
+
   .ladder { width: 100%; height: auto; display: block; touch-action: manipulation; }
   .ladder .grid-line { stroke: #1d2836; stroke-width: 1; }
   .ladder .rail { stroke: var(--cold); stroke-width: 5; stroke-linecap: round; }
   .ladder .rail.hot { stroke: var(--amber); }
   .ladder .el { stroke: var(--cold); fill: none; stroke-width: 3; stroke-linecap: round; }
-  .ladder .el.live { stroke: var(--amber); }
   .ladder .addr { font-family: var(--mono); font-size: 11px; fill: var(--muted); text-anchor: middle; }
-  .ladder .addr.live { fill: var(--amber); }
+  /* Liveness is a class on the cell or branch group, never on the paths
+     themselves: a repaint then touches one classList instead of rebuilding
+     the node the pointer is pressing on. */
+  .ladder .live .el { stroke: var(--amber); }
+  .ladder .live .addr { fill: var(--amber); }
   .ladder .hit { fill: transparent; cursor: pointer; }
   .ladder .hit:hover { fill: rgba(255, 176, 32, 0.07); }
-  .ladder .branch { fill: var(--iron-800); stroke: var(--line); stroke-width: 1.5; cursor: pointer; }
-  .ladder .branch:hover { stroke: var(--amber); }
-  .ladder .branch.on { fill: var(--cold); stroke: var(--cold); }
-  .ladder .branch.on.live { fill: var(--amber); stroke: var(--amber); }
+  .ladder .branchpt { cursor: pointer; }
+  .ladder .branch { fill: var(--iron-800); stroke: var(--line); stroke-width: 1.5; }
+  .ladder .branchpt:hover .branch { stroke: var(--amber); }
+  .ladder .branchpt.on .branch { fill: var(--cold); stroke: var(--cold); }
+  .ladder .branchpt.on.live .branch { fill: var(--amber); stroke: var(--amber); }
+  .ladder .branchpt .vlink { display: none; }
+  .ladder .branchpt.on .vlink { display: inline; }
+  .ladder .branchpt.on .plus { display: none; }
+  .ladder .branch-hit { fill: transparent; }
   .ladder .plus { stroke: var(--cold); stroke-width: 1.5; pointer-events: none; }
   @media (prefers-reduced-motion: no-preference) {
-    .ladder .el.live, .ladder .rail.hot { filter: drop-shadow(0 0 4px rgba(255, 176, 32, 0.5)); }
+    .ladder .live .el, .ladder .rail.hot { filter: drop-shadow(0 0 4px rgba(255, 176, 32, 0.5)); }
   }
 
   /* operator strip */
@@ -643,12 +662,24 @@
   var y0 = false;
 
   var TOOLS = [
-    { id: 'no-x0',  type: 'no',   dev: 'X0', glyph: '┤ ├', label: 'X0' },
-    { id: 'no-y0',  type: 'no',   dev: 'Y0', glyph: '┤ ├', label: 'Y0' },
-    { id: 'nc-x1',  type: 'nc',   dev: 'X1', glyph: '┤/├', label: 'X1' },
-    { id: 'coil',   type: 'coil', dev: 'Y0', glyph: '( )',           label: 'Y0' },
-    { id: 'wire',   type: 'wire', dev: '',   glyph: '──',  label: 'Wire' },
-    { id: 'erase',  type: 'erase',dev: '',   glyph: '⌧',        label: 'Clear' }
+    { id: 'no-x0', type: 'no', dev: 'X0', glyph: '┤ ├', label: 'X0',
+      tipTitle: 'Normally open contact · X0',
+      tip: 'Conducts only while the START button is held. Let go and the rung goes dead again, which is the whole problem to solve.' },
+    { id: 'no-y0', type: 'no', dev: 'Y0', glyph: '┤ ├', label: 'Y0',
+      tipTitle: 'Normally open contact · Y0',
+      tip: 'The motor output read back as an input. Put it in parallel with START and the rung seals itself in.' },
+    { id: 'nc-x1', type: 'nc', dev: 'X1', glyph: '┤/├', label: 'X1',
+      tipTitle: 'Normally closed contact · X1',
+      tip: 'Conducts until STOP is pressed, then opens. In series it breaks the whole rung, so the stop always wins.' },
+    { id: 'coil', type: 'coil', dev: 'Y0', glyph: '( )', label: 'Y0',
+      tipTitle: 'Output coil · Y0',
+      tip: 'Energizes the motor when power reaches it. Its far lead runs on to the right rail on its own.' },
+    { id: 'wire', type: 'wire', dev: '', glyph: '──', label: 'Wire',
+      tipTitle: 'Link',
+      tip: 'A plain conductor. Carries power straight across the cell so a branch can reach further right.' },
+    { id: 'erase', type: 'erase', dev: '', glyph: '⌧', label: 'Erase',
+      tipTitle: 'Eraser',
+      tip: 'Empties the cell you click. Right-clicking any cell erases it too, whichever tool is selected.' }
   ];
   var tool = TOOLS[0];
 
@@ -691,10 +722,18 @@
   }
 
   // ---- rendering -------------------------------------------------------
+  // The scaffold — guides, rails, click targets and branch dots — is built
+  // once and then only repainted. Tearing the SVG down every scan destroyed
+  // the very rect the pointer was pressing on, and a click only fires when
+  // press and release land on the same node, so most clicks were swallowed.
   var svg = document.getElementById('ladder');
   var W = PADX * 2 + COLS * CW;
   var H = PADY * 2 + ROWS * CH;
   svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+
+  var gCells, leftRail;
+  var branchPts = {};   // "r,b" -> { g, dot, r, b }
+  var cellNodes = {};   // "r,c" -> { g, el, r, c }
 
   function cx(c) { return PADX + c * CW; }
   function cy(r) { return PADY + r * CH + CH / 2; }
@@ -704,120 +743,156 @@
     return e;
   }
 
-  function drawElement(g, el, r, c, live) {
-    var x = cx(c), y = cy(r), mid = x + CW / 2, cls = 'el' + (live ? ' live' : '');
+  function drawElement(g, el, r, c) {
+    var x = cx(c), y = cy(r), mid = x + CW / 2;
     if (el.type === 'wire') {
-      g.appendChild(svgEl('path', { d: 'M' + x + ' ' + y + ' H' + (x + CW), class: cls }));
+      g.appendChild(svgEl('path', { d: 'M' + x + ' ' + y + ' H' + (x + CW), class: 'el' }));
       return;
     }
     if (el.type === 'coil') {
-      g.appendChild(svgEl('path', { d: 'M' + x + ' ' + y + ' H' + (mid - 11), class: cls }));
-      g.appendChild(svgEl('path', { d: 'M' + (mid - 8) + ' ' + (y - 11) + ' A 15 15 0 0 0 ' + (mid - 8) + ' ' + (y + 11), class: cls }));
-      g.appendChild(svgEl('path', { d: 'M' + (mid + 8) + ' ' + (y - 11) + ' A 15 15 0 0 1 ' + (mid + 8) + ' ' + (y + 11), class: cls }));
-      g.appendChild(svgEl('path', { d: 'M' + (mid + 11) + ' ' + y + ' H' + (x + CW), class: cls }));
+      g.appendChild(svgEl('path', { d: 'M' + x + ' ' + y + ' H' + (mid - 11), class: 'el' }));
+      g.appendChild(svgEl('path', { d: 'M' + (mid - 8) + ' ' + (y - 11) + ' A 15 15 0 0 0 ' + (mid - 8) + ' ' + (y + 11), class: 'el' }));
+      g.appendChild(svgEl('path', { d: 'M' + (mid + 8) + ' ' + (y - 11) + ' A 15 15 0 0 1 ' + (mid + 8) + ' ' + (y + 11), class: 'el' }));
+      g.appendChild(svgEl('path', { d: 'M' + (mid + 11) + ' ' + y + ' H' + (x + CW), class: 'el' }));
+      // A coil's far side always lands on the right rail, however many empty
+      // cells sit between them: that lead is the return path, not a wire the
+      // player has to draw.
+      if (c < COLS - 1) {
+        g.appendChild(svgEl('path', { d: 'M' + (x + CW) + ' ' + y + ' H' + (W - PADX), class: 'el' }));
+      }
     } else {
-      g.appendChild(svgEl('path', { d: 'M' + x + ' ' + y + ' H' + (mid - 7), class: cls }));
-      g.appendChild(svgEl('path', { d: 'M' + (mid - 7) + ' ' + (y - 11) + ' V' + (y + 11), class: cls }));
-      g.appendChild(svgEl('path', { d: 'M' + (mid + 7) + ' ' + (y - 11) + ' V' + (y + 11), class: cls }));
-      g.appendChild(svgEl('path', { d: 'M' + (mid + 7) + ' ' + y + ' H' + (x + CW), class: cls }));
+      g.appendChild(svgEl('path', { d: 'M' + x + ' ' + y + ' H' + (mid - 7), class: 'el' }));
+      g.appendChild(svgEl('path', { d: 'M' + (mid - 7) + ' ' + (y - 11) + ' V' + (y + 11), class: 'el' }));
+      g.appendChild(svgEl('path', { d: 'M' + (mid + 7) + ' ' + (y - 11) + ' V' + (y + 11), class: 'el' }));
+      g.appendChild(svgEl('path', { d: 'M' + (mid + 7) + ' ' + y + ' H' + (x + CW), class: 'el' }));
       if (el.type === 'nc') {
-        g.appendChild(svgEl('path', { d: 'M' + (mid - 9) + ' ' + (y + 12) + ' L' + (mid + 9) + ' ' + (y - 12), class: cls }));
+        g.appendChild(svgEl('path', { d: 'M' + (mid - 9) + ' ' + (y + 12) + ' L' + (mid + 9) + ' ' + (y - 12), class: 'el' }));
       }
     }
-    var t = svgEl('text', { x: mid, y: y - 16, class: 'addr' + (live ? ' live' : '') });
+    var t = svgEl('text', { x: mid, y: y - 16, class: 'addr' });
     t.textContent = el.dev;
     g.appendChild(t);
   }
 
-  function render(res) {
-    while (svg.firstChild) svg.removeChild(svg.firstChild);
-    var g = svgEl('g', {});
-    svg.appendChild(g);
-
-    // faint cell guides so empty cells read as placeable
-    for (var r = 0; r < ROWS; r++) {
-      for (var c = 0; c < COLS; c++) {
-        g.appendChild(svgEl('rect', {
+  /** Builds every node that outlives a scan. Called exactly once. */
+  function buildScaffold() {
+    var r, c;
+    var gGuides = svgEl('g', {});
+    for (r = 0; r < ROWS; r++) {
+      for (c = 0; c < COLS; c++) {
+        // faint cell guides so empty cells read as placeable
+        gGuides.appendChild(svgEl('rect', {
           x: cx(c), y: PADY + r * CH, width: CW, height: CH, class: 'grid-line', fill: 'none'
         }));
       }
     }
+    leftRail = svgEl('line', { x1: PADX, y1: PADY + 4, x2: PADX, y2: H - PADY - 4, class: 'rail' });
+    gGuides.appendChild(leftRail);
+    gGuides.appendChild(svgEl('line', { x1: W - PADX, y1: PADY + 4, x2: W - PADX, y2: H - PADY - 4, class: 'rail' }));
+    svg.appendChild(gGuides);
 
-    var anyLive = res.liveNode(0, 0);
-    g.appendChild(svgEl('line', { x1: PADX, y1: PADY + 4, x2: PADX, y2: H - PADY - 4, class: 'rail' + (anyLive ? ' hot' : '') }));
-    g.appendChild(svgEl('line', { x1: W - PADX, y1: PADY + 4, x2: W - PADX, y2: H - PADY - 4, class: 'rail' }));
+    gCells = svgEl('g', {});
+    svg.appendChild(gCells);
 
-    for (var key in cells) {
-      var p = key.split(','), er = +p[0], ec = +p[1];
-      var el = cells[key];
-      var live = el.type === 'coil'
-        ? res.liveNode(er, ec)
-        : (res.conducts[key] === true && res.liveNode(er, ec));
-      drawElement(g, el, er, ec, live);
-      // A coil's far side always lands on the right rail, however many empty
-      // cells sit between them: that lead is the return path, not a wire the
-      // player has to draw.
-      if (el.type === 'coil' && ec < COLS - 1) {
-        g.appendChild(svgEl('path', {
-          d: 'M' + (cx(ec) + CW) + ' ' + cy(er) + ' H' + (W - PADX),
-          class: 'el' + (live ? ' live' : '')
-        }));
-      }
-    }
-
-    // branch dots at every interior column boundary, between row pairs
-    for (var br = 0; br < ROWS - 1; br++) {
-      for (var bb = 1; bb < COLS; bb++) {
-        var on = links[br + ',' + bb] === true;
-        var x = cx(bb), y1 = cy(br), y2 = cy(br + 1);
-        if (on) {
-          g.appendChild(svgEl('path', {
-            d: 'M' + x + ' ' + y1 + ' V' + y2,
-            class: 'el' + (res.liveNode(br, bb) ? ' live' : '')
-          }));
-        }
-        var dot = svgEl('circle', {
-          cx: x, cy: (y1 + y2) / 2, r: on ? 4 : 5.5,
-          class: 'branch' + (on ? ' on' : '') + (on && res.liveNode(br, bb) ? ' live' : '')
-        });
-        dot.setAttribute('role', 'button');
-        dot.setAttribute('tabindex', '0');
-        dot.setAttribute('aria-label', 'Branch link, rows ' + (br + 1) + ' and ' + (br + 2) + ', column ' + bb);
-        (function (k) {
-          function toggle(e) { e.preventDefault(); if (links[k]) delete links[k]; else links[k] = true; scan(); }
-          dot.addEventListener('click', toggle);
-          dot.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') toggle(e); });
-        })(br + ',' + bb);
-        g.appendChild(dot);
-        if (!on) {
-          g.appendChild(svgEl('path', { d: 'M' + (x - 2.5) + ' ' + ((y1 + y2) / 2) + ' H' + (x + 2.5), class: 'plus' }));
-          g.appendChild(svgEl('path', { d: 'M' + x + ' ' + ((y1 + y2) / 2 - 2.5) + ' V' + ((y1 + y2) / 2 + 2.5), class: 'plus' }));
-        }
-      }
-    }
-
-    // click targets on top
-    for (var hr = 0; hr < ROWS; hr++) {
-      for (var hc = 0; hc < COLS; hc++) {
-        var hit = svgEl('rect', { x: cx(hc) + 3, y: PADY + hr * CH + 3, width: CW - 6, height: CH - 6, class: 'hit' });
+    var gHits = svgEl('g', {});
+    for (r = 0; r < ROWS; r++) {
+      for (c = 0; c < COLS; c++) {
+        var hit = svgEl('rect', { x: cx(c) + 3, y: PADY + r * CH + 3, width: CW - 6, height: CH - 6, class: 'hit' });
         hit.setAttribute('role', 'button');
         hit.setAttribute('tabindex', '0');
-        hit.setAttribute('aria-label', 'Cell row ' + (hr + 1) + ' column ' + (hc + 1));
+        hit.setAttribute('aria-label', 'Cell row ' + (r + 1) + ' column ' + (c + 1));
         (function (k) {
-          function place(e) { e.preventDefault(); placeAt(k); }
-          hit.addEventListener('click', place);
-          hit.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') place(e); });
-        })(hr + ',' + hc);
-        g.appendChild(hit);
+          hit.addEventListener('click', function (e) { e.preventDefault(); placeAt(k, false); });
+          hit.addEventListener('contextmenu', function (e) { e.preventDefault(); placeAt(k, true); });
+          hit.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); placeAt(k, false); }
+            else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); placeAt(k, true); }
+          });
+        })(r + ',' + c);
+        gHits.appendChild(hit);
       }
+    }
+    svg.appendChild(gHits);
+
+    // Branch dots sit above the cell hit rects: the dot lands on the corner
+    // where four cells meet, and it needs a target bigger than its own 5 px.
+    var gBranch = svgEl('g', {});
+    for (var br = 0; br < ROWS - 1; br++) {
+      for (var bb = 1; bb < COLS; bb++) {
+        var x = cx(bb), my = (cy(br) + cy(br + 1)) / 2;
+        var grp = svgEl('g', { class: 'branchpt' });
+        grp.appendChild(svgEl('path', { d: 'M' + x + ' ' + cy(br) + ' V' + cy(br + 1), class: 'el vlink' }));
+        var dot = svgEl('circle', { cx: x, cy: my, r: 5.5, class: 'branch' });
+        grp.appendChild(dot);
+        grp.appendChild(svgEl('path', { d: 'M' + (x - 2.5) + ' ' + my + ' H' + (x + 2.5), class: 'plus' }));
+        grp.appendChild(svgEl('path', { d: 'M' + x + ' ' + (my - 2.5) + ' V' + (my + 2.5), class: 'plus' }));
+        grp.appendChild(svgEl('circle', { cx: x, cy: my, r: 9, class: 'branch-hit' }));
+        grp.setAttribute('role', 'button');
+        grp.setAttribute('tabindex', '0');
+        grp.setAttribute('aria-label', 'Branch link, rows ' + (br + 1) + ' and ' + (br + 2) + ', column ' + bb);
+        (function (k) {
+          function toggle(e) {
+            e.preventDefault();
+            if (links[k]) delete links[k]; else links[k] = true;
+            hideResults();
+            scan();
+          }
+          grp.addEventListener('click', toggle);
+          grp.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') toggle(e); });
+        })(br + ',' + bb);
+        branchPts[br + ',' + bb] = { g: grp, dot: dot, r: br, b: bb };
+        gBranch.appendChild(grp);
+      }
+    }
+    svg.appendChild(gBranch);
+  }
+
+  /** Redraws the placed elements. Called only when the program changes. */
+  function rebuildCells() {
+    while (gCells.firstChild) gCells.removeChild(gCells.firstChild);
+    cellNodes = {};
+    for (var key in cells) {
+      var p = key.split(','), r = +p[0], c = +p[1];
+      var g = svgEl('g', { class: 'cell' });
+      drawElement(g, cells[key], r, c);
+      gCells.appendChild(g);
+      cellNodes[key] = { g: g, el: cells[key], r: r, c: c };
     }
   }
 
-  function placeAt(key) {
-    if (tool.type === 'erase') delete cells[key];
-    else if (cells[key] && cells[key].type === tool.type && cells[key].dev === tool.dev) delete cells[key];
-    else cells[key] = { type: tool.type, dev: tool.dev };
+  /** One scan's worth of state, as class flips on nodes that already exist. */
+  function paint(res) {
+    leftRail.classList.toggle('hot', res.liveNode(0, 0));
+    for (var key in cellNodes) {
+      var n = cellNodes[key];
+      var live = n.el.type === 'coil'
+        ? res.liveNode(n.r, n.c)
+        : (res.conducts[key] === true && res.liveNode(n.r, n.c));
+      n.g.classList.toggle('live', live);
+    }
+    for (var bk in branchPts) {
+      var bp = branchPts[bk], on = links[bk] === true;
+      bp.g.classList.toggle('on', on);
+      bp.g.classList.toggle('live', on && res.liveNode(bp.r, bp.b));
+      bp.g.setAttribute('aria-pressed', String(on));
+      bp.dot.setAttribute('r', on ? 4 : 5.5);
+    }
+  }
+
+  // Placing is idempotent: clicking a cell that already holds the selected
+  // instruction leaves it alone rather than toggling it away, so a double
+  // click cannot undo itself. Erasing is the eraser tool or a right click.
+  function placeAt(key, erase) {
+    if (erase || tool.type === 'erase') {
+      if (!cells[key]) return;
+      delete cells[key];
+    } else {
+      var cur = cells[key];
+      if (cur && cur.type === tool.type && cur.dev === tool.dev) return;
+      cells[key] = { type: tool.type, dev: tool.dev };
+    }
     hideResults();
+    rebuildCells();
     scan();
   }
 
@@ -825,7 +900,7 @@
   function scan() {
     var res = solve({ X0: inputs.X0, X1: inputs.X1, Y0: y0 });
     y0 = res.coils.Y0 === true;
-    render(res);
+    paint(res);
     var lamp = document.getElementById('lamp');
     lamp.classList.toggle('on', y0);
     document.getElementById('lamp-state').textContent = y0 ? 'RUN' : 'OFF';
@@ -881,11 +956,37 @@
 
   // ---- palette + controls ---------------------------------------------
   var palette = document.getElementById('palette');
+  var demo = document.getElementById('try');
+
+  // One tooltip element, moved and clamped inside the demo panel, so the
+  // outer tools do not push their text off the edge of the card.
+  var tipBox = document.createElement('div');
+  tipBox.className = 'tip';
+  tipBox.id = 'tool-tip';
+  tipBox.setAttribute('role', 'tooltip');
+  tipBox.hidden = true;
+  demo.appendChild(tipBox);
+
+  function showTip(btn, t) {
+    while (tipBox.firstChild) tipBox.removeChild(tipBox.firstChild);
+    var head = document.createElement('b');
+    head.textContent = t.tipTitle;
+    tipBox.appendChild(head);
+    tipBox.appendChild(document.createTextNode(t.tip));
+    tipBox.hidden = false;
+    var box = demo.getBoundingClientRect(), b = btn.getBoundingClientRect();
+    var left = b.left - box.left + b.width / 2 - tipBox.offsetWidth / 2;
+    tipBox.style.left = Math.max(10, Math.min(left, box.width - tipBox.offsetWidth - 10)) + 'px';
+    tipBox.style.top = (b.bottom - box.top + 8) + 'px';
+  }
+  function hideTip() { tipBox.hidden = true; }
+
   TOOLS.forEach(function (t) {
     var b = document.createElement('button');
     b.type = 'button';
     b.className = 'tool';
     b.setAttribute('aria-pressed', String(t === tool));
+    b.setAttribute('aria-describedby', 'tool-tip');
     b.dataset.id = t.id;
     var glyph = document.createElement('span');
     glyph.className = 'glyph';
@@ -899,6 +1000,10 @@
         c.setAttribute('aria-pressed', String(c.dataset.id === t.id));
       });
     });
+    b.addEventListener('mouseenter', function () { showTip(b, t); });
+    b.addEventListener('focus', function () { showTip(b, t); });
+    b.addEventListener('mouseleave', hideTip);
+    b.addEventListener('blur', hideTip);
     palette.appendChild(b);
   });
 
@@ -919,7 +1024,7 @@
 
   document.getElementById('btn-submit').addEventListener('click', showResults);
   document.getElementById('btn-clear').addEventListener('click', function () {
-    cells = {}; links = {}; y0 = false; hideResults(); scan();
+    cells = {}; links = {}; y0 = false; hideResults(); rebuildCells(); scan();
   });
   document.getElementById('btn-solve').addEventListener('click', function () {
     cells = {
@@ -931,6 +1036,7 @@
     links = { '0,1': true };
     y0 = false;
     hideResults();
+    rebuildCells();
     scan();
   });
 
@@ -939,6 +1045,8 @@
   cells['0,0'] = { type: 'no', dev: 'X0' };
   cells['0,1'] = { type: 'nc', dev: 'X1' };
   cells['0,2'] = { type: 'coil', dev: 'Y0' };
+  buildScaffold();
+  rebuildCells();
   scan();
   setInterval(scan, 120);
 })();
