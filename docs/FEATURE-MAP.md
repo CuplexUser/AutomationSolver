@@ -644,9 +644,39 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
 - **Persistence** — Node's builtin `node:sqlite`. Puzzles are referenced by `slug` only;
   content is never duplicated into the database.
 
-### 7. Constraints that shape everything
+### 7. Landing page — `site/`
+- **Its own workspace, its own Vite build.** One hand-written `index.html` (all the marketing
+  copy, styles and markup, no framework) plus `demo/main.ts`, the playable rung in the hero.
+  `npm run build:pages` runs `vite build` into `_site/`, then `scripts/build-pages.mjs` adds the
+  two things Vite never sees: `docs/shots/` and the og:image.
+- **The demo runs the shipped engine.** `demo/main.ts` imports `SimEngine`, `validateProgram`,
+  `gradeProgram` and `GRADE_DT` from `@automationsolver/shared` and drives work order 02's real
+  `PuzzleSpec` — its scenarios, its scoring, its failure text. Submit is the same two phases the
+  server runs. The page once carried a hand-ported miniature solver instead; it was a second
+  implementation of the one thing this project claims not to have twice, so it is now a build
+  step rather than a copy. **Don't reintroduce one.**
+- **Rendering rule: build the scaffold once, then repaint.** The grid guides, rails, cell click
+  targets and branch dots are created a single time; a scan only flips `live`/`on` classes on
+  nodes that already exist, and the element glyphs are redrawn only when the program changes.
+  Rebuilding the SVG every scan destroys the node the pointer is pressing on, and a `click`
+  only fires when press and release land on the same node — which silently swallowed most
+  clicks the last time this was written the easy way.
+- **Placement is idempotent**, matching the real editor: clicking a cell that already holds the
+  selected instruction does nothing, rather than toggling it away, so a double click cannot undo
+  itself. Erase is the eraser tool, a right click, or Delete on a focused cell.
+- **Base-relative assets.** Pages serves from `/AutomationSolver/`, so `vite.config.ts` sets
+  `base: './'`. Absolute asset paths 404 there.
+- **Deployment** is `.github/workflows/pages.yml` on **every** push to `main`: `npm ci`, typecheck
+  the demo, `npm run build:pages`, upload `_site/`. The `paths:` filter it used to carry is
+  deliberately gone — in August 2026 GitHub began recording pushes to `main` (they appear in the
+  repo's `PushEvent` list) without creating any run from them, while `workflow_dispatch` on the
+  same file kept working. An unfiltered trigger costs about a minute of free Actions time and
+  removes the failure mode; `gh workflow run pages.yml --ref main` remains the manual lever.
+
+### 8. Constraints that shape everything
 - **Zero native dependencies.** `npm install` must work with no C++ toolchain. No
-  better-sqlite3, argon2, bcrypt, sqlite3. See `CLAUDE.md` for the established substitutions.
+  better-sqlite3, argon2, bcrypt, sqlite3. The README's "Zero native dependencies" table lists
+  the established substitutions.
 - **Determinism.** Nothing in `shared` may read the clock, `Math.random()`, or the DOM. This is
   enforced, not just documented: `npm run lint` (ESLint 10, flat config in `eslint.config.js`)
   bans those globals inside `packages/shared`.

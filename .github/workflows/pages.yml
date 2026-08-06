@@ -1,18 +1,14 @@
 name: Deploy GitHub Pages
 
 on:
+  # Deliberately unfiltered. This used to carry a `paths:` list, and in August
+  # 2026 GitHub started recording pushes to main without ever creating a run
+  # from them, while workflow_dispatch on the same file kept working. Deploying
+  # on every push costs about a minute of free Actions time and removes the
+  # failure mode. The site depends on packages/shared anyway (the demo compiles
+  # the engine into itself), so most pushes here are site-relevant.
   push:
     branches: [main]
-    paths:
-      - 'site/**'
-      # The demo runs the real engine, so a change to it changes the page.
-      - 'packages/shared/**'
-      - 'docs/shots/**'
-      - 'docs/preview.png'
-      - 'scripts/build-pages.mjs'
-      - 'package.json'
-      - 'package-lock.json'
-      - '.github/workflows/pages.yml'
   workflow_dispatch:
 
 permissions:

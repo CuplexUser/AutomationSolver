@@ -88,7 +88,7 @@ Categories unlock sequentially — each one's first puzzle is always open, and t
 
 ## One engine, both sides
 
-The architectural bet of the whole project: **a single pure-TypeScript simulation engine in `packages/shared` runs on both the client and the server.** The client runs it for live play; the server runs the identical code as the source of truth for scoring. There is no second implementation to drift.
+The architectural bet of the whole project: **a single pure-TypeScript simulation engine in `packages/shared` runs on both the client and the server.** The client runs it for live play; the server runs the identical code as the source of truth for scoring. There is no second implementation to drift — including on the landing page, whose playable rung compiles the same engine into itself rather than imitating it.
 
 ```
              packages/shared  (no runtime deps)
@@ -96,11 +96,13 @@ The architectural bet of the whole project: **a single pure-TypeScript simulatio
              ├── circuit/     cabinet components, net solver, wiring grader
              ├── sim/         rungSolver + SimEngine scan cycle
              └── puzzle/      spec schema, process models, validator, grader
-                    │                              │
-        imported by │                              │ imported by
-                    ▼                              ▼
-        packages/client (Vite React)     packages/server (Express + node:sqlite)
-        live sim, ladder editor, HMI     authoritative grading, auth, persistence
+                    │                      │                      │
+        imported by │          imported by │          imported by │
+                    ▼                      ▼                      ▼
+            packages/client        packages/server           site/
+            (Vite React)           (Express)                 (Vite)
+            live sim, editor,      authoritative             the landing page's
+            HMI panel              grading, auth, DB         playable rung
 ```
 
 They agree bit-for-bit because of two rules the codebase enforces rather than documents:
@@ -147,7 +149,8 @@ packages/
   server/   Express + Passport, node:sqlite data layer, submit + grading API
   client/   Vite React SPA: ladder editor, cabinet editor, live sim, 3D machines
 docs/       FEATURE-MAP.md (what exists), ROADMAP.md (what's next)
-site/       the GitHub Pages landing page, including a playable rung demo
+site/       the GitHub Pages landing page: a small Vite app whose playable
+            rung imports the shared engine, built by `npm run build:pages`
 ```
 
 The database stores puzzle references by `slug` only; puzzle content is never duplicated into it. A player can keep several named save slots per puzzle, and submitting saves into whichever one is active, so a submission never loses work.
