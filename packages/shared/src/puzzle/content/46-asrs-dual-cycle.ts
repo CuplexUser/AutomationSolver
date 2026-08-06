@@ -1,12 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
-import { CODE_RANGE, CRANE_DEVICES, TARGET_REGISTERS, WMS_REGISTERS } from './41-asrs-put-away.js';
+import { CODE_RANGE, CRANE_DEVICES, TARGET_REGISTERS, WMS_REGISTERS } from './41-asrs-drive.js';
 
 export const asrsDualCycle: PuzzleSpec = {
   kind: 'ladder',
   slug: 'asrs-dual-cycle',
   title: 'Dual Command',
   difficulty: 'hard',
-  order: 45,
+  order: 46,
   category: 'warehouse',
   summary: 'Both lines, goods in and one crane at full rate. Stop running the aisle empty.',
   briefing: [

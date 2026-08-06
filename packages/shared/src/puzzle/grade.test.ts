@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { LadderElement, LadderProgram, Rung, VLink } from '../ladder/types.js';
-import { getPuzzle } from './content/index.js';
+import { getPuzzle, PUZZLES } from './content/index.js';
 import {
   CORRECTNESS_WEIGHT,
   PAR_SLACK,
@@ -1059,6 +1059,22 @@ const solutions: Record<string, LadderProgram> = {
       }),
     ],
   },
+  // The commissioning job is the move block on its own, with the panel standing
+  // in for the step chain the next puzzle asks for. Every warehouse solution
+  // below opens with these same rungs.
+  'asrs-drive': {
+    rungs: [
+      R('d1', 2, 3, {
+        '0,0': nc('X0'), '0,1': mov('K0', 'D52'), '0,2': mov('K2', 'D53'),
+        '1,0': no('X0'), '1,1': mov('K4', 'D52'), '1,2': mov('K1', 'D53'),
+      }),
+      ...craneMoveRungs('d2', 'd3'),
+      R('d4', 1, 2, { '0,0': no('M0'), '0,1': out('Y6') }),
+      // The fork obeys the button only through M0, which is the interlock: a
+      // stroke started between slots goes into a rack upright.
+      R('d5', 1, 3, { '0,0': no('X1'), '0,1': no('M0'), '0,2': out('Y4') }),
+    ],
+  },
   'asrs-put-away': {
     rungs: [
       R('r1', 1, 6, {
@@ -1355,6 +1371,36 @@ describe('gradeProgram — canonical solutions solve every puzzle', () => {
       expect(failed, failed.join(' | ')).toEqual([]);
       expect(result.solved).toBe(true);
       expect(result.score).toBe(100);
+    });
+  }
+});
+
+// A shipped demo is a program the player watches rather than one they write, so
+// nothing else would ever notice it rotting. Hold it to the same bar as a
+// canonical solution: it has to validate, and it has to drive the machine
+// through the scenario it claims to demonstrate.
+describe('puzzle demos run the machine they promise', () => {
+  const demos = PUZZLES.filter(
+    (p): p is LadderPuzzleSpec => p.kind === 'ladder' && p.demo !== undefined,
+  );
+
+  it('there is at least one, so this suite cannot pass by finding none', () => {
+    expect(demos.length).toBeGreaterThan(0);
+  });
+
+  for (const spec of demos) {
+    it(`"${spec.slug}" demonstrates "${spec.demo!.scenario}"`, () => {
+      const { program, scenario } = spec.demo!;
+      expect(
+        spec.scenarios.map((s) => s.name),
+        'the demo names a scenario this puzzle actually has',
+      ).toContain(scenario);
+      const validation = validateProgram(spec, program);
+      expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+      const trace = traceScenario(spec, program, scenario);
+      expect(trace).toBeDefined();
+      const failed = trace!.steps.filter((s) => !s.passed).map((s) => s.failures.join('; '));
+      expect(failed, failed.join(' | ')).toEqual([]);
     });
   }
 });
@@ -2064,6 +2110,47 @@ describe('gradeProgram — warehouse puzzles reject the plausible wrong answer',
 
   const failureText = (result: ReturnType<typeof gradeProgram>): string =>
     result.scenarios.flatMap((s) => s.steps).flatMap((s) => s.failures).join(' ');
+
+  /**
+   * The tutorial's two rules, each broken on its own. Both are the same mistake
+   * from opposite ends - trusting one half of the machine's state - and the
+   * commissioning job exists so a player meets them here, on a crane doing one
+   * pallet, rather than four puzzles later in the middle of a schedule.
+   */
+  it('asrs-drive: a move block without the fork-home contact folds the mast', () => {
+    const spec = getLadderPuzzle('asrs-drive')!;
+    const noInterlock = variant('asrs-drive', (rungs) =>
+      rungs.map((r) =>
+        r.id === 'd2'
+          ? R('d2', 4, 2, {
+              '0,0': cmp('<', 'D0', 'D52'), '0,1': out('Y0'),
+              '1,0': cmp('>', 'D0', 'D52'), '1,1': out('Y1'),
+              '2,0': cmp('<', 'D1', 'D53'), '2,1': out('Y2'),
+              '3,0': cmp('>', 'D1', 'D53'), '3,1': out('Y3'),
+            })
+          : r,
+      ),
+    );
+    const result = gradeProgram(spec, noInterlock);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('fork still out in a slot');
+  });
+
+  /**
+   * The other half: a fork coil wired straight to the button reaches into
+   * whatever the crane happens to be passing, and `D0` reading the bay it last
+   * went by is no defence - the readout is honest, the fork is simply not there
+   * yet.
+   */
+  it('asrs-drive: a fork driven from the button alone strokes between slots', () => {
+    const spec = getLadderPuzzle('asrs-drive')!;
+    const ungated = variant('asrs-drive', (rungs) =>
+      rungs.map((r) => (r.id === 'd5' ? R('d5', 1, 2, { '0,0': no('X1'), '0,1': out('Y4') }) : r)),
+    );
+    const result = gradeProgram(spec, ungated);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('still between slots');
+  });
 
   /**
    * The whole point of the WMS table. Bay 1 holds what line A asks for twice

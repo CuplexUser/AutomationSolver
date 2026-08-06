@@ -10,6 +10,11 @@
   justify-content: space-between;
   align-items: center;
 }
+/* What the demonstration is showing, under its own heading — a graded replay
+   already says that in the step label below the track. */
+.replay-caption {
+  margin: 6px 0 0;
+}
 .replay-controls {
   display: flex;
   align-items: center;

@@ -71,7 +71,15 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 - **`PuzzleSpec`** (`types.ts`) — a discriminated union on `kind`:
   - **`LadderPuzzleSpec`** (`kind: 'ladder'`) — briefing, hints, `devices` (the physical I/O),
     optional `registers` (internal M/T/C the puzzle expects, surfaced as an IO list),
-    `allowedInstructions`, `maxRungs`, a `processId`, and graded `scenarios`.
+    `allowedInstructions`, `maxRungs`, a `processId`, graded `scenarios`, and an optional
+    `demo`.
+  - **`demo`** (`PuzzleDemo`) — a reference program plus the name of one of the puzzle's own
+    scenarios. The client plays the resulting trace through the ordinary replay machinery with
+    rung highlighting suppressed, so the player watches the *machine* work without being shown
+    the ladder. Reserved for the puzzle that introduces a machine (`asrs-drive` is the only one
+    so far): after that, a demo of the next job is just the answer. Held to the same bar as a
+    canonical solution by `grade.test.ts` — it must validate and it must pass every step of the
+    scenario it claims to demonstrate.
   - **`CabinetPuzzleSpec`** (`kind: 'cabinet'`) — same base (devices/scenarios/briefing) but a
     fixed `cabinet` component layout instead of ladder fields; the player's "program" is a
     `WiringDoc` (see §3b).
@@ -92,6 +100,14 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     `inputDevices` and `outputDevices` all skip them; `analogDevices()` returns them.
 - **Process models** (`processes/`) — small state machines that react to `Y` outputs and drive
   `X` inputs. Registered via `registerProcess`.
+  - **`primeProcess()`** steps the model once with `dtMs: 0` before rung one and keeps only the
+    derived image, so the first scan reads the machine that is actually standing there instead
+    of an all-zero register file. Both `grade.ts` and the client's `useSimRunner` call it at the
+    same point, which is what keeps live play and the graded run the same run. On the boolean
+    puzzles it costs a scan of one wrong sensor; a word device makes it permanent — the stacker
+    crane parks at level 1 with `D1` reading 0, so a program driving to `D53 = 1` commanded a
+    lift for one scan and left the mast an eighth of a level high for the rest of the run,
+    lined up with nothing and tripping the fork on a slot the readout said it was at.
   - `passthrough` — no machine dynamics; the HMI *is* the process.
   - `conveyor` — moves a part and derives a position sensor.
   - `drill` — the whole drill station, grown by **feature detection off the puzzle's own device
@@ -207,6 +223,11 @@ never wall-clock time. Everything else in the system is arranged around keeping 
       out-stroke completes, and whether it picks or places is implied by what the crane is
       carrying. `X13` is a carriage photo-eye that reads the slot in front of the fork — a
       confirmation of the table, never a substitute, since you only get it after driving there.
+    - **The category opens under a test panel.** `asrs-drive` wires only the crane
+      (`CRANE_AXIS_DEVICES` — the aisle half of `CRANE_DEVICES`, without the slot photo-eye or
+      the material code), and the *scenario* works the selector and the fork button, so the
+      player builds the move block and the two interlocks with nothing else in the frame.
+      `asrs-put-away` then asks for the same job with the operator replaced by a step chain.
     - **What trips it**: moving with the fork out (the mast folds) and stroking the fork
       between slots are the two signature interlocks; after that the faults are all logistics —
       a pallet into an occupied slot, onto a full infeed conveyor, into a line that asked for
@@ -358,15 +379,16 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 39 | `axis-profile` | medium | position from a speed reference: signed distance-to-go, rapid, then an approach that starts before the target | axis |
 | 40 | `axis-loaded` | hard | two ramp tables swapped in flight off X14, *and* the stopping distance they imply | axis |
 | 41 | `axis-crane` | hard | capstone: hoist plus traverse, and a load on a rope that is still swinging after the trolley stops | axis |
-| 42 | `asrs-put-away` | medium | the crane's coordinate interface: drive on the position sensors, one scripted put-away | warehouse |
-| 43 | `asrs-retrieval` | hard | search the WMS slot table for a demanded material, nearest slot first, and keep a line fed | warehouse |
-| 44 | `asrs-two-lines` | hard | two lines at opposite ends: latch which one a cycle belongs to, and compute distance from *its* station | warehouse |
-| 45 | `asrs-replenish` | hard | a second job in the opposite direction — put-away into the nearest empty slot, without letting goods in back up | warehouse |
-| 46 | `asrs-dual-cycle` | hard | capstone: three demands on one crane, trips planned as a list of stops, a stop switch, and dual-command cycling | warehouse |
+| 42 | `asrs-drive` | tutorial | the crane's coordinate interface, under a test panel: target registers, the four-row move block, arrival, and both signature interlocks. Ships a watchable demo | warehouse |
+| 43 | `asrs-put-away` | easy | the panel replaced by a program: a one-hot step chain over three stops and the latched fork stroke | warehouse |
+| 44 | `asrs-retrieval` | hard | search the WMS slot table for a demanded material, nearest slot first, and keep a line fed | warehouse |
+| 45 | `asrs-two-lines` | hard | two lines at opposite ends: latch which one a cycle belongs to, and compute distance from *its* station | warehouse |
+| 46 | `asrs-replenish` | hard | a second job in the opposite direction — put-away into the nearest empty slot, without letting goods in back up | warehouse |
+| 47 | `asrs-dual-cycle` | hard | capstone: three demands on one crane, trips planned as a list of stops, a stop switch, and dual-command cycling | warehouse |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 `elevator`,
 15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`, 29–32 `drill`,
-33–37 `process-control`, 38–41 `motion`, 42–46 `warehouse`.
+33–37 `process-control`, 38–41 `motion`, 42–47 `warehouse`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -434,6 +456,11 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     just submitted and exposes the trace through a read-only `SimRunner` adapter, scrubbed by
     scan index; play/pause, jump-to-first-failure, and a close button that hands control back to
     the live runner. Wired from a "▶ Replay" button on each failing scenario in the results card.
+    - `startDemo(spec)` runs the same machinery over the puzzle's shipped `demo` instead, from a
+      "▶ Watch the machine run" button above the briefing. It opens already playing, drops the
+      jump-to-failure control (nothing failed), and blanks `evalResults` — the rungs on screen
+      are the player's and the ones driving the machine are not, so lighting up their grid from
+      a trace of someone else's program would show power in cells that do not exist.
   - **Trace strip** (`TraceStrip.tsx`) — a logic-analyzer view (one row per device/register,
     filled where the bit is high) reading `SimRunner.history`; the live runner keeps a rolling
     ~24s window, replay supplies the full (already-bounded) scenario trace with a scrubbable

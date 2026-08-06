@@ -48,6 +48,31 @@ export interface ProcessModel {
   step(ctx: ProcessStepCtx): ProcessResult;
 }
 
+/**
+ * The field image as it stands before the first scan.
+ *
+ * A PLC reads its inputs before it runs rung one; without this the first scan
+ * runs against an all-zero image and sees a machine that is not there. On the
+ * boolean puzzles that costs a scan of a wrong sensor and nothing else, but a
+ * word device makes it permanent: the stacker crane parks at level 1, `D1`
+ * reads 0, and a program driving to `D53 = 1` commands a lift for one scan and
+ * leaves the mast an eighth of a level high for the rest of the run - lined up
+ * with nothing, and the fork tripping on a slot the readout says it is at.
+ *
+ * Stepping the model once with `dtMs = 0` asks it exactly the question the
+ * sensors would. The state it returns is discarded: priming reads the plant, it
+ * does not advance it.
+ */
+export function primeProcess(
+  process: ProcessModel,
+  machine: MachineState,
+  devices: PuzzleDevice[],
+  inputs: Record<string, boolean>,
+): { derivedInputs: Record<string, boolean>; derivedRegisters: Record<string, number> } {
+  const res = process.step({ outputs: {}, inputs, registers: {}, machine, devices, dtMs: 0 });
+  return { derivedInputs: res.derivedInputs ?? {}, derivedRegisters: res.derivedRegisters ?? {} };
+}
+
 /** No dynamics: the machine simply reflects outputs; HMI reads Y bits directly. */
 const passthrough: ProcessModel = {
   id: 'passthrough',

@@ -39,11 +39,12 @@ import { axisJog } from './37-axis-jog.js';
 import { axisProfile } from './38-axis-profile.js';
 import { axisLoaded } from './39-axis-loaded.js';
 import { axisCrane } from './40-axis-crane.js';
-import { asrsPutAway } from './41-asrs-put-away.js';
-import { asrsRetrieval } from './42-asrs-retrieval.js';
-import { asrsTwoLines } from './43-asrs-two-lines.js';
-import { asrsReplenish } from './44-asrs-replenish.js';
-import { asrsDualCycle } from './45-asrs-dual-cycle.js';
+import { asrsDrive } from './41-asrs-drive.js';
+import { asrsPutAway } from './42-asrs-put-away.js';
+import { asrsRetrieval } from './43-asrs-retrieval.js';
+import { asrsTwoLines } from './44-asrs-two-lines.js';
+import { asrsReplenish } from './45-asrs-replenish.js';
+import { asrsDualCycle } from './46-asrs-dual-cycle.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -86,6 +87,7 @@ export const PUZZLES: PuzzleSpec[] = [
   axisProfile,
   axisLoaded,
   axisCrane,
+  asrsDrive,
   asrsPutAway,
   asrsRetrieval,
   asrsTwoLines,

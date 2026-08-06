@@ -112,6 +112,27 @@
 .briefing section + section {
   margin-top: 16px;
 }
+/* "Watch the machine run", between the title and the briefing. Full width and
+   two lines deep, because a player who has never seen the machine should not
+   have to notice a small button to find out what it is. */
+.demo-watch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  width: 100%;
+  margin: 4px 0 14px;
+  padding: 9px 12px;
+  text-align: left;
+  border-color: color-mix(in srgb, var(--live) 45%, var(--edge));
+}
+.demo-watch .demo-caption {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--ink-dim);
+  white-space: normal;
+  line-height: 1.4;
+}
 .hints {
   margin-top: 14px;
   font-size: 13px;

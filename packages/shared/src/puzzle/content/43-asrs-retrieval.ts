@@ -1,12 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
-import { CODE_RANGE, CRANE_DEVICES, TARGET_REGISTERS, WMS_REGISTERS } from './41-asrs-put-away.js';
+import { CODE_RANGE, CRANE_DEVICES, TARGET_REGISTERS, WMS_REGISTERS } from './41-asrs-drive.js';
 
 export const asrsRetrieval: PuzzleSpec = {
   kind: 'ladder',
   slug: 'asrs-retrieval',
   title: 'Order Picking',
   difficulty: 'hard',
-  order: 42,
+  order: 43,
   category: 'warehouse',
   summary: 'A line calls for a material. Find which slot holds it, fetch it, and keep the line fed.',
   briefing: [

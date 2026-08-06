@@ -18,12 +18,22 @@ export interface ReplayController {
   trace: ScenarioTrace | null;
   index: number;
   playing: boolean;
+  /**
+   * This trace is a shipped demonstration rather than the player's own run.
+   *
+   * The bar reads differently for one (nothing failed, so there is nothing to
+   * jump to) and, more importantly, the ladder editor must not light up: the
+   * rungs on screen are the player's, and the ones driving the machine are not.
+   */
+  demo: boolean;
   /** The step the playhead is inside, so the bar can show why it failed. */
   currentStep: ScenarioTrace['steps'][number] | undefined;
   /** Where each failing step was judged, as a 0..1 position along the scrub. */
   failureMarks: number[];
   runner: SimRunner | null;
   start: (spec: LadderPuzzleSpec, program: LadderProgram, scenarioName: string) => void;
+  /** Play the puzzle's shipped demonstration, if it has one. */
+  startDemo: (spec: LadderPuzzleSpec) => void;
   seek: (index: number) => void;
   play: () => void;
   pause: () => void;
@@ -35,6 +45,7 @@ export function useReplay(): ReplayController {
   const [trace, setTrace] = useState<ScenarioTrace | null>(null);
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [demo, setDemo] = useState(false);
 
   const start = useCallback(
     (spec: LadderPuzzleSpec, program: LadderProgram, scenarioName: string) => {
@@ -42,9 +53,21 @@ export function useReplay(): ReplayController {
       setTrace(t ?? null);
       setIndex(0);
       setPlaying(false);
+      setDemo(false);
     },
     [],
   );
+
+  // A demo opens already running: the player asked to watch the machine, not to
+  // be handed a scrub bar and left to find the play button.
+  const startDemo = useCallback((spec: LadderPuzzleSpec) => {
+    if (!spec.demo) return;
+    const t = traceScenario(spec, spec.demo.program, spec.demo.scenario);
+    setTrace(t ?? null);
+    setIndex(0);
+    setDemo(true);
+    setPlaying(t !== undefined);
+  }, []);
 
   const seek = useCallback(
     (i: number) => {
@@ -74,6 +97,7 @@ export function useReplay(): ReplayController {
     setTrace(null);
     setIndex(0);
     setPlaying(false);
+    setDemo(false);
   }, []);
 
   // Auto-advance while playing; stop at the end of the trace.
@@ -110,7 +134,10 @@ export function useReplay(): ReplayController {
       bits: sample.bits,
       registers: sample.registers,
       machine: sample.machine,
-      evalResults: sample.rungResults,
+      // A demo's rung results belong to the program that shipped with the
+      // puzzle, not to the one on screen. Highlighting the player's grid from
+      // them would show power flowing through cells that are not even there.
+      evalResults: demo ? [] : sample.rungResults,
       history,
       start: noop,
       stop: noop,
@@ -118,7 +145,7 @@ export function useReplay(): ReplayController {
       reset: noop,
       setInput: noop,
     };
-  }, [trace, index, history]);
+  }, [trace, index, history, demo]);
 
   const currentStep = useMemo(() => {
     if (!trace) return undefined;
@@ -140,10 +167,12 @@ export function useReplay(): ReplayController {
     trace,
     index,
     playing,
+    demo,
     currentStep,
     failureMarks,
     runner,
     start,
+    startDemo,
     seek,
     play,
     pause,

@@ -28,6 +28,7 @@ export function BriefColumn({
   user,
   runner,
   onReplay,
+  onDemo,
 }: {
   spec: PuzzleSpec;
   width: number;
@@ -38,14 +39,25 @@ export function BriefColumn({
   runner?: LiveRegisterState;
   /** Omit to hide the per-scenario Replay button (cabinet puzzles, for now). */
   onReplay?: (scenarioName: string) => void;
+  /** Play the puzzle's shipped demonstration. Omit where there is none. */
+  onDemo?: () => void;
 }) {
   const registers = spec.kind === 'ladder' ? spec.registers : undefined;
+  const demo = spec.kind === 'ladder' ? spec.demo : undefined;
   const hasAnalog = spec.devices.some(isAnalog);
   return (
     <aside className="play-brief" style={{ width }}>
       <div className="brief-card panel">
         <span className="eyebrow">Work Order · {spec.difficulty}</span>
         <h2>{spec.title}</h2>
+        {/* Above the briefing, not below it: the point of a demonstration is to
+            know what the machine is before reading three screens about it. */}
+        {demo && onDemo && (
+          <button className="btn btn-ghost demo-watch" onClick={onDemo}>
+            ▶ Watch the machine run
+            <span className="demo-caption">{demo.caption}</span>
+          </button>
+        )}
         <Briefing text={spec.briefing} />
         {spec.hints && spec.hints.length > 0 && <HintsPanel slug={spec.slug} hints={spec.hints} />}
       </div>

@@ -1,4 +1,4 @@
-import type { ElementType } from '../ladder/types.js';
+import type { ElementType, LadderProgram } from '../ladder/types.js';
 import type { CabinetLayout } from '../circuit/types.js';
 
 export type Difficulty = 'tutorial' | 'easy' | 'medium' | 'hard';
@@ -270,6 +270,28 @@ interface PuzzleSpecBase {
   scenarios: Scenario[];
 }
 
+/**
+ * A worked run of the machine the player can watch before writing anything.
+ *
+ * A briefing can describe a stacker crane; it cannot show one arriving. So the
+ * puzzle may ship a reference program and the name of a scenario to run it
+ * through, and the client plays the resulting trace back through the same
+ * replay machinery a graded submission uses - the 3D machine, the operator
+ * panel and the readouts all live, and the ladder deliberately dark. The player
+ * sees what the machine does, not how the rungs are drawn.
+ *
+ * Reserve it for the puzzle that introduces a machine. Once the player has seen
+ * the thing move, a demo of the next job is just the answer.
+ */
+export interface PuzzleDemo {
+  /** Which of the puzzle's own scenarios to run, by name. */
+  scenario: string;
+  /** One line saying what is about to be shown. */
+  caption: string;
+  /** The program that drives it. Graded alongside the canonical solutions. */
+  program: LadderProgram;
+}
+
 /** A classic PLC puzzle: the player writes a ladder program. */
 export interface LadderPuzzleSpec extends PuzzleSpecBase {
   kind: 'ladder';
@@ -279,6 +301,8 @@ export interface LadderPuzzleSpec extends PuzzleSpecBase {
   maxRungs?: number;
   /** Key into the process registry. Use 'passthrough' when no dynamics are needed. */
   processId: string;
+  /** A run of the machine the player can watch before starting. */
+  demo?: PuzzleDemo;
 }
 
 /** A control-cabinet puzzle: the player wires terminals of fixed components. */

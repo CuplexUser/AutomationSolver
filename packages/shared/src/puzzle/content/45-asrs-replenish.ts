@@ -1,12 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
-import { CODE_RANGE, CRANE_DEVICES, TARGET_REGISTERS, WMS_REGISTERS } from './41-asrs-put-away.js';
+import { CODE_RANGE, CRANE_DEVICES, TARGET_REGISTERS, WMS_REGISTERS } from './41-asrs-drive.js';
 
 export const asrsReplenish: PuzzleSpec = {
   kind: 'ladder',
   slug: 'asrs-replenish',
   title: 'Goods In',
   difficulty: 'hard',
-  order: 44,
+  order: 45,
   category: 'warehouse',
   summary: 'Stock arrives while orders are going out, and the inbound conveyor will not wait.',
   briefing: [

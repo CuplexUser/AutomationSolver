@@ -3,6 +3,7 @@ import {
   defaultInputs,
   getProcess,
   GRADE_DT,
+  primeProcess,
   SimEngine,
   type LadderProgram,
   type LadderPuzzleSpec,
@@ -89,9 +90,18 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
       engineRef.current = new SimEngine(nextProgram);
       processRef.current = getProcess(spec.processId);
       machineRef.current = processRef.current.init(spec.devices);
-      derivedRef.current = {};
-      derivedRegsRef.current = {};
       inputsRef.current = defaultInputs(spec.devices);
+      // Same priming the grader does, for the same reason and at the same
+      // point: the panel has to show the machine that is standing there before
+      // the first scan runs, or live play and the graded run start differently.
+      const primed = primeProcess(
+        processRef.current,
+        machineRef.current,
+        spec.devices,
+        inputsRef.current,
+      );
+      derivedRef.current = primed.derivedInputs;
+      derivedRegsRef.current = primed.derivedRegisters;
       historyRef.current = [];
       tMsRef.current = 0;
       setInputsState(inputsRef.current);

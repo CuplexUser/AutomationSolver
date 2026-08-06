@@ -1,7 +1,7 @@
 import { SimEngine } from '../sim/scanCycle.js';
 import type { RungEvalResult } from '../sim/rungSolver.js';
 import type { LadderProgram } from '../ladder/types.js';
-import { getProcess, type MachineState } from './processes/index.js';
+import { getProcess, primeProcess, type MachineState } from './processes/index.js';
 import {
   describeAnalogFailure,
   describeAnalogWait,
@@ -151,8 +151,11 @@ function simulateScenario(
     ...defaultInputs(spec.devices),
     ...scenario.initialInputs,
   };
-  let derived: Record<string, boolean> = {};
-  let derivedRegs: Record<string, number> = {};
+  // The field image before rung one, so the first scan reads the machine that is
+  // actually standing there rather than an all-zero register file.
+  const primed = primeProcess(process, machine, spec.devices, inputs);
+  let derived: Record<string, boolean> = primed.derivedInputs;
+  let derivedRegs: Record<string, number> = primed.derivedRegisters;
   let tMs = 0;
   // Accumulated |error| x time over every control step, in count-milliseconds.
   // Converted to count-seconds once at the end; this is the analog puzzles'

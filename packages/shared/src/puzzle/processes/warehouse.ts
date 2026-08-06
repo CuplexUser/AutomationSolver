@@ -257,7 +257,9 @@ export const warehouse: ProcessModel = {
         goodsTaken: 0,
         goodsT: 0,
         // Only a puzzle that also runs a line gets a *flow* of inbound pallets.
-        // The first one is a single scripted put-away and must stay that way.
+        // The two introductory ones are a single scripted put-away and must
+        // stay that way: nothing is waiting on the player while they learn the
+        // machine, which is the whole difference between them and the rest.
         hasInflow: hasLineA || hasLineB,
         blocked: false,
       });

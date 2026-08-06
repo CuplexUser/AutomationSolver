@@ -262,13 +262,35 @@ Four things are new, and none of them needed an engine change:
    anywhere in the aisle into a two-rung move block — deliberately, so the rung budget goes on
    deciding rather than on driving.
 
-Five puzzles walk it: `asrs-put-away` (the coordinate interface and the fork contract, one
-scripted put-away) → `asrs-retrieval` (search the table for a demanded material and keep a line
-fed) → `asrs-two-lines` (two stations, so the search needs a real distance rather than rung
-order, and a cycle needs a latch) → `asrs-replenish` (a second job running the opposite way,
-with a bounded inbound backlog) → `asrs-dual-cycle` (capstone: all three demands, trips planned
-as a list of stops, a shift-end stop switch, and dual-command cycling). `maxRungs` ramps 20 → 50,
-which also lifted the server's transport ceiling from 32.
+Six puzzles walk it: `asrs-drive` (commissioning, under a test panel) → `asrs-put-away` (the
+same job with the panel replaced by a step chain) → `asrs-retrieval` (search the table for a
+demanded material and keep a line fed) → `asrs-two-lines` (two stations, so the search needs a
+real distance rather than rung order, and a cycle needs a latch) → `asrs-replenish` (a second job
+running the opposite way, with a bounded inbound backlog) → `asrs-dual-cycle` (capstone: all
+three demands, trips planned as a list of stops, a shift-end stop switch, and dual-command
+cycling). `maxRungs` ramps 8 → 50, which also lifted the server's transport ceiling from 32.
+
+**The on-ramp was rebuilt after the fact**, because the category opened by asking for four
+unfamiliar things at once: the move block, the arrival comparison, a one-hot step chain and the
+latched fork stroke, with a twenty-row terminal assignment beside it. The split is along the
+operator: `asrs-drive` wires only the aisle half of the crane, hands the selector and the fork
+button to the *scenario*, and asks for nothing but the coordinate interface and the two
+signature interlocks — one of which is graded by a scenario built specifically to break a fork
+coil wired to the button alone. `asrs-put-away` then asks for the same run with the fitter taken
+off the panel, so the step chain arrives on a machine the player has already driven. Two things
+came out of building it:
+
+- **The first scan read a machine that was not there.** The derived image was empty until after
+  rung one, so `D0`/`D1` read 0 while the crane stood at (0, 1); a program driving to level 1
+  commanded a lift for a single scan and left the mast permanently between levels. Fixed at the
+  source with `primeProcess()` (step the model once at `dtMs: 0` before scanning, keep only the
+  sensor image), called identically by the grader and the client. No existing canonical solution
+  changed behaviour, which is the evidence it was a latent bug rather than a rule anyone relied
+  on.
+- **A briefing cannot show a stacker crane arriving.** So `LadderPuzzleSpec` grew an optional
+  `demo`: a reference program plus a scenario name, played through the existing replay machinery
+  with the ladder deliberately dark. It is the introducing puzzle's privilege only — one puzzle
+  later, a demonstration is just the answer.
 
 Two findings worth recording, because they cut against the original design intent:
 
@@ -285,11 +307,12 @@ Two findings worth recording, because they cut against the original design inten
   correctness under load, and the briefing says dual command buys back margin rather than
   claiming it is the only way through.
 
-Five negative tests in `grade.test.ts` cover the mistakes that genuinely fail: searching only the
-nearest bay (the line runs dry), a move block without the fork-home contact (the mast folds),
-delivering everything to the aisle head (line A's conveyor overflows and line B never eats),
-never putting anything away (goods in blocks), and running orders only at full rate (the rack
-empties out from under the lines).
+Seven negative tests in `grade.test.ts` cover the mistakes that genuinely fail: searching only
+the nearest bay (the line runs dry), a move block without the fork-home contact (the mast folds,
+checked on the tutorial and again on the capstone geometry), a fork coil driven from the button
+alone (it strokes between slots), delivering everything to the aisle head (line A's conveyor
+overflows and line B never eats), never putting anything away (goods in blocks), and running
+orders only at full rate (the rack empties out from under the lines).
 
 ## Next: the rest of the analog plan
 

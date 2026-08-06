@@ -1,12 +1,12 @@
 import type { PuzzleSpec } from '../types.js';
-import { CODE_RANGE, CRANE_DEVICES, TARGET_REGISTERS, WMS_REGISTERS } from './41-asrs-put-away.js';
+import { CODE_RANGE, CRANE_DEVICES, TARGET_REGISTERS, WMS_REGISTERS } from './41-asrs-drive.js';
 
 export const asrsTwoLines: PuzzleSpec = {
   kind: 'ladder',
   slug: 'asrs-two-lines',
   title: 'Two Lines, One Crane',
   difficulty: 'hard',
-  order: 43,
+  order: 44,
   category: 'warehouse',
   summary: 'Line B opens at the far end of the aisle. Now the nearest slot depends on who asked.',
   briefing: [

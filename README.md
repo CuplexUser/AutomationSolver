@@ -1,10 +1,10 @@
 # ⚡ AutomationSolver
 
-**A puzzle game where the puzzle piece is ladder logic.** Program a Mitsubishi-style PLC on a grid editor, hit Run, and watch power flood the rung while a real machine moves in 3D beside it. Forty-five work orders across eleven categories take you from a single contact driving a single coil to a PID loop holding a tank on setpoint, and on to a stacker crane that has to keep two production lines fed out of one aisle of racking.
+**A puzzle game where the puzzle piece is ladder logic.** Program a Mitsubishi-style PLC on a grid editor, hit Run, and watch power flood the rung while a real machine moves in 3D beside it. Forty-six work orders across eleven categories take you from a single contact driving a single coil to a PID loop holding a tank on setpoint, and on to a stacker crane that has to keep two production lines fed out of one aisle of racking.
 
 [![TypeScript](https://badgen.net/badge/TypeScript/React%20%2B%20Express/3178c6)]()
 [![No native deps](https://badgen.net/badge/npm%20install/no%20C%2B%2B%20toolchain/2ea44f)]()
-[![Puzzles](https://badgen.net/badge/work%20orders/45%20across%2011%20categories/ffb020)]()
+[![Puzzles](https://badgen.net/badge/work%20orders/46%20across%2011%20categories/ffb020)]()
 
 [**Play the demo rung →**](https://cuplexuser.github.io/AutomationSolver/) · a real solver and grader running in the page, no install
 

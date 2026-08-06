@@ -1,8 +1,19 @@
 import type { ReplayController } from './useReplay';
 
-export function ReplayBar({ replay }: { replay: ReplayController }) {
-  const { trace, index, playing, currentStep, failureMarks, play, pause, seek, stepToFailure, close } =
-    replay;
+export function ReplayBar({ replay, demoCaption }: { replay: ReplayController; demoCaption?: string }) {
+  const {
+    trace,
+    index,
+    playing,
+    demo,
+    currentStep,
+    failureMarks,
+    play,
+    pause,
+    seek,
+    stepToFailure,
+    close,
+  } = replay;
   if (!trace) return null;
 
   const total = trace.samples.length;
@@ -17,18 +28,28 @@ export function ReplayBar({ replay }: { replay: ReplayController }) {
   return (
     <div className="replay-bar panel">
       <div className="replay-head">
-        <span className="eyebrow">Replay · {trace.scenarioName}</span>
-        <button className="icon-btn" onClick={close} title="Close replay, return to live sim">
+        <span className="eyebrow">
+          {demo ? 'Demonstration' : 'Replay'} · {trace.scenarioName}
+        </span>
+        <button
+          className="icon-btn"
+          onClick={close}
+          title={demo ? 'Close the demonstration, return to live sim' : 'Close replay, return to live sim'}
+        >
           ✕
         </button>
       </div>
+      {demo && demoCaption && <p className="muted sm replay-caption">{demoCaption}</p>}
       <div className="replay-controls">
         <button className="btn btn-ghost" onClick={playing ? pause : play}>
           {playing ? '⏸ Pause' : '▶ Play'}
         </button>
-        <button className="btn btn-ghost" onClick={stepToFailure} disabled={!hasFailure}>
-          ⚠ Jump to failure
-        </button>
+        {/* Nothing failed in a demonstration, so the button has nowhere to go. */}
+        {!demo && (
+          <button className="btn btn-ghost" onClick={stepToFailure} disabled={!hasFailure}>
+            ⚠ Jump to failure
+          </button>
+        )}
         <div className="replay-track">
           <input
             type="range"

@@ -88,6 +88,12 @@ export function LadderPlay({ spec, user, submit, previousPuzzle }: PlayProps<Lad
             onReplay={(scenarioName) => {
               if (submit.variables) replay.start(spec, submit.variables as LadderProgram, scenarioName);
             }}
+            onDemo={() => {
+              // The live sim and the demo both drive the machine view, so the
+              // one the player is watching has to be the only one running.
+              runner.stop();
+              replay.startDemo(spec);
+            }}
           />
           <ResizeHandle
             onResize={brief.nudge}
@@ -177,7 +183,7 @@ export function LadderPlay({ spec, user, submit, previousPuzzle }: PlayProps<Lad
           />
         )}
 
-        <ReplayBar replay={replay} />
+        <ReplayBar replay={replay} demoCaption={spec.demo?.caption} />
 
         <LadderEditor
           puzzleSlug={spec.slug}
