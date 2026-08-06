@@ -5,9 +5,13 @@ on:
     branches: [main]
     paths:
       - 'site/**'
+      # The demo runs the real engine, so a change to it changes the page.
+      - 'packages/shared/**'
       - 'docs/shots/**'
       - 'docs/preview.png'
       - 'scripts/build-pages.mjs'
+      - 'package.json'
+      - 'package-lock.json'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
 
@@ -31,8 +35,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Typecheck the demo
+        run: npm run typecheck -w @automationsolver/site
       - name: Build site
-        run: node scripts/build-pages.mjs
+        run: npm run build:pages
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
