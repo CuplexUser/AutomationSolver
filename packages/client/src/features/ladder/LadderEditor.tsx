@@ -230,6 +230,10 @@ export function LadderEditor({
   const selectCell = useCallback(
     (pos: { rung: number; row: number; col: number } | null) => {
       select(pos);
+      // The caret is no longer in whatever box it was in for the *previous*
+      // cell, so the chips stop aiming there. Without this, filling a MOV's
+      // Source and then moving on leaves every later chip landing in Source.
+      setFocusSlot(null);
       if (!pos) return;
       const el = program.rungs[pos.rung]?.cells[pos.row]?.[pos.col];
       if (el?.device) setAddress(el.device);
@@ -422,6 +426,9 @@ export function LadderEditor({
         }
       } else {
         setNote(null);
+        // Nothing left blank: the block starts aimed at the field it is "about"
+        // rather than inheriting the aim of the one placed before it.
+        setFocusSlot(null);
       }
     },
     [selected, address, preset, placeSelected, wordPayload, opA, opB],
