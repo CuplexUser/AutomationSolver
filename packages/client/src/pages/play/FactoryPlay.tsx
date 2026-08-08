@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  symbolChoicesFor,
   assembleProject,
   FACTORY_SECTIONS,
   initialProject,
@@ -237,6 +238,10 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
                 focused={windows.focused === pouId}
                 readOnly={slot?.editable === false}
                 windowed
+                // Resolution order is per-POU, so each window offers the names
+                // that section can actually see: its own locals first, then the
+                // globals, then the plant.
+                symbols={symbolChoicesFor(spec, project, pouId)}
               />
             </FloatingWindow>
           );

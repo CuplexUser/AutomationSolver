@@ -296,12 +296,30 @@ Four pieces, in the order they are worth building:
 Steps 1 to 4 are `shared` only and ship behind `symbols: 'off'`, so nothing in the game changes
 until a puzzle opts in.
 
-1. `VarDecl`, the optional fields on `Pou` and `LadderProject`, symbol derivation from `PuzzleDevice`.
-2. `resolveProject` plus its unit tests, including the literal-address fallback proving that all
-   46 existing puzzles resolve to themselves.
-3. Validation: pool membership, scope collisions, rule 3, `writableOutputs`.
-4. `assembleProject` for player-authored POUs, and the id-collision rule.
-5. Client: symbol picker, then variables pane, then POU tree editing, then declare-from-error.
+1. **Done.** `VarDecl`, the optional fields on `Pou` and `LadderProject`, symbol derivation from
+   `PuzzleDevice`.
+2. **Done.** `resolveProject`, plus the test that runs every shipped ladder puzzle through
+   assembly and resolution and asserts the result is deep-equal to what went in — and that
+   `resolveProject` returns the *same object by reference* wherever `symbols` is off.
+3. **Done.** Validation: pool membership, address collisions, rule 3, `writableOutputs`, and the
+   never-write-a-field-input rule that came with it.
+4. **Done.** `assembleProject` for player-authored POUs, the id-collision rule, and the
+   shipped-globals merge.
+   - Also `runnableProject`, which was not in the original plan and should have been. Three places
+     build a `SimEngine` — the grader, the client's live scan and its reset path — and if any two
+     of them assembled or resolved differently, the client and the server would silently disagree
+     about the program. They now all go through one function. The editor deliberately does *not*
+     resolve: it keeps the player's names, because names are what they typed.
+5. Client. **Symbol picker and variables pane done**; POU tree editing and declare-from-error
+   remain.
+   - `SymbolField` is a combobox over the in-scope table, keyboard-navigable, showing each name
+     with its address and where it came from. The address also echoes inside the box once a name
+     resolves, so naming a device never means hiding where it lives.
+   - `VariablesPanel` is the declaration table, and it shows the address the *next* declaration
+     would take before it takes it. Allocation is not something the player finds out about
+     afterwards.
+   - `symbolChoicesFor` and `filterChoices` live in `shared` rather than the client, because the
+     client has no unit-test runner and these are pure functions that deserve one.
 6. Convert `factory-line-programs.ts` to symbols; the soak test in `factoryLine.test.ts` is the
    proof the conversion changed no behaviour, since it must ship the same machine counts.
 7. Author puzzles 48 to 53 against `symbols: 'required'`.

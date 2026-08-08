@@ -8,7 +8,9 @@ import {
   type ElementType,
   type MathOp,
   type PidParams,
+  type SymbolChoice,
 } from '@automationsolver/shared';
+import { SymbolField } from './SymbolField';
 
 /**
  * Which fields an instruction actually uses, and what to call them.
@@ -138,6 +140,13 @@ interface Props {
   dense?: boolean;
   addressRef?: React.Ref<HTMLInputElement>;
   operandRef?: React.Ref<HTMLInputElement>;
+  /**
+   * Names in scope for this POU, or empty on a puzzle written in addresses.
+   *
+   * Empty is the default and means the boxes stay the plain inputs 46 puzzles
+   * have always had — no picker, no list, nothing to dismiss.
+   */
+  symbols?: SymbolChoice[];
 }
 
 /**
@@ -156,24 +165,29 @@ export function CellFields({
   dense = false,
   addressRef,
   operandRef,
+  symbols = [],
 }: Props) {
   const label = (text: string) => (dense ? (SHORT_LABEL[text] ?? text) : text);
   const slotClass = (slot: FieldSlot) => `cf-slot${target === slot ? ' is-target' : ''}`;
+  // A word operand reads a register or a constant, so offering it a bit would
+  // only ever be offering it a mistake.
+  const wordSymbols = symbols.filter((c) => c.kind === 'D');
 
   return (
     <>
       {fields.operands?.[0] && (
         <span className={slotClass('a')}>
           <span className="eyebrow">{label(fields.operands[0])}</span>
-          <input
-            ref={operandRef}
+          <SymbolField
+            inputRef={operandRef}
             className="field mono compact operand"
             value={values.opA}
-            onChange={(e) => handlers.onOperand(0, e.target.value)}
+            onChange={(v) => handlers.onOperand(0, v)}
             onFocus={() => handlers.onFocusSlot('a')}
             onBlur={() => handlers.onOperandBlur(0)}
+            choices={wordSymbols}
             disabled={!editable}
-            aria-label={fields.operands[0]}
+            ariaLabel={fields.operands[0]}
             title="A register (D10) or a constant (K500)"
           />
         </span>
@@ -205,14 +219,15 @@ export function CellFields({
       {fields.operands?.[1] && (
         <span className={slotClass('b')}>
           <span className="eyebrow">{label(fields.operands[1])}</span>
-          <input
+          <SymbolField
             className="field mono compact operand"
             value={values.opB}
-            onChange={(e) => handlers.onOperand(1, e.target.value)}
+            onChange={(v) => handlers.onOperand(1, v)}
             onFocus={() => handlers.onFocusSlot('b')}
             onBlur={() => handlers.onOperandBlur(1)}
+            choices={wordSymbols}
             disabled={!editable}
-            aria-label={fields.operands[1]}
+            ariaLabel={fields.operands[1]}
             title="A register (D10) or a constant (K500)"
           />
         </span>
@@ -222,14 +237,15 @@ export function CellFields({
           <span className="eyebrow">
             {fields.writesRegister && !dense ? `→ ${fields.address}` : label(fields.address)}
           </span>
-          <input
-            ref={addressRef}
+          <SymbolField
+            inputRef={addressRef}
             className="field mono compact"
             value={values.address}
-            onChange={(e) => handlers.onAddress(e.target.value)}
+            onChange={handlers.onAddress}
             onFocus={() => handlers.onFocusSlot('device')}
+            choices={fields.writesRegister ? wordSymbols : symbols}
             disabled={!editable}
-            aria-label={fields.address}
+            ariaLabel={fields.address}
             title={fields.writesRegister ? 'The data register this block writes' : undefined}
           />
         </span>

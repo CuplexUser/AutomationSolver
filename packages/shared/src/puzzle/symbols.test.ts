@@ -14,6 +14,7 @@ import {
   takenAddresses,
   validateDeclarations,
 } from './symbols.js';
+import { filterChoices, symbolChoicesFor } from './symbolChoices.js';
 import { validateProgram } from './validate.js';
 import type { LadderPuzzleSpec, PuzzleDevice } from './types.js';
 
@@ -549,5 +550,100 @@ describe('symbols — every shipped puzzle resolves to itself', () => {
       const assembled = assembleProject(puzzle, initialProject(puzzle));
       expect(resolveProject(puzzle, assembled).project).toBe(assembled);
     }
+  });
+});
+
+// --- The picker's view of the table -------------------------------------------
+
+describe('symbolChoicesFor', () => {
+  const picker = spec({ symbols: 'required' });
+  const two: LadderProject = {
+    pous: [
+      { id: 'A', name: 'A', rungs: [], vars: [{ name: 'Step', kind: 'bool', address: 'M10' }] },
+      { id: 'B', name: 'B', rungs: [], vars: [{ name: 'Step', kind: 'bool', address: 'M20' }] },
+    ],
+    tasks: [],
+    globals: [
+      { name: 'Running', kind: 'bool', address: 'M0' },
+      { name: 'Level', kind: 'int', address: 'D30', comment: 'tank level' },
+    ],
+  };
+
+  it('offers nothing at all when the puzzle is written in addresses', () => {
+    expect(symbolChoicesFor(spec(), two, 'A')).toEqual([]);
+  });
+
+  it('lists locals, then globals, then the plant — resolution order', () => {
+    expect(symbolChoicesFor(picker, two, 'A').map((c) => c.origin)).toEqual([
+      'local',
+      'global',
+      'global',
+      'plant',
+      'plant',
+      'plant',
+      'plant',
+    ]);
+  });
+
+  it('gives each POU its own local of the same name', () => {
+    expect(symbolChoicesFor(picker, two, 'A')[0].address).toBe('M10');
+    expect(symbolChoicesFor(picker, two, 'B')[0].address).toBe('M20');
+  });
+
+  it('offers only the name that would actually resolve when one shadows another', () => {
+    const shadowed: LadderProject = {
+      pous: [
+        { id: 'A', name: 'A', rungs: [], vars: [{ name: 'Busy', kind: 'bool', address: 'M9' }] },
+      ],
+      tasks: [],
+      globals: [{ name: 'Busy', kind: 'bool', address: 'M1' }],
+    };
+    const busy = symbolChoicesFor(picker, shadowed, 'A').filter((c) => c.name === 'Busy');
+    expect(busy).toHaveLength(1);
+    expect(busy[0]).toMatchObject({ address: 'M9', origin: 'local' });
+  });
+
+  it('flags a field input as read-only', () => {
+    const choices = symbolChoicesFor(picker, two, 'A');
+    expect(choices.find((c) => c.name === 'FrameBlankReady')).toMatchObject({
+      address: 'X1',
+      origin: 'plant',
+      readOnly: true,
+    });
+    expect(choices.find((c) => c.name === 'Torch')?.readOnly).toBe(false);
+  });
+
+  it('carries a comment through as the detail line', () => {
+    expect(symbolChoicesFor(picker, two, 'A').find((c) => c.name === 'Level')?.detail).toBe(
+      'tank level',
+    );
+  });
+
+  describe('filtering', () => {
+    const choices = symbolChoicesFor(picker, two, 'A');
+
+    it('returns everything for an empty query', () => {
+      expect(filterChoices(choices, '  ')).toHaveLength(choices.length);
+    });
+
+    it('ranks a prefix match above one in the middle', () => {
+      // "Ready" appears inside FrameBlankReady; "Running" starts with it.
+      const hits = filterChoices(choices, 'r').map((c) => c.name);
+      expect(hits[0]).toBe('Running');
+      expect(hits).toContain('FrameBlankReady');
+    });
+
+    it('matches case-insensitively', () => {
+      expect(filterChoices(choices, 'TORCH').map((c) => c.name)).toEqual(['Torch']);
+    });
+
+    it('finds a name by the address it sits on', () => {
+      // Halfway to a rename: you remember where it is, not what you called it.
+      expect(filterChoices(choices, 'D30').map((c) => c.name)).toEqual(['Level']);
+    });
+
+    it('returns nothing for a query that matches nothing', () => {
+      expect(filterChoices(choices, 'zzz')).toEqual([]);
+    });
   });
 });

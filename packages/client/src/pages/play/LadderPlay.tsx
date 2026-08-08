@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  symbolChoicesFor,
   DEFAULT_POU_ID,
   emptyProgram,
   toProgram,
@@ -202,6 +203,7 @@ export function LadderPlay({ spec, user, submit, previousPuzzle }: PlayProps<Lad
           registers={spec.registers}
           evalResults={activeRunner.evalResults[DEFAULT_POU_ID] ?? []}
           running={activeRunner.running}
+          symbols={symbolChoicesFor(spec, project, DEFAULT_POU_ID)}
         />
 
         {traceOpen && (

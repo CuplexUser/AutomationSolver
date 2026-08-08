@@ -11,6 +11,7 @@ import {
   type LadderProject,
   type ProgramDoc,
   type Rung,
+  type VarDecl,
 } from '@automationsolver/shared';
 
 export interface CellPos {
@@ -58,7 +59,29 @@ interface EditorState {
   removeRung: (pou: string, index: number) => void;
   addRow: (pou: string, index: number) => void;
   addCol: (pou: string, index: number) => void;
+
+  /**
+   * Declarations. `scope` is a POU id for a local, or `GLOBAL_SCOPE` for one
+   * every program can see.
+   *
+   * The address arrives already allocated rather than being worked out here: the
+   * allocator needs the puzzle's pools and its device list, and the store has
+   * never known what a puzzle is. Keeping it that way means the allocation the
+   * player sees is the one that gets saved, which is the whole point of placing
+   * a variable once and writing it down.
+   */
+  addVar: (scope: string, decl: VarDecl) => void;
+  removeVar: (scope: string, name: string) => void;
+  patchVar: (scope: string, name: string, patch: Partial<Omit<VarDecl, 'address'>>) => void;
+
+  addPou: (id: string, name: string) => void;
+  renamePou: (id: string, name: string) => void;
+  removePou: (id: string) => void;
+  movePou: (id: string, direction: -1 | 1) => void;
 }
+
+/** Scope key for the project's globals, which is not any POU's id. */
+export const GLOBAL_SCOPE = '@globals';
 
 let rungCounter = 0;
 const nextRungId = () => `r${Date.now().toString(36)}${(rungCounter++).toString(36)}`;
@@ -239,7 +262,103 @@ export const useEditor = create<EditorState>((set, get) => ({
       }),
       dirty: true,
     })),
+
+  addVar: (scope, decl) =>
+    set((s) => ({ project: updateVars(s.project, scope, (v) => [...v, decl]), dirty: true })),
+
+  removeVar: (scope, name) =>
+    set((s) => ({
+      project: updateVars(s.project, scope, (vars) =>
+        // A shipped declaration is the puzzle's, not the player's: it is what a
+        // fixture publishes and what the player is graded against reading.
+        vars.filter((v) => v.fixed === true || !sameName(v.name, name)),
+      ),
+      dirty: true,
+    })),
+
+  patchVar: (scope, name, patch) =>
+    set((s) => ({
+      project: updateVars(s.project, scope, (vars) =>
+        vars.map((v) => (sameName(v.name, name) && v.fixed !== true ? { ...v, ...patch } : v)),
+      ),
+      dirty: true,
+    })),
+
+  addPou: (id, name) =>
+    set((s) => {
+      if (s.project.pous.some((p) => p.id === id)) return s;
+      return {
+        project: {
+          ...s.project,
+          pous: [...s.project.pous, { id, name, rungs: [makeEmptyRung(nextRungId())] }],
+          // A program in no task never runs, and a player who just made one
+          // means to run it. Joining the first task is the answer they would
+          // give if asked, so it is not worth asking.
+          tasks: s.project.tasks.map((t, i) => (i === 0 ? { ...t, pous: [...t.pous, id] } : t)),
+        },
+        focusedPou: id,
+        dirty: true,
+      };
+    }),
+
+  renamePou: (id, name) =>
+    set((s) => ({
+      project: {
+        ...s.project,
+        pous: s.project.pous.map((p) => (p.id === id ? { ...p, name } : p)),
+      },
+      dirty: true,
+    })),
+
+  removePou: (id) =>
+    set((s) => {
+      const project = {
+        ...s.project,
+        pous: s.project.pous.filter((p) => p.id !== id),
+        tasks: s.project.tasks.map((t) => ({ ...t, pous: t.pous.filter((p) => p !== id) })),
+      };
+      return {
+        project,
+        focusedPou: s.focusedPou === id ? (project.pous[0]?.id ?? DEFAULT_POU_ID) : s.focusedPou,
+        selected: s.selected?.pou === id ? null : s.selected,
+        dirty: true,
+      };
+    }),
+
+  movePou: (id, direction) =>
+    set((s) => {
+      const index = s.project.pous.findIndex((p) => p.id === id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= s.project.pous.length) return s;
+      const pous = [...s.project.pous];
+      [pous[index], pous[target]] = [pous[target], pous[index]];
+      return { project: { ...s.project, pous }, dirty: true };
+    }),
 }));
+
+const sameName = (a: string, b: string): boolean =>
+  a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** Rewrite one scope's declaration list, leaving every other scope's identity alone. */
+function updateVars(
+  project: LadderProject,
+  scope: string,
+  fn: (vars: VarDecl[]) => VarDecl[],
+): LadderProject {
+  if (scope === GLOBAL_SCOPE) {
+    return { ...project, globals: fn(project.globals ?? []) };
+  }
+  return {
+    ...project,
+    pous: project.pous.map((pou) => (pou.id === scope ? { ...pou, vars: fn(pou.vars ?? []) } : pou)),
+  };
+}
+
+/** One scope's declarations, for a panel that renders a single table. */
+export function varsIn(project: LadderProject, scope: string): VarDecl[] {
+  if (scope === GLOBAL_SCOPE) return project.globals ?? [];
+  return project.pous.find((p) => p.id === scope)?.vars ?? [];
+}
 
 /**
  * The document to save for this puzzle.

@@ -441,3 +441,187 @@
   margin-top: 8px;
 }
 
+
+/* --- Symbol picker ---------------------------------------------------------
+   The device box on a puzzle written in variables. The list has to escape the
+   toolbar's overflow, so the wrapper is the positioning context and the list is
+   absolute inside it — a dropdown clipped by its own toolbar is a dropdown that
+   shows two rows of eight. */
+.symbol-field {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.symbol-field > input {
+  width: 100%;
+}
+/* The address the typed name resolves to, sitting inside the right-hand end of
+   the box. Named does not mean hidden: this is a platform where the address is
+   a real thing an engineer reads off a monitor screen. */
+.symbol-echo {
+  position: absolute;
+  right: 5px;
+  pointer-events: none;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.75;
+}
+.symbol-list {
+  position: absolute;
+  top: calc(100% + 3px);
+  left: 0;
+  z-index: 40;
+  margin: 0;
+  padding: 3px;
+  list-style: none;
+  min-width: max(210px, 100%);
+  max-height: 244px;
+  overflow-y: auto;
+  background: var(--panel-2);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.symbol-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-areas: 'name addr origin' 'detail detail detail';
+  gap: 0 8px;
+  width: 100%;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 3px;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.symbol-row.is-active,
+.symbol-row:focus-visible {
+  background: color-mix(in srgb, var(--live) 14%, transparent);
+  outline: none;
+}
+.symbol-name {
+  grid-area: name;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.symbol-addr {
+  grid-area: addr;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.symbol-origin {
+  grid-area: origin;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  align-self: center;
+}
+.symbol-detail {
+  grid-area: detail;
+  font-size: 10px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Variables panel ------------------------------------------------------- */
+.vars-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.vars-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.vars-head h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.vars-count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--muted);
+}
+.vars-empty {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--muted);
+  max-width: 46ch;
+}
+.vars-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.vars-table th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-weight: 500;
+  padding: 0 6px 4px 0;
+  border-bottom: 1px solid var(--edge);
+}
+.vars-table td {
+  padding: 3px 6px 3px 0;
+  vertical-align: middle;
+}
+.vars-table tr.is-locked td {
+  color: var(--ink-dim);
+}
+.vars-kind {
+  font-size: 10px;
+  color: var(--muted);
+}
+.vars-addr {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.vars-comment {
+  font-size: 11px;
+  color: var(--muted);
+}
+.vars-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--edge);
+}
+.vars-add > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/* The address the next declaration would take, shown before it takes it, so
+   allocation is never something the player finds out about afterwards. */
+.vars-next {
+  font-size: 10px;
+  color: var(--muted);
+  min-width: 34px;
+  text-align: right;
+}
+.vars-problem {
+  margin: 0;
+  font-size: 11px;
+  color: var(--stop);
+  max-width: 46ch;
+}

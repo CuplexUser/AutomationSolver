@@ -27,6 +27,7 @@ import {
   slotsFor,
   type FieldSlot,
 } from './CellFields';
+import type { SymbolChoice } from '@automationsolver/shared';
 import { CELL_H, CELL_W } from './CellView';
 import { pouRungs, useEditor } from './editorStore';
 import { RungView } from './RungView';
@@ -119,6 +120,11 @@ interface Props {
    * the program, unpinned it scrolls away with it.
    */
   windowed?: boolean;
+  /**
+   * Names in scope for this POU. Empty on a puzzle written in raw addresses,
+   * which leaves every field box exactly the plain input it has always been.
+   */
+  symbols?: SymbolChoice[];
 }
 
 const DEVICE_TYPES = new Set(INSTRUCTIONS.filter((i) => i.needsDevice).map((i) => i.type));
@@ -174,6 +180,7 @@ export function LadderEditor({
   focused = true,
   readOnly = false,
   windowed = false,
+  symbols = [],
 }: Props) {
   const {
     project,
@@ -648,6 +655,7 @@ export function LadderEditor({
             target={chipSlot}
             addressRef={addressRef}
             operandRef={operandRef}
+            symbols={symbols}
           />
           {/* Chips fill whichever field can take the address they carry. */}
           <div className="dev-quick">
@@ -871,6 +879,7 @@ export function LadderEditor({
               editable={editable}
               target={chipSlot}
               dense
+              symbols={symbols}
             />
           </div>
         </div>
