@@ -264,7 +264,63 @@ export const LINE_DEVICES: PuzzleDevice[] = [
   { address: 'Y25', label: 'Function Test', io: 'output', widget: 'motor', color: '#34d399' },
   { address: 'Y26', label: 'Dispatch', io: 'output', widget: 'motor', color: '#f97316' },
   { address: 'Y27', label: 'Call Truck', io: 'output', widget: 'motor', color: '#38bdf8' },
+
+  // --- The spine ---
+  // Twelve zones, each an eye and a drive, in the order a part travels them. The
+  // regularity is the point: once a player has written one zone they have
+  // written all twelve, and the puzzle is what the *rule* between them is rather
+  // than how any one of them works.
+  ...zonePair(1, 'X32', 'Y28', 'Weld Outfeed'),
+  ...zonePair(2, 'X33', 'Y29', 'Transfer'),
+  ...zonePair(3, 'X34', 'Y30', 'Store Infeed'),
+  ...zonePair(4, 'X35', 'Y31', 'Oven Discharge'),
+  ...zonePair(5, 'X36', 'Y32', 'East Transfer N'),
+  ...zonePair(6, 'X37', 'Y33', 'East Transfer S'),
+  ...zonePair(7, 'X38', 'Y34', 'Sort'),
+  ...zonePair(8, 'X39', 'Y35', 'Frame Lane'),
+  ...zonePair(9, 'X40', 'Y36', 'Boom Lane'),
+  ...zonePair(10, 'X41', 'Y37', 'Assembly Outfeed'),
+  ...zonePair(11, 'X42', 'Y38', 'Test Infeed'),
+  ...zonePair(12, 'X43', 'Y39', 'Dock Apron'),
+  { address: 'X44', label: 'Boom At Sort', io: 'input', widget: 'lamp', color: '#f472b6' },
+  { address: 'X45', label: 'Frame Lane Full', io: 'input', widget: 'lamp', color: '#fbbf24' },
+  { address: 'X46', label: 'Boom Lane Full', io: 'input', widget: 'lamp', color: '#fbbf24' },
+  { address: 'Y40', label: 'Divert To Frame Lane', io: 'output', widget: 'motor', color: '#38bdf8' },
+  { address: 'Y41', label: 'Divert To Boom Lane', io: 'output', widget: 'motor', color: '#f472b6' },
+  {
+    address: 'D18',
+    label: 'Parts On Spine',
+    io: 'input',
+    widget: 'bar',
+    signal: 'analog',
+    range: countRange(14, 'parts'),
+    color: '#a78bfa',
+  },
+  {
+    address: 'D19',
+    label: 'Blocked At Zone',
+    io: 'input',
+    widget: 'bar',
+    signal: 'analog',
+    range: countRange(12, 'zone'),
+    color: '#fb923c',
+  },
 ];
+
+/**
+ * One zone's eye and drive.
+ *
+ * Written as a helper rather than as twenty-four literal entries because the
+ * regularity is real: the spine is one mechanism repeated twelve times, and a
+ * device list that spelled each one out by hand would invite the twelve to drift
+ * apart in ways the plant does not.
+ */
+function zonePair(n: number, eye: string, drive: string, name: string): PuzzleDevice[] {
+  return [
+    { address: eye, label: `Z${n} ${name}`, io: 'input', widget: 'lamp', color: '#a3e635' },
+    { address: drive, label: `Z${n} Drive`, io: 'output', widget: 'motor', color: '#e8621a' },
+  ];
+}
 
 /**
  * The instruction set the line is wired for.
@@ -301,6 +357,7 @@ export const LINE_OWNS = {
   PAINT: ['Y14-Y16', 'D2', 'D3', 'D15', 'M70-M99', 'T30-T39', 'C30-C39', 'D40-D49'],
   ASSY: ['Y17-Y23', 'M100-M129', 'T40-T49', 'C40-C49', 'D50-D59'],
   TEST: ['Y24-Y27', 'M130-M159', 'T50-T59', 'C50-C59', 'D60-D69'],
+  CONV: ['Y28-Y41', 'M160-M199', 'T60-T69', 'C60-C69', 'D80-D99'],
 } as const;
 
 // --- Ladder builders ----------------------------------------------------------

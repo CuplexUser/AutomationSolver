@@ -8,6 +8,8 @@ import { LINE_DEVICES, SUP_PROGRAM } from '../content/factory-line-plant.js';
 import {
   ASSEMBLY_PLAIN,
   ASSEMBLY_TUNED,
+  CONV_PLAIN,
+  CONV_TUNED,
   PAINT_PLAIN,
   PAINT_TUNED,
   STORE_PLAIN,
@@ -81,7 +83,11 @@ function weldOne(machine: MachineState, part: 'f' | 'b', dtMs = 50): MachineStat
     m = run(m, 700, dtMs, ON('Y2', 'Y4', ...sel)); // roll over, arc out
     m = run(m, 1300, dtMs, ON('Y2', 'Y3', 'Y4', ...sel)); // second pass, held at B
   }
-  return run(m, 500, dtMs, ON('Y5'));
+  // The fixture rolls the part onto Z1 and the spine walks it up to the store's
+  // infeed, so a release is now the release *plus* two zone transfers with all
+  // three of the segment's drives running. Nothing here is a shortcut: this is
+  // what a program has to do too.
+  return run(m, 500 + 2 * LINE_LIMITS.ZONE_TRANSFER_MS + 200, dtMs, ON('Y5', 'Y28', 'Y29', 'Y30'));
 }
 
 /** Store a part standing on the infeed into `lane` (1-based). */
@@ -187,9 +193,22 @@ describe('factory-line — weld', () => {
     expect(run(m, 200, 50, {}).jam).toBe(true);
   });
 
-  it('blocks if a welded part is rolled onto an occupied infeed', () => {
-    const m = weldOne(fresh(), 'f');
-    expect(weldOne(m, 'b').blocked).toBe(true);
+  it('holds a welded part in the fixture when the spine will not take it', () => {
+    // Not a fault. The spine accumulates, so a station with nowhere to put a
+    // part keeps hold of it and the queue grows backwards — which is the whole
+    // reason a blocked line is visible rather than merely broken.
+    // Three parts, three zones: the first reaches the infeed, the second and
+    // third stack up behind it, and the fourth has nowhere to go, so it stays
+    // clamped in the fixture.
+    let m = weldOne(fresh(), 'f');
+    m = weldOne(m, 'b');
+    m = weldOne(m, 'f');
+    const held = weldOne(m, 'b');
+    expect(held.blocked).toBe(false);
+    expect(held.jam).toBe(false);
+    expect(held.storeIn).toBe('f');
+    expect([held.z2, held.z1]).toEqual(['b', 'f']);
+    expect(held.weldPart).toBe('b');
   });
 
   // Round the rack as we go: a lane is two deep, so eight booms only fit if they
@@ -230,6 +249,112 @@ describe('factory-line — weld', () => {
 
     const held = run(fresh(), 600, 50, ON('Y2'));
     expect(run(held, 200, 50, ON('Y7')).jam).toBe(true);
+  });
+});
+
+describe('factory-line — the spine', () => {
+  const ZT = LINE_LIMITS.ZONE_TRANSFER_MS;
+  /** Every zone drive on, which is the tempting answer and the wrong one. */
+  const ALL_DRIVES = ON(...Array.from({ length: 14 }, (_, i) => `Y${28 + i}`));
+
+  it('will not accept a part onto a zone whose belt is stopped', () => {
+    // The handshake the whole mechanism turns on. A station that releases onto a
+    // dead belt has put a part down where nothing will ever pick it up, so the
+    // plant refuses the release rather than accepting it.
+    const m = run({ ...fresh(), weldPart: 'f', weldPass: 2, weldClamp: 1 }, 800, 50, ON('Y5'));
+    expect(m.z1).toBe('');
+    expect(m.weldPart).toBe('f');
+    expect(m.jam).toBe(false);
+  });
+
+  it('moves a part one zone per zone-time and no further', () => {
+    let m: MachineState = { ...fresh(), z1: 'f' };
+    m = run(m, ZT + 100, 50, ON('Y29', 'Y30'));
+    // Y29 took it into Z2. Y30 was on too, but downstream-first resolution means
+    // Z2 could not also hand it to the infeed on the same sub-step it arrived.
+    expect([m.z1, m.z2, m.storeIn]).toEqual(['', 'f', '']);
+    m = run(m, ZT + 100, 50, ON('Y29', 'Y30'));
+    expect([m.z2, m.storeIn]).toEqual(['', 'f']);
+  });
+
+  it('accumulates behind a stopped zone without faulting', () => {
+    // Three parts on the run and the infeed's belt stopped. They queue nose to
+    // tail and nothing complains, which is what zero pressure means.
+    let m: MachineState = { ...fresh(), z1: 'f', z2: 'b', storeIn: 'f' };
+    m = run(m, 4 * ZT, 50, ON('Y28', 'Y29'));
+    expect([m.z1, m.z2, m.storeIn]).toEqual(['f', 'b', 'f']);
+    expect(m.jam).toBe(false);
+    expect(m.blocked).toBe(false);
+  });
+
+  it('drains a queue one part at a time, not all at once', () => {
+    // The reason transfers resolve downstream first, and the reason a queue is
+    // worth avoiding rather than merely tolerating. A part does not start moving
+    // when the belt starts, it starts moving when the space in front of it
+    // appears — so the second part is a full zone-time behind the first, and a
+    // queue of three costs three zone-times to clear rather than one.
+    let m: MachineState = { ...fresh(), z1: 'f', z2: 'b' };
+    m = run(m, ZT + 100, 50, ALL_DRIVES);
+    expect([m.z1, m.z2, m.storeIn]).toEqual(['f', '', 'b']);
+    m = run(m, ZT + 100, 50, ALL_DRIVES);
+    expect([m.z1, m.z2, m.storeIn]).toEqual(['', 'f', 'b']);
+  });
+
+  it('reports the head of the queue on D19 and the load on D18', () => {
+    const m: MachineState = { ...fresh(), z1: 'f', z2: 'b', storeIn: 'f' };
+    expect(words(m).D18).toBe(3);
+    // Z2 is the first zone holding a part that cannot move on, because the
+    // infeed in front of it is occupied.
+    expect(words(m).D19).toBe(2);
+    expect(words({ ...fresh(), z1: 'f' }).D19).toBe(0);
+  });
+
+  it('will not let a station lift a part off a running belt', () => {
+    // Running every drive is the answer everyone reaches for first, and it
+    // deadlocks the plant: a belt that never stops is a belt nothing can be
+    // picked off. The store's loader strokes and comes back empty.
+    const m = run({ ...fresh(), storeIn: 'f' }, 2000, 50, ON('Y8', 'Y30'), { D13: 1 });
+    expect(m.lane0).toBe('');
+    expect(m.storeIn).toBe('f');
+    expect(m.jam).toBe(false);
+  });
+
+  it('sorts a boom into the boom lane and a frame into the frame lane', () => {
+    const at = (token: string): MachineState => ({ ...fresh(), z7: token });
+    expect(sensors(at('b1')).X44).toBe(true);
+    expect(sensors(at('f1')).X44).toBe(false);
+    // The paddle needs the lane it is pushing into to be turning to take it.
+    const boom = run(at('b3'), LINE_LIMITS.SORT_DIVERT_MS + 100, 50, ON('Y41', 'Y36'));
+    expect([boom.z7, boom.laneB]).toEqual(['', '3']);
+    const frame = run(at('f2'), LINE_LIMITS.SORT_DIVERT_MS + 100, 50, ON('Y40', 'Y35'));
+    expect([frame.z7, frame.laneF]).toEqual(['', '2']);
+  });
+
+  it('leaves a part on the sort when the paddle is raised but the lane is dead', () => {
+    const m = run({ ...fresh(), z7: 'b3' }, 2000, 50, ON('Y41'));
+    expect(m.z7).toBe('b3');
+    expect(m.laneB).toBe('');
+    expect(m.jam).toBe(false);
+  });
+
+  it('jams if a part is diverted into the wrong lane', () => {
+    const m = run({ ...fresh(), z7: 'b3' }, 600, 50, ON('Y40', 'Y35'));
+    expect(m.jam).toBe(true);
+    expect(String(m.jamReason)).toContain('frame lane');
+  });
+
+  it('jams if both diverters are called at once', () => {
+    expect(run({ ...fresh(), z7: 'f1' }, 200, 50, ON('Y40', 'Y41')).jam).toBe(true);
+  });
+
+  it('stops the line from the far end when the yard fills', () => {
+    // Nothing faults. The yard stops taking, so the apron stays occupied, so the
+    // test bay cannot dispatch — and the queue walks back up the plant.
+    let m: MachineState = { ...fresh(), yard: LINE_LIMITS.YARD_CAP, z12: 'm' };
+    m = run(m, 3000, 50, ON('Y39'));
+    expect(m.z12).toBe('m');
+    expect(m.yard).toBe(LINE_LIMITS.YARD_CAP);
+    expect(m.blocked).toBe(false);
   });
 });
 
@@ -418,9 +543,12 @@ describe('factory-line — final assembly', () => {
     m = run(m, 1900, 50, ON('Y20'));
     m = run(m, 2500, 50, ON('Y22'));
     expect(sensors(m).X26).toBe(true);
-    m = run(m, 100, 50, ON('Y23'));
-    // Straight into the bay: the test station pulls off the queue on the same
-    // sub-step the jig puts a machine on it, so `bufAt` is back to nought.
+    // Onto Z10 and down the spine into the bay: two zone transfers with both
+    // drives running, then Z11 stopped so the bay can take the machine off it.
+    m = run(m, 100, 50, ON('Y23', 'Y37'));
+    expect(m.z10).toBe('m');
+    m = run(m, LINE_LIMITS.ZONE_TRANSFER_MS + 200, 50, ON('Y38'));
+    m = run(m, 100, 50, {});
     expect(m.testPart).toBe(true);
     expect(m.assyFrame).toBe(0);
     expect(m.assyBoom).toBe(0);
@@ -462,13 +590,14 @@ describe('factory-line — final assembly', () => {
 });
 
 describe('factory-line — test bay and dock', () => {
-  const atTest = (): MachineState => run({ ...fresh(), bufAt: 1 }, 50, 50, {});
+  /** A machine standing on the test infeed, with the belt stopped under it. */
+  const atTest = (): MachineState => run({ ...fresh(), z11: 'm' }, 50, 50, {});
 
   it('pumps up, runs the cycle and drives the machine into the yard', () => {
     let m = run(atTest(), 1300, 50, ON('Y24'));
     m = run(m, 2700, 50, ON('Y24', 'Y25'));
     expect(sensors(m).X29).toBe(true);
-    m = run(m, 1500, 50, ON('Y26')); // pump dropped first
+    m = run(m, 1500, 50, ON('Y26', 'Y39')); // pump dropped first, apron running
     expect(m.yard).toBe(1);
     expect(m.shipped).toBe(1);
     expect(m.jam).toBe(false);
@@ -481,7 +610,7 @@ describe('factory-line — test bay and dock', () => {
   it('jams if the machine is driven off with the rig still under pressure', () => {
     let m = run(atTest(), 1300, 50, ON('Y24'));
     m = run(m, 2700, 50, ON('Y24', 'Y25'));
-    expect(run(m, 200, 50, ON('Y24', 'Y26')).jam).toBe(true);
+    expect(run(m, 200, 50, ON('Y24', 'Y26', 'Y39')).jam).toBe(true);
   });
 
   it('sends a truck that arrives, loads and leaves', () => {
@@ -543,13 +672,14 @@ function runLine(sections: Record<string, Rung[]>, ms: number): LineResult {
       { id: 'PAINT', name: 'PAINT', rungs: sections.PAINT },
       { id: 'ASSY', name: 'ASSY', rungs: sections.ASSY },
       { id: 'TEST', name: 'TEST', rungs: sections.TEST },
+      { id: 'CONV', name: 'CONV', rungs: sections.CONV },
     ],
     tasks: [
       {
         id: 'MAIN',
         name: 'MAIN',
         priority: 0,
-        pous: ['SUP', 'WELD', 'STORE', 'PAINT', 'ASSY', 'TEST'],
+        pous: ['SUP', 'WELD', 'STORE', 'PAINT', 'ASSY', 'TEST', 'CONV'],
       },
     ],
   };
@@ -591,6 +721,7 @@ const PLAIN: Record<string, Rung[]> = {
   PAINT: PAINT_PLAIN,
   ASSY: ASSEMBLY_PLAIN,
   TEST: TEST_PLAIN,
+  CONV: CONV_PLAIN,
 };
 const TUNED: Record<string, Rung[]> = {
   WELD: WELD_TUNED,
@@ -598,6 +729,7 @@ const TUNED: Record<string, Rung[]> = {
   PAINT: PAINT_TUNED,
   ASSY: ASSEMBLY_TUNED,
   TEST: TEST_TUNED,
+  CONV: CONV_TUNED,
 };
 
 /** Long enough for every buffer on the line to fill and start pushing back. */
@@ -616,7 +748,11 @@ describe('factory-line — the shipped programs run the plant', () => {
   it('runs a full shift on the tuned programs with no fault and no scrap', { timeout: 30_000 }, () => {
     const r = runLine(TUNED, SOAK_MS);
     expect(clean(r)).toEqual(OK);
-    expect(r.shipped).toBeGreaterThan(15);
+    // Twelve zones of transport now stand between the six stations, so a shift
+    // ships fewer machines than it did when parts teleported between bays. The
+    // number is the plant's, not a target: what matters is that it is stable and
+    // that tuned beats plain.
+    expect(r.shipped).toBeGreaterThan(12);
   });
 
   it('runs a full shift on the plain programs too, only slower', { timeout: 30_000 }, () => {
@@ -624,7 +760,7 @@ describe('factory-line — the shipped programs run the plant', () => {
     // leaves output on the floor, never stops the line.
     const r = runLine(PLAIN, SOAK_MS);
     expect(clean(r)).toEqual(OK);
-    expect(r.shipped).toBeGreaterThan(10);
+    expect(r.shipped).toBeGreaterThan(8);
   });
 
   it('ships more tuned than plain', { timeout: 30_000 }, () => {

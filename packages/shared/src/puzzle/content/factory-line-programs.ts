@@ -502,3 +502,72 @@ export const TEST_TUNED: Rung[] = [
   rung('t-hold', [[no('M130'), out('Y27')]]),
   rung('t-release', [[no('X31'), cmp('<=', 'D12', 'K0'), rst('M130')]]),
 ];
+
+// --- SEC7 CONV ----------------------------------------------------------------
+
+/**
+ * The spine, plainly: each run treated as one long belt.
+ *
+ * Perfectly sound and completely understandable. A run starts at one end and
+ * stops when the far end is occupied, so nothing is ever pushed into anything,
+ * nothing crashes, and every part gets where it is going.
+ *
+ * What it gives away is that a run is *twelve* belts, not four. Stopping the
+ * whole of the weld outfeed because the store's infeed is busy holds up a part
+ * standing three zones back that had a clear road in front of it. On a line
+ * where every station is within a second of every other, a spine that pauses
+ * every time the station on the end of it is loading is the plant's quietest
+ * and largest loss.
+ */
+export const CONV_PLAIN: Rung[] = [
+  // Weld outfeed to the store, run as one belt while the infeed is clear.
+  rung('c-a1', [[no('M0'), nc('X34'), out('Y28')]]),
+  rung('c-a2', [[no('M0'), nc('X34'), out('Y29')]]),
+  rung('c-a3', [[no('M0'), nc('X34'), out('Y30')]]),
+  // Oven discharge to the sort, likewise.
+  rung('c-b1', [[no('M0'), nc('X38'), out('Y31')]]),
+  rung('c-b2', [[no('M0'), nc('X38'), out('Y32')]]),
+  rung('c-b3', [[no('M0'), nc('X38'), out('Y33')]]),
+  rung('c-b4', [[no('M0'), nc('X38'), out('Y34')]]),
+  // The sort reads the part it is holding and paddles it into its own lane. The
+  // lane has to be turning to take it, so the paddle and the lane go together.
+  rung('c-sortf', [[no('M0'), no('X38'), nc('X44'), nc('X45'), out('Y40')]]),
+  rung('c-sortb', [[no('M0'), no('X38'), no('X44'), nc('X46'), out('Y41')]]),
+  rung('c-lanef', [[no('Y40'), out('Y35')]]),
+  rung('c-laneb', [[no('Y41'), out('Y36')]]),
+  // Assembly out through test, and the dock apron.
+  rung('c-c1', [[no('M0'), nc('X42'), out('Y37')]]),
+  rung('c-c2', [[no('M0'), nc('X42'), out('Y38')]]),
+  rung('c-d1', [[no('M0'), nc('X43'), out('Y39')]]),
+];
+
+/**
+ * The spine, zone by zone: every belt runs while its own zone is clear.
+ *
+ * One rung each and shorter than the plain version, which is the nicest thing
+ * about zero-pressure accumulation — the right answer is also the smaller one.
+ * A zone that has nothing on it pulls in whatever is behind it and then stops,
+ * so parts queue nose to tail and each one moves the moment the zone in front
+ * of it empties, rather than when the whole run happens to be free.
+ *
+ * The two painted lanes are the exception and stay as they were, because they
+ * are three deep and their eye reads *occupied*, not *full* — and because a lane
+ * has to be stopped for the jig to lift a part off it. Running a lane on its own
+ * eye would leave it turning under a part final assembly is trying to take.
+ */
+export const CONV_TUNED: Rung[] = [
+  rung('c-z1', [[no('M0'), nc('X32'), out('Y28')]]),
+  rung('c-z2', [[no('M0'), nc('X33'), out('Y29')]]),
+  rung('c-z3', [[no('M0'), nc('X34'), out('Y30')]]),
+  rung('c-z4', [[no('M0'), nc('X35'), out('Y31')]]),
+  rung('c-z5', [[no('M0'), nc('X36'), out('Y32')]]),
+  rung('c-z6', [[no('M0'), nc('X37'), out('Y33')]]),
+  rung('c-z7', [[no('M0'), nc('X38'), out('Y34')]]),
+  rung('c-sortf', [[no('M0'), no('X38'), nc('X44'), nc('X45'), out('Y40')]]),
+  rung('c-sortb', [[no('M0'), no('X38'), no('X44'), nc('X46'), out('Y41')]]),
+  rung('c-lanef', [[no('Y40'), out('Y35')]]),
+  rung('c-laneb', [[no('Y41'), out('Y36')]]),
+  rung('c-z10', [[no('M0'), nc('X41'), out('Y37')]]),
+  rung('c-z11', [[no('M0'), nc('X42'), out('Y38')]]),
+  rung('c-z12', [[no('M0'), nc('X43'), out('Y39')]]),
+];

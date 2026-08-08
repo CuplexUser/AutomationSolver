@@ -14,7 +14,7 @@ export type MachineState = Record<string, number | boolean | string>;
 
 export { tank, axis, warehouse, factory, factoryLine };
 export { FACTORY_LIMITS, FACTORY_SECTIONS } from './factory.js';
-export { LINE_LIMITS, LINE_SECTIONS } from './factoryLine.js';
+export { LINE_LIMITS, LINE_SECTIONS, LINE_ZONES, type ZoneDef } from './factoryLine.js';
 // The rack layout and the inbound sequence are content the machine view reads
 // to place and colour pallets, so they travel with the model.
 export {

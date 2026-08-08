@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ASSEMBLY_TUNED,
+  CONV_TUNED,
   factoryLine,
   isAnalog,
   LINE_DEVICES,
@@ -43,6 +44,7 @@ const SECTIONS = [
   ['PAINT', PAINT_TUNED],
   ['ASSY', ASSEMBLY_TUNED],
   ['TEST', TEST_TUNED],
+  ['CONV', CONV_TUNED],
 ] as const;
 
 function lineProject(): LadderProject {
@@ -170,7 +172,7 @@ export function LinePreviewPage() {
           ))}
         </span>
         <span className="lp-note">
-          Dev preview. Six tuned sections, no puzzle. Sections: {Object.values(LINE_SECTIONS).join(' ')}
+          Dev preview. Seven tuned sections, no puzzle. Sections: {Object.values(LINE_SECTIONS).join(' ')}
         </span>
       </div>
       <div className="lp-scene">

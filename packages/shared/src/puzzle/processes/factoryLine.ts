@@ -215,6 +215,92 @@ const YARD_CAP = 6;
  */
 const STARVE_MS = 16_000;
 
+// --- The spine ----------------------------------------------------------------
+
+/**
+ * Zoned roller conveyor, twelve zones, one photo-eye and one drive on each.
+ *
+ * The rule the plant enforces is the only one there is: **a zone moves its part
+ * on when its drive is called and the zone in front is clear.** Call a drive
+ * into an occupied zone and nothing happens — no fault, no crash, the part just
+ * stands there. That is what "zero pressure" means, and it is why a badly
+ * written spine is *slow* rather than broken, which makes this the one mechanism
+ * on the line whose whole cost is measured in seconds nobody notices.
+ *
+ * Written well, parts queue nose to tail and a part costs one zone-time. Written
+ * the way most people write it first — release one, wait for it to arrive, then
+ * release the next — the spine empties between every part and becomes the
+ * bottleneck for the entire plant.
+ *
+ * It is also the plant's only *visible* constraint. When the booth stops, the
+ * queue grows backwards down the spine toward the weld bay one zone at a time
+ * until the weld bay itself cannot release, and a player watching that knows
+ * where the problem is without reading a single number.
+ */
+const ZONE_TRANSFER_MS = 600;
+/** The paddle at the sort, swinging across between the two painted lanes. */
+const SORT_DIVERT_MS = 400;
+
+/**
+ * A zone, and what it discharges into.
+ *
+ * `next` names the zone downstream; `null` means a *station* takes the part off
+ * this zone, so the zone's drive is what offers it and the station is what
+ * accepts. The two ends of the line and both painted lanes work that way, which
+ * is why the handshake is a property of the zone rather than a special case
+ * bolted onto four of them.
+ */
+export interface ZoneDef {
+  /** Machine-state key holding what stands on the zone. */
+  key: string;
+  eye: string;
+  drive: string;
+  cap: number;
+  next: string | null;
+}
+
+/**
+ * The three run segments, in the order a part travels them.
+ *
+ * `storeIn`, `laneF` and `laneB` are zones that already existed under their own
+ * names — the store's infeed roller and the two painted lanes — so they keep
+ * those names rather than being renamed to `z3`, `z8` and `z9`. Every station
+ * that reads them goes on reading them, and the spine picks them up as the zones
+ * they always physically were.
+ */
+const SPINE_ZONES: ZoneDef[] = [
+  // Weld outfeed, east to the rack store. Bare steel, no color yet.
+  { key: 'z1', eye: 'X32', drive: 'Y28', cap: 1, next: 'z2' },
+  { key: 'z2', eye: 'X33', drive: 'Y29', cap: 1, next: 'storeIn' },
+  { key: 'storeIn', eye: 'X34', drive: 'Y30', cap: 1, next: null },
+  // Oven discharge, south down the east wall to the sort. Painted.
+  { key: 'z4', eye: 'X35', drive: 'Y31', cap: 1, next: 'z5' },
+  { key: 'z5', eye: 'X36', drive: 'Y32', cap: 1, next: 'z6' },
+  { key: 'z6', eye: 'X37', drive: 'Y33', cap: 1, next: 'z7' },
+  { key: 'z7', eye: 'X38', drive: 'Y34', cap: 1, next: null },
+  // The two painted lanes, west into the jig.
+  { key: 'laneF', eye: 'X39', drive: 'Y35', cap: PA_CAP, next: null },
+  { key: 'laneB', eye: 'X40', drive: 'Y36', cap: PA_CAP, next: null },
+  // Assembly out, through test, on to the dock.
+  { key: 'z10', eye: 'X41', drive: 'Y37', cap: 1, next: 'z11' },
+  { key: 'z11', eye: 'X42', drive: 'Y38', cap: 1, next: null },
+  { key: 'z12', eye: 'X43', drive: 'Y39', cap: 1, next: null },
+];
+
+/** Painted zones carry `<type><color>` pairs, e.g. `f3`, because both matter. */
+const PAINTED_ZONES = new Set(['z4', 'z5', 'z6', 'z7']);
+
+/** How many tokens stand on a zone, whatever width its tokens are. */
+function zoneCount(m: MachineState, key: string): number {
+  const s = str(m[key]);
+  return PAINTED_ZONES.has(key) ? s.length / 2 : s.length;
+}
+
+/** Whether a zone can take one more. */
+function zoneHasRoom(m: MachineState, key: string, cap: number): boolean {
+  return zoneCount(m, key) < cap;
+}
+
 const num = (v: unknown, fallback = 0): number => (typeof v === 'number' ? v : fallback);
 const str = (v: unknown, fallback = ''): string => (typeof v === 'string' ? v : fallback);
 const bool = (v: unknown): boolean => v === true;
@@ -289,7 +375,23 @@ export const factoryLine: ProcessModel = {
       painted: 0,
       scrapped: 0,
 
-      // Painted lanes, as strings of color digits ('112' is three parts).
+      // The spine. Each zone holds what stands on it, front of the zone first;
+      // `zp_<key>` is how far through the transfer *into* that zone we are.
+      // Upstream of paint a token is a bare part code, downstream it is a type
+      // and a color ('f3'), and a machine is just 'm'.
+      z1: '',
+      z2: '',
+      z4: '',
+      z5: '',
+      z6: '',
+      z7: '',
+      z10: '',
+      z11: '',
+      z12: '',
+      sortDivert: 0,
+
+      // Painted lanes, as strings of color digits ('112' is three parts). Z8 and
+      // Z9 of the spine, under the names the stations already knew them by.
       laneF: '',
       laneB: '',
 
@@ -322,6 +424,7 @@ export const factoryLine: ProcessModel = {
 
       remainderMs: 0,
     };
+    for (const z of SPINE_ZONES) m[`zp_${z.key}`] = 0;
     for (let i = 0; i < STORE_LANES; i++) m[`lane${i}`] = '';
     for (let i = 0; i < OVEN_RACKS; i++) {
       m[`ovenPart${i}`] = '';
@@ -355,6 +458,10 @@ export const factoryLine: ProcessModel = {
     const c: Ctx = { m, y, reg, fault };
     for (let i = 0; i < steps; i++) {
       if (bool(m.jam) || bool(m.blocked) || bool(m.starved)) break;
+      // Transport first, so a zone that clears this sub-step is available to
+      // the station behind it on the same one. The other order costs every
+      // hand-off on the line an extra sub-step for no reason anyone could see.
+      stepSpine(c);
       stepWeld(c);
       stepStore(c);
       stepPortal(c);
@@ -367,6 +474,10 @@ export const factoryLine: ProcessModel = {
 
     m.running = y('Y0');
     m.fault = y('Y1');
+    // The test queue is now two zones of the spine rather than a counter, but a
+    // count is still what the panel and the scene want, so it is derived here
+    // instead of being a second thing to keep in step with the first.
+    m.bufAt = zoneCount(m, 'z10') + zoneCount(m, 'z11');
 
     return { machine: m, derivedInputs: sensors(m), derivedRegisters: registers(m) };
   },
@@ -471,15 +582,18 @@ function stepWeld({ m, y, fault }: Ctx): void {
     }
   }
 
-  // Release onto the store's infeed roller, which holds one part.
+  // Release onto Z1, the first zone of the spine, which holds one part.
   if (y('Y5') && done) {
     m.weldRelease = Math.min(1, num(m.weldRelease) + SUB_MS / WELD_RELEASE_MS);
     if (num(m.weldRelease) >= 1) {
-      if (str(m.storeIn) !== '') {
-        fault('blocked', 'a welded part was rolled out onto an infeed that still had one on it');
+      if (!zoneAccepting(m, y, 'z1')) {
+        // Held at the fixture, not dropped on the floor. The stroke completes
+        // and simply has nowhere to put the part, which is the whole reason a
+        // blocked spine backs up into the weld bay rather than crashing it.
+        m.weldRelease = 1;
         return;
       }
-      m.storeIn = m.weldPart;
+      m.z1 = m.weldPart;
       m.welded = num(m.welded) + 1;
       m.weldPart = '';
       m.weldPass = 0;
@@ -518,7 +632,7 @@ function stepStore({ m, y, reg, fault }: Ctx): void {
     // field image a program is deciding on is always one scan behind the plant —
     // the part it was pushing left on the sub-step the stroke completed, and a
     // level-driven coil is still on for the rest of that scan.
-    if (str(m.storeIn) === '') {
+    if (str(m.storeIn) === '' || !zoneReleasing(y, 'storeIn')) {
       m.storeLoad = 0;
       return;
     }
@@ -771,7 +885,7 @@ function freeRack(m: MachineState): number {
  * faulting here would punish a program for something it could not have seen,
  * since the rack it would have to have predicted was loaded six seconds ago.
  */
-function stepOven({ m }: Ctx): void {
+function stepOven({ m, y }: Ctx): void {
   const tempCounts = Math.round(num(m.boothTempM) / MILLI);
 
   for (let i = 0; i < OVEN_RACKS; i++) {
@@ -791,9 +905,10 @@ function stepOven({ m }: Ctx): void {
       m.scrapped = num(m.scrapped) + 1;
       m.painted = num(m.painted) + 1;
     } else {
-      const key = part === 'f' ? 'laneF' : 'laneB';
-      if (str(m[key]).length >= PA_CAP) continue; // the door stays shut
-      m[key] = str(m[key]) + String(num(m[`ovenColor${i}`], 1));
+      // Out onto Z4, carrying its color with it: from here to the jig the part
+      // is both a type and an order line, and the sort needs to read both.
+      if (!zoneAccepting(m, y, 'z4')) continue; // the door stays shut
+      m.z4 = `${part}${num(m[`ovenColor${i}`], 1)}`;
       m.painted = num(m.painted) + 1;
     }
     m[`ovenPart${i}`] = '';
@@ -801,6 +916,149 @@ function stepOven({ m }: Ctx): void {
     m[`ovenCure${i}`] = 0;
     m[`ovenMs${i}`] = 0;
     m[`ovenBad${i}`] = false;
+  }
+}
+
+// --- The spine ----------------------------------------------------------------
+
+/**
+ * Run every zone whose drive is called, pulling in whatever stands behind it.
+ *
+ * The rule is stated from the *receiving* end, which is the one thing about a
+ * zoned conveyor worth getting right: **a zone's drive runs that zone's own
+ * belt, and a part only enters a zone while that zone is running and clear.** So
+ * a program does not push parts along the spine, it decides which stretches of
+ * belt are turning, and the parts fall through the ones that are.
+ *
+ * Nothing faults. A drive called with a full zone in front simply turns under a
+ * part that is going nowhere, which is what "zero pressure" means and why a
+ * badly written spine is slow rather than broken. The cost is seconds, and the
+ * only way to see it is to watch the queue.
+ *
+ * Transfers are resolved **downstream first**. The other way round, Z2 would
+ * pull from Z1 after already having emptied into Z3 on the same sub-step, so a
+ * part would travel two zones in one zone-time and a standing queue would
+ * discharge all at once instead of one part at a time. Downstream-first is what
+ * makes a queue drain at the pace it built up.
+ */
+function stepSpine(c: Ctx): void {
+  const { m, y } = c;
+  for (let i = SPINE_ZONES.length - 1; i >= 0; i--) {
+    const z = SPINE_ZONES[i];
+    const from = SPINE_ZONES.find((u) => u.next === z.key);
+    if (!from) continue; // fed by a station, which offers on its own release
+    transferInto(m, y, from, z);
+  }
+  stepSort(c);
+}
+
+/** One zone pulling the front token off the zone behind it. */
+function transferInto(
+  m: MachineState,
+  y: (address: string) => boolean,
+  from: ZoneDef,
+  to: ZoneDef,
+): void {
+  const progressKey = `zp_${to.key}`;
+  const held = str(m[from.key]);
+  const running = y(to.drive);
+
+  if (!running || held === '' || !zoneHasRoom(m, to.key, to.cap)) {
+    // A belt that stops mid-transfer does not hold the part half way across; it
+    // is a roller bed, and the part rolls back against what is behind it.
+    if (!running) m[progressKey] = 0;
+    return;
+  }
+
+  m[progressKey] = Math.min(1, num(m[progressKey]) + SUB_MS / ZONE_TRANSFER_MS);
+  if (num(m[progressKey]) < 1) return;
+  m[progressKey] = 0;
+
+  // Front of the string is the front of the zone, which is what leaves first.
+  const width = PAINTED_ZONES.has(from.key) ? 2 : 1;
+  m[from.key] = held.slice(width);
+  m[to.key] = str(m[to.key]) + held.slice(0, width);
+}
+
+/**
+ * Whether a station may release onto the zone it feeds.
+ *
+ * The zone has to be *running* as well as clear, which is the handshake the
+ * whole mechanism turns on: a station that releases onto a dead belt has put a
+ * part down in the one place nothing will ever pick it up from.
+ */
+function zoneAccepting(m: MachineState, y: (a: string) => boolean, key: string): boolean {
+  const z = SPINE_ZONES.find((d) => d.key === key);
+  if (!z) return false;
+  return y(z.drive) && zoneHasRoom(m, z.key, z.cap);
+}
+
+/**
+ * Whether a station may lift a part *off* a zone: the belt has to be stopped.
+ *
+ * This is the constraint that makes the spine a puzzle rather than a formality,
+ * and it is the plainest fact about a conveyor there is — you cannot pick a part
+ * off a belt that is moving. Without it the answer to every zone is "run it all
+ * the time" and accumulation does the rest, which is a mechanism with no
+ * decision in it. With it, a zone has to be run to *fill* and stopped to
+ * *empty*, so the program has to know which of those it is doing.
+ */
+function zoneReleasing(y: (a: string) => boolean, key: string): boolean {
+  const z = SPINE_ZONES.find((d) => d.key === key);
+  return z ? !y(z.drive) : false;
+}
+
+/**
+ * The sort: read the part on Z7 and paddle it into its own painted lane.
+ *
+ * The one zone on the spine that makes a decision. `X44` reports whether what is
+ * standing there is a boom, which is the same read the store's infeed offers on
+ * `X12`, and the program is the thing that has to act on it. Calling both
+ * paddles at once is a genuine crash and not an accumulation: the part goes into
+ * the gap between the lanes.
+ */
+function stepSort({ m, y, fault }: Ctx): void {
+  const held = str(m.z7);
+  const toFrame = y('Y40');
+  const toBoom = y('Y41');
+
+  // An empty sort first: raising both paddles over nothing is a wasted stroke,
+  // exactly like a loader stroking an empty infeed, and for the same reason —
+  // the image a program decides on is always a scan behind the plant.
+  if (held === '' || (!toFrame && !toBoom)) {
+    m.sortDivert = 0;
+    return;
+  }
+  if (toFrame && toBoom) {
+    fault('jam', 'both diverters were called at the sort, and the part went between the lanes');
+    return;
+  }
+
+  const isBoom = held[0] === 'b';
+  const lane = toBoom ? 'laneB' : 'laneF';
+  // Pushing a frame down the boom lane is the mirror of the store's lane
+  // discipline, and it fails the same way: the jig calls for a boom, gets a
+  // frame, and the two streams drift a machine apart. Better to say so here.
+  if (isBoom !== toBoom) {
+    fault(
+      'jam',
+      `a ${isBoom ? 'boom' : 'frame'} was diverted into the ${toBoom ? 'boom' : 'frame'} lane at the sort`,
+    );
+    return;
+  }
+  // The paddle pushes, but the lane it pushes into has to be turning to take the
+  // part — so diverting is two coils, not one, and a program that raises the
+  // paddle without running the lane has a part sitting on the sort for ever.
+  if (!zoneAccepting(m, y, lane)) {
+    m.sortDivert = 0;
+    return;
+  }
+
+  m.sortDivert = Math.min(1, num(m.sortDivert) + SUB_MS / SORT_DIVERT_MS);
+  if (num(m.sortDivert) >= 1) {
+    m[lane] = str(m[lane]) + held[1];
+    m.z7 = held.slice(2);
+    m.sortDivert = 0;
   }
 }
 
@@ -816,11 +1074,15 @@ function stepOven({ m }: Ctx): void {
  */
 function stepAssembly({ m, y, fault }: Ctx): void {
   // Call a part in off its painted lane.
-  if (y('Y17') && num(m.assyFrame) === 0 && str(m.laneF).length > 0) {
+  // A part is lifted off the lane, so the lane has to be stopped to give it up.
+  // Running the lane to take a part from the sort and stopping it to hand one to
+  // the jig are the same coil asked for two opposite things, which is the whole
+  // of what the sort has to sequence.
+  if (y('Y17') && num(m.assyFrame) === 0 && str(m.laneF).length > 0 && zoneReleasing(y, 'laneF')) {
     m.assyFrame = Number(str(m.laneF)[0]);
     m.laneF = str(m.laneF).slice(1);
   }
-  if (y('Y18') && num(m.assyBoom) === 0 && str(m.laneB).length > 0) {
+  if (y('Y18') && num(m.assyBoom) === 0 && str(m.laneB).length > 0 && zoneReleasing(y, 'laneB')) {
     m.assyBoom = Number(str(m.laneB)[0]);
     m.laneB = str(m.laneB).slice(1);
   }
@@ -874,11 +1136,12 @@ function stepAssembly({ m, y, fault }: Ctx): void {
   const complete = num(m.assyEngine) >= 1 && num(m.assyCab) >= 1 && num(m.assyPin) >= 1;
 
   if (y('Y23') && complete) {
-    if (num(m.bufAt) >= AT_CAP) {
-      fault('blocked', 'a finished machine was released into a full test queue');
-      return;
-    }
-    m.bufAt = num(m.bufAt) + 1;
+    // Same handshake as the weld bay: the jig holds the machine until the
+    // outfeed zone is turning and clear. A finished machine in the jig is a jig
+    // that cannot start the next one, so this is where a stalled spine starts
+    // costing the plant its output.
+    if (!zoneAccepting(m, y, 'z10')) return;
+    m.z10 = 'm';
     m.assyFrame = 0;
     m.assyBoom = 0;
     m.assyEngine = 0;
@@ -911,8 +1174,11 @@ function stepAssembly({ m, y, fault }: Ctx): void {
 /** Pump up, run the function cycle, drive it off into the yard. */
 function stepTest({ m, y, fault }: Ctx): void {
   if (!bool(m.testPart)) {
-    if (num(m.bufAt) > 0) {
-      m.bufAt = num(m.bufAt) - 1;
+    // The bay is the station on the end of Z11, so it takes whatever the spine
+    // has offered it — which is why an idle test bay with a full queue behind it
+    // means the *conveyor* stopped, not the bay.
+    if (str(m.z11) !== '' && zoneReleasing(y, 'z11')) {
+      m.z11 = '';
       m.testPart = true;
       m.testPump = 0;
       m.testCycle = 0;
@@ -938,13 +1204,10 @@ function stepTest({ m, y, fault }: Ctx): void {
       fault('jam', 'the machine was driven off the pad with the test rig still coupled and under pressure');
       return;
     }
-    if (num(m.yard) >= YARD_CAP) {
-      fault('blocked', 'a machine was dispatched into a full yard');
-      return;
-    }
+    if (!zoneAccepting(m, y, 'z12')) return;
     m.testDispatch = Math.min(1, num(m.testDispatch) + SUB_MS / DISPATCH_MS);
     if (num(m.testDispatch) >= 1) {
-      m.yard = num(m.yard) + 1;
+      m.z12 = 'm';
       m.shipped = num(m.shipped) + 1;
       m.testPart = false;
       m.testPump = 0;
@@ -965,6 +1228,16 @@ function stepTest({ m, y, fault }: Ctx): void {
  * that answers ten seconds late.
  */
 function stepDock({ m, y }: Ctx): void {
+  // The yard takes whatever the dock apron is holding, if it has a space. It
+  // needs no output because parking a machine in a yard is a driver's job, not
+  // the PLC's — but a full yard therefore stops Z12, which stops the test bay
+  // dispatching, which stops the jig, and the line goes down from the far end.
+  // That chain is the whole reason the yard is worth calling a truck for.
+  if (str(m.z12) !== '' && num(m.yard) < YARD_CAP) {
+    m.z12 = '';
+    m.yard = num(m.yard) + 1;
+  }
+
   const state = str(m.truckState, 'away');
   m.truckT = num(m.truckT) + SUB_MS;
 
@@ -1044,12 +1317,21 @@ function sensors(m: MachineState): Record<string, boolean> {
     X24: str(m.laneB).length > 0,
     X25: num(m.assyPrep) >= 1,
     X26: num(m.assyEngine) >= 1 && num(m.assyCab) >= 1 && num(m.assyPin) >= 1,
-    X27: num(m.bufAt) < AT_CAP,
+    X27: str(m.z10) === '',
     // Test
     X28: bool(m.testPart),
     X29: num(m.testCycle) >= 1,
     X30: num(m.yard) < YARD_CAP,
     X31: str(m.truckState, 'away') === 'docked',
+    // The spine: one photo-eye per zone, reading exactly what a photo-eye reads
+    // — something is standing here, and nothing about what it is.
+    ...Object.fromEntries(SPINE_ZONES.map((z) => [z.eye, str(m[z.key]) !== ''])),
+    // The sort reads the *type* of what it is holding, the same read the store's
+    // infeed offers on X12, because a diverter that cannot tell a boom from a
+    // frame is a diverter that cannot do its job.
+    X44: str(m.z7)[0] === 'b',
+    X45: str(m.laneF).length >= PA_CAP,
+    X46: str(m.laneB).length >= PA_CAP,
   };
 }
 
@@ -1068,9 +1350,36 @@ function registers(m: MachineState): Record<string, number> {
     // a frame alone can at least refuse the boom that would ruin it.
     D16: num(m.assyFrame),
     D17: num(m.assyBoom),
+    // How much is standing on the spine, and where the front of the queue is.
+    // Both are gauges rather than commands: a supervisor can put the plant on
+    // hold when the line is backing up without knowing a thing about zones.
+    D18: SPINE_ZONES.reduce((n, z) => n + zoneCount(m, z.key), 0),
+    D19: blockedZone(m),
   };
   for (let i = 0; i < STORE_LANES; i++) image[`D${4 + i}`] = str(m[`lane${i}`]).length;
   return image;
+}
+
+/**
+ * The head of the queue: the furthest-downstream zone that cannot move on.
+ *
+ * Zero when the spine is flowing. Downstream rather than upstream on purpose —
+ * the front of a queue is the zone sitting against whatever stopped, so this
+ * number names the station that is holding the line up. The back of the queue
+ * only tells you how long it has been going on.
+ *
+ * A number rather than twelve bits because that is the one thing a supervisor
+ * program needs and the one thing twelve separate eyes make you work out for
+ * yourself.
+ */
+function blockedZone(m: MachineState): number {
+  for (let i = SPINE_ZONES.length - 1; i >= 0; i--) {
+    const z = SPINE_ZONES[i];
+    if (zoneCount(m, z.key) === 0) continue;
+    const next = z.next ? SPINE_ZONES.find((d) => d.key === z.next) : undefined;
+    if (next && !zoneHasRoom(m, next.key, next.cap)) return i + 1;
+  }
+  return 0;
 }
 
 /**
@@ -1111,4 +1420,16 @@ export const LINE_LIMITS = {
   TRUCK_PART_LOAD,
   TRUCK_DWELL_MS,
   WELD_PASS_MS,
+  ZONE_TRANSFER_MS,
+  SORT_DIVERT_MS,
 } as const;
+
+/**
+ * The spine's zones, in travel order, for anything that has to draw or name one.
+ *
+ * Exported as the definitions rather than as a count because the 3D scene needs
+ * to know which machine-state key each zone's parts live under, and a scene that
+ * kept its own copy of that mapping would draw the wrong queue the first time a
+ * zone moved.
+ */
+export const LINE_ZONES: readonly Readonly<ZoneDef>[] = SPINE_ZONES;

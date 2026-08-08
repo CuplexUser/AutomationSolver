@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { LINE_LIMITS, type MachineState } from '@automationsolver/shared';
+import { LINE_LIMITS, LINE_ZONES, type MachineState } from '@automationsolver/shared';
 import { MachineCanvas } from '../MachineCanvas';
 import {
   PLANT_FOCUS,
@@ -9,10 +9,9 @@ import {
   START_POS,
 } from './camera';
 import {
-  ANCHOR,
   CONV,
+  FINISH,
   MACHINE,
-  PAINT_LANE_Z,
   SPINE,
   SPINE_TURNS,
   numOf,
@@ -62,8 +61,6 @@ export function FactoryLineRig({
   useEffect(() => () => disposeLineTextures(tex), [tex]);
 
   const focus = (section && SECTION_FOCUS[section]) || PLANT_FOCUS;
-  const laneF = strOf(machine.laneF);
-  const laneB = strOf(machine.laneB);
 
   return (
     <group>
@@ -79,13 +76,19 @@ export function FactoryLineRig({
       {SPINE.map((run) => (
         <Conveyor key={run.id} tex={tex} run={run} />
       ))}
+      {/* Corner decks, tucked just under the runs they join rather than level
+          with them: two decks at one height flicker where they overlap. */}
       {SPINE_TURNS.map((t) => (
-        <mesh key={`${t.at[0]},${t.at[1]}`} position={[t.at[0], CONV.deckY, t.at[1]]} receiveShadow>
+        <mesh
+          key={`${t.at[0]},${t.at[1]}`}
+          position={[t.at[0], CONV.deckY - 0.03, t.at[1]]}
+          receiveShadow
+        >
           <boxGeometry args={[CONV.width, 0.05, CONV.width]} />
           <meshStandardMaterial {...MACHINE} />
         </mesh>
       ))}
-      <SpinePhotoEyes />
+      <Spine machine={machine} />
 
       {/* Row A: make and finish. */}
       <WeldCell tex={tex} machine={machine} torch={outputs.Y3 === true} />
@@ -99,11 +102,6 @@ export function FactoryLineRig({
       />
       <OvenCell tex={tex} machine={machine} racks={LINE_LIMITS.OVEN_RACKS} />
 
-      {/* The two painted lanes, running west into the jig. A lane that is empty
-          while the other is full is the whole failure mode in one picture. */}
-      <PaintedLane parts={laneF} kind="f" z={PAINT_LANE_Z.frame} />
-      <PaintedLane parts={laneB} kind="b" z={PAINT_LANE_Z.boom} />
-
       {/* Row B: build, prove and ship. */}
       <AssemblyCell tex={tex} machine={machine} />
       <TestCell tex={tex} machine={machine} queue={numOf(machine.bufAt)} />
@@ -114,57 +112,102 @@ export function FactoryLineRig({
 }
 
 /**
- * One painted part per character in the lane string, queued back from the jig.
+ * The spine, live: a photo-eye at every zone and whatever is standing on it.
  *
- * The characters are color digits and the front of the string is the front of
- * the lane, so the part nearest final assembly is the one that goes on next —
- * which is exactly the fact the color puzzle turns on.
+ * This is the one part of the scene that is worth watching rather than merely
+ * looking at. A backed-up line is a row of eyes coming on one after another
+ * *backwards* down the run toward the weld bay, and no readout says where the
+ * constraint is as directly as that does.
+ *
+ * The map from a zone to a place on the floor lives here rather than in the
+ * process, because it is a fact about the building. The zone list comes from
+ * `shared`, so a zone the plant adds cannot go undrawn.
  */
-function PaintedLane({ parts, kind, z }: { parts: string; kind: 'f' | 'b'; z: number }) {
-  const head = ANCHOR.jig[0] + 0.6;
+function Spine({ machine }: { machine: MachineState }) {
   return (
     <group>
-      {[...parts].map((c, i) => (
-        <Part
-          key={i}
-          x={head + i * 2.9}
-          z={z}
-          kind={kind}
-          finish={orderPaint(Number(c))}
-          scale={0.7}
-        />
-      ))}
+      {ZONE_SPOTS.map(({ key, x, z, kind, rotY }, i) => {
+        const held = strOf(machine[key]);
+        const zone = LINE_ZONES[i];
+        return (
+          <group key={key}>
+            <PhotoEye x={x} z={z + CONV.width / 2 + 0.14} on={held !== ''} />
+            {tokensOf(zone.key, held).map((token, k) => (
+              <Part
+                key={k}
+                // A lane holds three, queued back from its discharge end.
+                x={x - k * 2.9 * (kind === 'lane' ? 1 : 0)}
+                z={z}
+                kind={token.kind}
+                finish={token.color > 0 ? orderPaint(token.color) : FINISH.bare}
+                rotY={rotY}
+                scale={0.7}
+              />
+            ))}
+          </group>
+        );
+      })}
     </group>
   );
 }
 
 /**
- * A photo-eye at every zone boundary on the spine.
+ * What one zone is holding, as parts that can be drawn.
  *
- * Static, and deliberately so for now: the eyes are what the accumulation logic
- * *will* read once the conveyor is a program section rather than a transfer the
- * plant does for free, and standing them up front means the floor a player
- * learns is the floor they later have to drive.
+ * The three token widths the plant uses are a real distinction and not an
+ * encoding quirk: upstream of the booth a part has no color yet, downstream it
+ * carries one, and past the jig it is a machine rather than either kind of part.
  */
-function SpinePhotoEyes() {
-  const eyes: Array<[number, number]> = [];
+function tokensOf(key: string, held: string): Array<{ kind: 'f' | 'b'; color: number }> {
+  if (key === 'laneF' || key === 'laneB') {
+    const kind = key === 'laneF' ? 'f' : 'b';
+    return [...held].map((c) => ({ kind, color: Number(c) }));
+  }
+  if (key.startsWith('z') && held.length >= 2) {
+    const out: Array<{ kind: 'f' | 'b'; color: number }> = [];
+    for (let i = 0; i < held.length; i += 2) {
+      out.push({ kind: held[i] === 'b' ? 'b' : 'f', color: Number(held[i + 1]) });
+    }
+    return out;
+  }
+  // A machine on the outfeed side is drawn as its frame, which is the part of it
+  // a conveyor is actually carrying.
+  return held === '' ? [] : [{ kind: held === 'b' ? 'b' : 'f', color: 0 }];
+}
+
+/**
+ * Where each zone stands on the floor, in the order `LINE_ZONES` lists them.
+ *
+ * Derived from the runs in `plant.ts` rather than written out, so a run that
+ * moves takes its zones with it — but pinned to the zone list's own order, so a
+ * mismatch between the twelve the plant simulates and the twelve the building
+ * has is a compile error rather than a part drawn in the wrong bay.
+ */
+const ZONE_SPOTS: Array<{
+  key: string;
+  x: number;
+  z: number;
+  kind: 'zone' | 'lane';
+  rotY: number;
+}> = (() => {
+  const spots: Array<{ x: number; z: number; rotY: number }> = [];
   for (const run of SPINE) {
+    const dx = run.to[0] - run.from[0];
+    const dz = run.to[1] - run.from[1];
+    const rotY = Math.atan2(dx, dz) + Math.PI / 2;
     for (let i = 1; i <= run.zones; i += 1) {
       const t = i / (run.zones + 1);
-      eyes.push([
-        run.from[0] + t * (run.to[0] - run.from[0]),
-        run.from[1] + t * (run.to[1] - run.from[1]),
-      ]);
+      spots.push({ x: run.from[0] + t * dx, z: run.from[1] + t * dz, rotY });
     }
   }
-  return (
-    <group>
-      {eyes.map(([x, z]) => (
-        <PhotoEye key={`${x},${z}`} x={x + CONV.width / 2 + 0.12} z={z} />
-      ))}
-    </group>
-  );
-}
+  return LINE_ZONES.map((z, i) => ({
+    key: z.key,
+    x: spots[i]?.x ?? 0,
+    z: spots[i]?.z ?? 0,
+    kind: z.cap > 1 ? ('lane' as const) : ('zone' as const),
+    rotY: spots[i]?.rotY ?? 0,
+  }));
+})();
 
 export function FactoryLine3D({
   machine,

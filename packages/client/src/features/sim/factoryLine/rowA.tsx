@@ -214,7 +214,6 @@ export const StoreCell = memo(function StoreCell({
   machine: MachineState;
 }) {
   const lanes = STORE_LANE_X.map((_, i) => strOf(m[`lane${i}`]));
-  const inPart = strOf(m.storeIn);
   const outPart = strOf(m.storeOut);
   const depth = STORE_LANE_Z.front - STORE_LANE_Z.back;
 
@@ -262,13 +261,10 @@ export const StoreCell = memo(function StoreCell({
         </group>
       ))}
 
-      {/* Infeed stand off the weld conveyor, and the pick stand under the portal. */}
+      {/* The infeed stand, and the pick stand under the portal. Whatever is
+          standing on the infeed is drawn by the spine, because the infeed *is*
+          Z3 of it — the store and the conveyor are two names for one roller. */}
       <PartStand x={ANCHOR.storeLoader[0]} z={ANCHOR.storeLoader[2]} />
-      {inPart !== '' && (
-        <group position={[ANCHOR.storeLoader[0], CONV.deckY, ANCHOR.storeLoader[2]]}>
-          <LoosePart code={inPart} color={0} />
-        </group>
-      )}
       <PartStand x={ANCHOR.storePick[0]} z={ANCHOR.storePick[2]} />
       {outPart !== '' && (
         <group position={[ANCHOR.storePick[0], CONV.deckY, ANCHOR.storePick[2]]}>
@@ -287,12 +283,21 @@ export const StoreCell = memo(function StoreCell({
   );
 });
 
-/** A trestle a loose part waits on between two mechanisms. */
+/**
+ * A trestle a loose part waits on between two mechanisms.
+ *
+ * Its deck stops a hair short of the conveyor's. A stand is normally put exactly
+ * at conveyor height, which is right on a real floor and wrong in a renderer:
+ * the two decks are then the same plane and flicker against each other wherever
+ * they overlap, which at both ends of the spine is a lot of them.
+ */
+const STAND_H = CONV.deckY - 0.02;
+
 const PartStand = memo(function PartStand({ x, z }: { x: number; z: number }) {
   return (
     <group position={[x, 0, z]}>
-      <mesh position={[0, CONV.deckY / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[2.2, CONV.deckY, 1.9]} />
+      <mesh position={[0, STAND_H / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={[2.2, STAND_H, 1.9]} />
         <meshStandardMaterial {...MACHINE} />
       </mesh>
     </group>
@@ -404,16 +409,24 @@ export const BoothCell = memo(function BoothCell({
           <planeGeometry args={[w, h]} />
           <meshStandardMaterial color="#e6e8ea" roughness={0.85} side={THREE.DoubleSide} />
         </mesh>
+        {/* Side walls, each with a doorway punched through it for the transfer
+            that passes that way — the portal sets a part down on the west side
+            and the oven takes it off the east. A wall drawn solid across a
+            conveyor puts the belt half inside it, which both reads as a mistake
+            and flickers where the two surfaces meet. */}
         {[-1, 1].map((s) => (
-          <mesh
-            key={s}
-            position={[(s * w) / 2, h / 2, 0]}
-            rotation={[0, (s * Math.PI) / 2, 0]}
-            receiveShadow
-          >
-            <planeGeometry args={[BOOTH.z1 - BOOTH.z0, h]} />
-            <meshStandardMaterial color="#dfe2e5" roughness={0.85} side={THREE.DoubleSide} />
-          </mesh>
+          <group key={s} position={[(s * w) / 2, 0, 0]} rotation={[0, (s * Math.PI) / 2, 0]}>
+            {doorPanels(BOOTH.z0 - cz(BOOTH), BOOTH.z1 - cz(BOOTH), h).map((panel, i) => (
+              <mesh
+                key={i}
+                position={[panel.at, panel.y, 0]}
+                receiveShadow
+              >
+                <planeGeometry args={[panel.len, panel.h]} />
+                <meshStandardMaterial color="#dfe2e5" roughness={0.85} side={THREE.DoubleSide} />
+              </mesh>
+            ))}
+          </group>
         ))}
         <mesh position={[0, h, 0]} rotation={[Math.PI / 2, 0, 0]}>
           <planeGeometry args={[w, BOOTH.z1 - BOOTH.z0]} />
@@ -491,6 +504,30 @@ export const BoothCell = memo(function BoothCell({
     </group>
   );
 });
+
+/**
+ * A wall with a doorway in it, as three panels: before, after and over.
+ *
+ * The opening is centered on the transfer line at `ANCHOR.ovenIn`'s z, wide and
+ * tall enough for a part on a conveyor to go through, because that is exactly
+ * what goes through it.
+ */
+const DOOR = { w: 3.0, h: 2.6 };
+
+function doorPanels(
+  from: number,
+  to: number,
+  wallH: number,
+): Array<{ at: number; y: number; len: number; h: number }> {
+  const at = ANCHOR.ovenIn[2] - cz(BOOTH);
+  const d0 = at - DOOR.w / 2;
+  const d1 = at + DOOR.w / 2;
+  return [
+    { at: (from + d0) / 2, y: wallH / 2, len: d0 - from, h: wallH },
+    { at: (d1 + to) / 2, y: wallH / 2, len: to - d1, h: wallH },
+    { at, y: DOOR.h + (wallH - DOOR.h) / 2, len: DOOR.w, h: wallH - DOOR.h },
+  ];
+}
 
 // --- Cure oven ----------------------------------------------------------------
 

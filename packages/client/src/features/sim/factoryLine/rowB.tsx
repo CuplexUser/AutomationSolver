@@ -4,6 +4,7 @@ import type { MachineState } from '@automationsolver/shared';
 import {
   ANCHOR,
   ASSEMBLY,
+  CONV,
   DARK_STEEL,
   DOCK,
   FINISH,
@@ -178,7 +179,9 @@ export const TestCell = memo(function TestCell({
           to drive on and off it. */}
       <FloorMark tex={tex.hazard} x={px} z={pz} w={6.4} d={4.4} repeat={[11, 1]} opacity={0.55} />
       {onPad && (
-        <group position={[px + away * 8, 0, pz]}>
+        // The dispatch run rides the spine, which passes straight through this
+        // bay, so a machine here stands on the deck rather than on the slab.
+        <group position={[px + away * 8, CONV.deckY, pz]}>
           <MachineBody mat={FINISH.painted} swing={swing} />
         </group>
       )}
@@ -207,7 +210,7 @@ export const TestCell = memo(function TestCell({
 
       {/* Approach queue: machines standing off the pad waiting their turn. */}
       {Array.from({ length: Math.min(3, queue) }, (_, i) => (
-        <group key={i} position={[px + 5.4 + i * 4.2, 0, pz]}>
+        <group key={i} position={[px + 5.4 + i * 4.2, CONV.deckY, pz]}>
           <MachineBody mat={FINISH.painted} />
         </group>
       ))}
@@ -273,7 +276,9 @@ export const DockCell = memo(function DockCell({
             <meshStandardMaterial {...DARK_STEEL} />
           </mesh>
           {Array.from({ length: Math.min(cap, Math.round(load)) }, (_, i) => (
-            <mesh key={i} position={[-3.6 + i * 1.4, 1.72, 0]} castShadow>
+            // Clear of the deck rather than exactly on it: two faces at the same
+            // height flicker against each other as the camera moves.
+            <mesh key={i} position={[-3.6 + i * 1.4, 1.75, 0]} castShadow>
               <boxGeometry args={[1.2, 0.68, 2.0]} />
               <meshStandardMaterial {...FINISH.painted} />
             </mesh>

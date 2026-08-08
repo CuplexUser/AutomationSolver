@@ -297,7 +297,15 @@ export function disposeLineTextures(t: LineTextures): void {
  * Four faces rather than a box so the chevrons run *along* each side instead of
  * being stretched across the ends, which is what a wrap looks like and what a
  * stretched box does not.
+ *
+ * Each face stands `SKIN` proud of the size it is given. Tape is normally asked
+ * for at exactly the width and depth of the thing it wraps, which puts the plane
+ * exactly on that thing's own surface — and two surfaces at the same depth flicker
+ * against each other as the camera moves, because there is no right answer to
+ * which one is in front. A millimetre of stand-off is what real tape has anyway.
  */
+const SKIN = 0.012;
+
 export const HazardBand = memo(function HazardBand({
   tex,
   x,
@@ -316,10 +324,10 @@ export const HazardBand = memo(function HazardBand({
   h?: number;
 }) {
   const faces: Array<{ pos: [number, number, number]; rot: number; len: number }> = [
-    { pos: [x, y, z + d / 2], rot: 0, len: w },
-    { pos: [x, y, z - d / 2], rot: Math.PI, len: w },
-    { pos: [x + w / 2, y, z], rot: Math.PI / 2, len: d },
-    { pos: [x - w / 2, y, z], rot: -Math.PI / 2, len: d },
+    { pos: [x, y, z + d / 2 + SKIN], rot: 0, len: w },
+    { pos: [x, y, z - d / 2 - SKIN], rot: Math.PI, len: w },
+    { pos: [x + w / 2 + SKIN, y, z], rot: Math.PI / 2, len: d },
+    { pos: [x - w / 2 - SKIN, y, z], rot: -Math.PI / 2, len: d },
   ];
   return (
     <group>
@@ -422,7 +430,16 @@ export const FloorText = memo(function FloorText({
   );
 });
 
-/** A bay sign on two posts, so a cell names itself from across the floor. */
+/**
+ * A bay sign on two posts, so a cell names itself from across the floor.
+ *
+ * Two single-sided plates back to back rather than one double-sided one. A
+ * double-sided plane shows the *same* texture from behind, which means it is
+ * mirrored from behind — and on a floor the player can orbit freely, half the
+ * signs in the building are being read from behind at any moment. Giving the far
+ * side its own plate, turned to face that way, makes every sign legible from
+ * either side, which is also what a real double-faced sign is.
+ */
 export const BaySign = memo(function BaySign({
   tex,
   x,
@@ -444,10 +461,17 @@ export const BaySign = memo(function BaySign({
           <meshStandardMaterial color="#3f4a57" metalness={0.6} roughness={0.55} />
         </mesh>
       ))}
-      <mesh position={[0, y, 0]}>
-        <planeGeometry args={[3.6, 0.9]} />
-        <meshStandardMaterial map={tex} side={THREE.DoubleSide} roughness={0.7} metalness={0.1} />
-      </mesh>
+      {[0, Math.PI].map((face) => (
+        <mesh key={face} position={[0, y, face === 0 ? 0.02 : -0.02]} rotation={[0, face, 0]}>
+          <planeGeometry args={[3.6, 0.9]} />
+          <meshStandardMaterial
+            map={tex}
+            side={THREE.FrontSide}
+            roughness={0.7}
+            metalness={0.1}
+          />
+        </mesh>
+      ))}
     </group>
   );
 });

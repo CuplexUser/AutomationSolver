@@ -110,11 +110,31 @@ comparison the category is trying to teach.
 
 ### The lesson
 
-Zero-pressure accumulation. Each zone carries one photo-eye and one drive, and the rule is that
-a zone may only run its part forward when the zone ahead is clear. Written well, parts queue
-nose to tail and the spine costs one zone-time per part. Written the way most people write it
-first (release one part, wait for it to arrive, release the next) the spine empties between every
-part and becomes the bottleneck for the whole plant.
+Zero-pressure accumulation. Each zone carries one photo-eye and one drive.
+
+**As built, the rule is stated from the receiving end**, which is the one thing about a zoned
+conveyor worth getting right: *a zone's drive runs that zone's own belt, and a part only enters a
+zone while that zone is running and clear.* A program does not push parts along the spine, it
+decides which stretches of belt are turning, and parts fall through the ones that are.
+
+Two consequences make it a puzzle rather than a formality:
+
+- **Nothing faults.** A drive called with a full zone in front turns under a part that is going
+  nowhere. The cost of getting it wrong is seconds, not a crash.
+- **You cannot pick a part off a moving belt.** A station lifting from a zone (the store's loader,
+  the jig calling a lane, the test bay taking a machine) needs that zone *stopped*. Without this,
+  the answer to every zone is "run it all the time" and accumulation does the rest — a mechanism
+  with no decision in it. With it, a zone has to be run to fill and stopped to empty, so the
+  program has to know which of those it is doing.
+
+Written well (`CONV_TUNED`) it is one rung per zone — *run this belt while this zone's eye is
+clear* — and parts queue nose to tail. Written the way most people write it first (`CONV_PLAIN`),
+a whole run is interlocked as one belt on the station at the end of it, so a part three zones back
+with a clear road waits for a station it was never going to reach yet.
+
+A queue also drains **one part at a time**: a part starts moving when the space in front of it
+appears, not when the belt starts, so a queue of three costs three zone-times to clear. That is
+enforced by resolving transfers downstream-first, and it is pinned by a unit test.
 
 That is the largest single lever in the design, and it is the one that makes a backed-up line
 **visible**: when the booth stops, you watch the queue grow backwards down the spine toward the
@@ -173,6 +193,17 @@ Plus, at the sort:
 | `Y41` | Divert to boom lane |
 | `D18` | Parts standing on the spine |
 | `D19` | Zone the spine is blocked at, 0 when it is flowing |
+
+**As built**, three of the twelve zones already existed under their own names and kept them, because
+they are the same rollers: Z3 is the store's infeed (`storeIn`), and Z8/Z9 are the two painted lanes
+(`laneF`, `laneB`). Every station that read them goes on reading them. Two more notes:
+
+- `D19` reports the **furthest-downstream** blocked zone, not the furthest upstream. The front of a
+  queue is the zone sitting against whatever stopped, so the number names the station holding the
+  line up; the back of the queue only says how long it has been going on.
+- The sort's paddle needs the lane it pushes into to be *turning* to take the part, so a divert is
+  two coils (`Y40`+`Y35`, or `Y41`+`Y36`) and not one — while the jig needs that same lane
+  *stopped* to lift a part off it. That conflict is the sort's whole sequencing problem.
 
 Added: **15 inputs (`X32`-`X46`), 14 outputs (`Y28`-`Y41`), 2 registers.** New totals 47 in /
 42 out / 22 reg.
@@ -371,11 +402,14 @@ is what `factory/` already is, so nothing has to be unwound to get here.
    `MachineView` dispatches `processId: 'factory-line'` to it. **Nothing declares that process id
    yet, so the scene is built but not reachable** — the first puzzle to declare it (step 7) is also
    the first chance to look at it.
-4. **The spine.** `processes/factoryLine.ts` gains the zone model; `CONV` device map, ownership,
-   plain and tuned programs. Extend the soak test to seven sections. The scene already draws the
-   spine and stands a photo-eye at every zone boundary, so this step adds behaviour to a floor that
-   is already laid out for it.
-5. **Retime**, measured against the soak harness rather than against the table in §4.
+4. ~~**The spine.**~~ Done — zone model in `processes/factoryLine.ts`, `CONV` device map and
+   ownership in `factory-line-plant.ts`, `CONV_PLAIN`/`CONV_TUNED` in `factory-line-programs.ts`,
+   soak test extended to seven sections, and the scene draws every zone's eye and contents live.
+   Twelve new unit tests cover accumulation, the pick-off-a-stopped-belt rule and the sort.
+5. **Retime**, measured against the soak harness rather than against the table in §4. The lever
+   matrix over 300 s with the spine in place is **weld 25→21, and zero for all five others** — the
+   line is entirely weld-paced, which is the same finding as before the spine and is what this step
+   exists to fix.
 6. **Re-model the cells**, one at a time, inside their fixed footprints.
 7. **Blender**, later and per cell, replacing procedural geometry where a GLB earns its download.
    The fixed footprints and named anchors in §2 are what make that a swap rather than a redesign.
