@@ -47,8 +47,13 @@ export function initialProject(spec: LadderPuzzleSpec): LadderProject {
     id: slot.id,
     name: slot.name,
     rungs: slot.program ?? [makeEmptyRung(`${slot.id}-r1`)],
+    ...(slot.vars ? { vars: slot.vars.map((v) => ({ ...v })) } : {}),
   }));
-  return { pous, tasks: (spec.tasks ?? []).map((task) => ({ ...task })) };
+  return {
+    pous,
+    tasks: (spec.tasks ?? []).map((task) => ({ ...task })),
+    ...(spec.globals ? { globals: spec.globals.map((v) => ({ ...v })) } : {}),
+  };
 }
 
 /**
@@ -66,21 +71,75 @@ export function assembleProject(spec: LadderPuzzleSpec, submitted: ProgramDoc): 
   const sent = isProject(submitted) ? submitted : undefined;
   const sentById = new Map((sent?.pous ?? []).map((pou) => [pou.id, pou]));
 
-  const pous: Pou[] = (spec.pous ?? []).map((slot) => {
+  const slots = spec.pous ?? [];
+  const pous: Pou[] = slots.map((slot) => {
     const answer = slot.editable ? sentById.get(slot.id) : undefined;
+    // A section's locals travel with its rungs: taking one from the submission
+    // and the other from the spec would resolve a player's names against a
+    // fixture's table.
+    const vars = answer ? answer.vars : slot.vars;
     return {
       id: slot.id,
       name: slot.name,
       rungs: answer?.rungs ?? slot.program ?? [],
+      ...(vars ? { vars: vars.map((v) => ({ ...v })) } : {}),
     };
   });
+
+  // POUs the player added, when the puzzle hands over authoring. A submitted id
+  // that collides with a declared slot is dropped rather than allowed to replace
+  // it — the same rule, and for the same reason, as a non-editable section
+  // always coming from the spec.
+  if (spec.pouAuthoring === 'player') {
+    const claimed = new Set(slots.map((slot) => slot.id));
+    for (const pou of sent?.pous ?? []) {
+      if (claimed.has(pou.id)) continue;
+      claimed.add(pou.id);
+      pous.push({
+        id: pou.id,
+        name: pou.name,
+        rungs: pou.rungs,
+        ...(pou.comment !== undefined ? { comment: pou.comment } : {}),
+        ...(pou.vars ? { vars: pou.vars.map((v) => ({ ...v })) } : {}),
+      });
+    }
+  }
 
   const tasks: TaskDef[] =
     spec.taskAssignment === 'player' && sent?.tasks?.length
       ? sent.tasks.map((task) => ({ ...task }))
       : (spec.tasks ?? []).map((task) => ({ ...task }));
 
-  return { pous, tasks };
+  // The puzzle's own globals are the fixtures' published interface, so they come
+  // from the spec whatever the submission says; the player's are merged on top
+  // and may shadow neither a shipped name nor a shipped address.
+  const shipped = (spec.globals ?? []).map((v) => ({ ...v }));
+  const takenName = new Set(shipped.map((v) => v.name.trim().toLowerCase()));
+  const takenAddress = new Set(shipped.map((v) => v.address.toUpperCase()));
+  const globals = [...shipped];
+  for (const decl of sent?.globals ?? []) {
+    const name = decl.name.trim().toLowerCase();
+    const address = decl.address.toUpperCase();
+    if (takenName.has(name) || takenAddress.has(address)) continue;
+    takenName.add(name);
+    takenAddress.add(address);
+    globals.push({ ...decl });
+  }
+
+  return { pous, tasks, ...(globals.length > 0 ? { globals } : {}) };
+}
+
+/**
+ * The POUs whose code the player wrote: editable slots, plus anything they added.
+ *
+ * What `symbols: 'required'` is enforced against, since a section the puzzle
+ * ships pre-written is content rather than an answer.
+ */
+export function playerPouIds(spec: LadderPuzzleSpec, project: LadderProject): Set<string> {
+  const fixture = new Set(
+    (spec.pous ?? []).filter((slot) => !slot.editable).map((slot) => slot.id),
+  );
+  return new Set(project.pous.map((p) => p.id).filter((id) => !fixture.has(id)));
 }
 
 // --- Device ownership ---------------------------------------------------------

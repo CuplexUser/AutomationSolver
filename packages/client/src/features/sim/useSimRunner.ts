@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  assembleProject,
   defaultInputs,
   getProcess,
   GRADE_DT,
   primeProcess,
+  runnableProject,
   SimEngine,
   type LadderPuzzleSpec,
   type MachineState,
@@ -72,12 +72,12 @@ export interface SimRunner extends HmiRunner {
 
 /**
  * `program` is whatever the editor holds — a flat rung list, or a project of
- * the sections the player owns. Either way it goes through `assembleProject`,
- * the same merge the grader does, so a section the puzzle ships pre-written
- * runs here exactly as it will run on the server.
+ * the sections the player owns. Either way it goes through `runnableProject`,
+ * the same merge and the same symbol resolution the grader does, so a section
+ * the puzzle ships pre-written runs here exactly as it will run on the server.
  */
 export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRunner {
-  const engineRef = useRef<SimEngine>(new SimEngine(assembleProject(spec, program)));
+  const engineRef = useRef<SimEngine>(new SimEngine(runnableProject(spec, program)));
   const processRef = useRef(getProcess(spec.processId));
   const machineRef = useRef<MachineState>({});
   const derivedRef = useRef<Record<string, boolean>>({});
@@ -98,7 +98,7 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
 
   const resetInternal = useCallback(
     (nextProgram: ProgramDoc) => {
-      engineRef.current = new SimEngine(assembleProject(spec, nextProgram));
+      engineRef.current = new SimEngine(runnableProject(spec, nextProgram));
       processRef.current = getProcess(spec.processId);
       machineRef.current = processRef.current.init(spec.devices);
       inputsRef.current = defaultInputs(spec.devices);

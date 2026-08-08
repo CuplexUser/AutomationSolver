@@ -214,16 +214,64 @@ export interface LadderProgram {
   rungs: Rung[];
 }
 
+/** What a declared variable is made of, and which device family holds it. */
+export type VarKind = 'bool' | 'int' | 'timer' | 'counter';
+
+/**
+ * Which family each kind allocates from.
+ *
+ * `kind` and "which pool" are the same choice, which is why there is no separate
+ * type system on top of this. The device family already carries the type: an M
+ * is a bit, a D is a 16-bit signed word, a T is a timer. Saying `kind: 'int'`
+ * and getting a D is not a mapping, it is the same statement twice.
+ */
+export const VAR_KIND_DEVICE: Record<VarKind, DeviceKind> = {
+  bool: 'M',
+  int: 'D',
+  timer: 'T',
+  counter: 'C',
+};
+
+/**
+ * A declared variable: a name over an address.
+ *
+ * The address is assigned once, when the variable is declared, and then saved
+ * with the program and never recomputed. That is what makes renaming free,
+ * reordering free and a saved solution stable — and it is the determinism
+ * property too, since client and server both read an address that is already
+ * written down rather than running an allocator they could disagree about.
+ *
+ * Every declaration in a project takes a *distinct* address, locals included.
+ * Scoping is about names, not about memory: the engine has one flat image, so
+ * two POUs whose locals landed on the same M would be sharing one bit while
+ * reading as though they each had their own. That is precisely the bug scoping
+ * exists to make impossible, so the allocator is not allowed to reintroduce it.
+ */
+export interface VarDecl {
+  name: string;
+  kind: VarKind;
+  /** Assigned at declaration time and saved with the program. */
+  address: string;
+  comment?: string;
+  /** Shipped by the puzzle: the player may read it but not rename, move or delete it. */
+  fixed?: boolean;
+}
+
 /**
  * A program organization unit: one named, independently editable list of rungs.
  *
  * A station fits in one flat rung list; a plant does not. Splitting it into POUs
- * is how a real line is written — one per section, each owning its own devices
- * and talking to its neighbours through a documented handful of interface bits.
- * The device space stays flat (Mitsubishi-style, every M and D global), so the
- * separation is a discipline the validator enforces rather than a scope the
- * language provides. That is deliberate: the handshake between two sections is
- * the thing worth teaching, and it only exists if both can see it.
+ * is how a real line is written — one per section, each keeping its own working
+ * storage and talking to its neighbours through a declared handful of interface
+ * bits.
+ *
+ * `vars` are this POU's **locals**, in the IEC 61131-3 sense: names only it can
+ * write and only it can see. Anything a section publishes to its neighbours goes
+ * in the project's `globals` instead, and that asymmetry is the lesson. The
+ * device space underneath stays flat and Mitsubishi-style — every declaration
+ * still resolves to a real M, D, T or C the player can watch on a monitor — but
+ * a section can no longer name, and so can no longer clobber, the relay next
+ * door.
  */
 export interface Pou {
   id: string;
@@ -231,6 +279,8 @@ export interface Pou {
   name: string;
   rungs: Rung[];
   comment?: string;
+  /** Locals: private to this POU. Absent on every program written before symbols existed. */
+  vars?: VarDecl[];
 }
 
 /**
@@ -264,6 +314,15 @@ export interface TaskDef {
 export interface LadderProject {
   pous: Pou[];
   tasks: TaskDef[];
+  /**
+   * Globals: the interface between sections, visible to every POU.
+   *
+   * This is what makes a shared mechanism like the conveyor spine reachable from
+   * the six sections that have to coordinate with it. A section publishes a
+   * handful of these and everybody else reads them; everything else it needs
+   * stays local to it.
+   */
+  globals?: VarDecl[];
 }
 
 /**

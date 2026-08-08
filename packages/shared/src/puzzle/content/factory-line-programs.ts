@@ -136,6 +136,16 @@ export const WELD_TUNED: Rung[] = [
  * up, because the part is then two meters over the floor. The vacuum is held
  * right through the traverse and broken only once the cups are back down on the
  * booth skid.
+ *
+ * Its five step latches live in **M60..M64**, up at the far end of the section's
+ * M40-M69 block, and nothing else in this file may touch them. That fence is not
+ * decoration. The rack logic below wants a handful of level relays for "there is
+ * room in the frame pair" and "there is a boom to draw", and a level `OUT` coil
+ * written *above* these rungs simply overwrites whatever the step chain latched
+ * on the scan before — the portal then stops being a sequence and becomes a
+ * follower of whichever rack flag it collided with. It still moves, so it reads
+ * as working; it stalls for good the first time that flag goes false and stays
+ * false, which on a rack is the moment the rack fills.
  */
 const PORTAL_CYCLE: Rung[] = [
   // Begin a pick: parked over the store, head up, something on the outfeed, and
@@ -147,29 +157,29 @@ const PORTAL_CYCLE: Rung[] = [
       no('X17'),
       no('X13'),
       nc('X18'),
-      nc('M42'),
-      nc('M43'),
-      nc('M44'),
-      nc('M45'),
-      set('M41'),
+      nc('M61'),
+      nc('M62'),
+      nc('M63'),
+      nc('M64'),
+      set('M60'),
     ],
   ]),
-  rung('por-got', [[no('M41'), no('X18'), set('M42'), rst('M41')]]),
-  rung('por-there', [[no('M42'), no('X15'), nc('X19'), set('M43'), rst('M42')]]),
-  rung('por-set-down', [[no('M43'), no('X16'), set('M44'), rst('M43')]]),
+  rung('por-got', [[no('M60'), no('X18'), set('M61'), rst('M60')]]),
+  rung('por-there', [[no('M61'), no('X15'), nc('X19'), set('M62'), rst('M61')]]),
+  rung('por-set-down', [[no('M62'), no('X16'), set('M63'), rst('M62')]]),
   // Vacuum off, head still down: the part is on the skid before the cups let go.
-  rung('por-let-go', [[no('M44'), nc('X18'), set('M45'), rst('M44')]]),
-  rung('por-parked', [[no('M45'), no('X14'), rst('M45')]]),
+  rung('por-let-go', [[no('M63'), nc('X18'), set('M64'), rst('M63')]]),
+  rung('por-parked', [[no('M64'), no('X14'), rst('M64')]]),
   // Every step above, then every coil below. That order is not tidiness: on the
   // scan the head arrives over the booth, the step that starts lowering it and
   // the coil that is still driving the traverse both want to be right, and only
   // one of them can be. Put a coil above the step that clears it and the portal
   // sets off down the rail with its head coming down.
-  rung('por-run', [[no('M42'), no('X17'), out('Y10')]]),
-  rung('por-home', [[no('M45'), no('X17'), out('Y11')]]),
+  rung('por-run', [[no('M61'), no('X17'), out('Y10')]]),
+  rung('por-home', [[no('M64'), no('X17'), out('Y11')]]),
   rung(
     'por-lower',
-    [[no('M41'), out('Y12')], [no('M43')], [no('M44')]],
+    [[no('M60'), out('Y12')], [no('M62')], [no('M63')]],
     [
       { row: 0, col: 1 },
       { row: 1, col: 1 },
@@ -177,7 +187,7 @@ const PORTAL_CYCLE: Rung[] = [
   ),
   rung(
     'por-vac',
-    [[no('M41'), out('Y13')], [no('M42')], [no('M43')]],
+    [[no('M60'), out('Y13')], [no('M61')], [no('M62')]],
     [
       { row: 0, col: 1 },
       { row: 1, col: 1 },
@@ -289,16 +299,23 @@ export const STORE_TUNED: Rung[] = [
  *
  * The booth is held at 110 C whether or not the line is running, because an oven
  * that goes cold between shifts costs an hour to bring back and the first part
- * through it would be scrap. Every part is sprayed to 240 um whether it is a
- * hull or a stick, and the gun is only ever changed over with the booth standing
- * empty — which is careful, and wrong: the purge goes to the waste pot, and the
- * booth could have been blasting the next part the whole time.
+ * through it would be scrap. Every part is then sprayed to 240 um whether it is
+ * a hull or a stick — one recipe, one target, nothing to get wrong. It is the
+ * concession that looks free and is not: a boom is specified 140 to 260, so the
+ * extra hundred microns buys nothing, and the plant charges for it twice. Once
+ * in the booth, spraying paint the part did not need, and again in the oven,
+ * where the bake is a function of the film that went on.
+ *
+ * The purge is gated on the gun rather than on the booth. A flush that waited
+ * for an empty booth would never run at all: it takes a full blast cycle, and
+ * the portal is standing over the skid with the next part before the booth has
+ * been clear half a second.
  */
 export const PAINT_PLAIN: Rung[] = [
   rung('p-recipe', [[mov('K2200', 'D2'), mov('K4000', 'D3')]]),
   rung('p-drum', [[mov('D8', 'D15')]]),
-  // Change over, but only with nothing in the booth.
-  rung('p-purge', [[no('M0'), nc('X19'), cmp('<>', 'D9', 'D8'), out('Y16')]]),
+  // Spray above purge, so the purge rung below reads this scan's gun rather than
+  // last scan's. The two must never be commanded together.
   rung('p-spray', [
     [
       no('M0'),
@@ -309,6 +326,7 @@ export const PAINT_PLAIN: Rung[] = [
       out('Y14'),
     ],
   ]),
+  rung('p-purge', [[no('M0'), nc('Y14'), cmp('<>', 'D9', 'D8'), out('Y16')]]),
   rung('p-oven', [
     [
       no('M0'),

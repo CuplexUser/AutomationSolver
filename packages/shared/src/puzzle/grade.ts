@@ -1,7 +1,7 @@
 import { SimEngine } from '../sim/scanCycle.js';
 import type { RungEvalResult } from '../sim/rungSolver.js';
 import type { ProgramDoc } from '../ladder/types.js';
-import { assembleProject } from './project.js';
+import { runnableProject } from './symbols.js';
 import { getProcess, primeProcess, type MachineState } from './processes/index.js';
 import {
   describeAnalogFailure,
@@ -143,9 +143,10 @@ function simulateScenario(
   samples: TraceSample[] | undefined,
 ): { steps: TraceStep[]; elapsedMs: number; iae: number } {
   // The submission carries only the sections the player owns; the rest ship
-  // with the puzzle. Assembling here (rather than at the route) is what keeps
-  // the client's live run and the server's grade the same run.
-  const engine = new SimEngine(assembleProject(spec, program));
+  // with the puzzle, and every name in both is resolved to an address before the
+  // engine sees it. Doing that here (rather than at the route) is what keeps the
+  // client's live run and the server's grade the same run.
+  const engine = new SimEngine(runnableProject(spec, program));
   engine.reset();
   const process = getProcess(spec.processId);
   let machine: MachineState = { ...process.init(spec.devices), ...scenario.initialMachine };

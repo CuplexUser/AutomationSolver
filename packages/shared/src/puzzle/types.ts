@@ -1,4 +1,4 @@
-import type { ElementType, ProgramDoc, Rung, TaskDef } from '../ladder/types.js';
+import type { ElementType, ProgramDoc, Rung, TaskDef, VarDecl } from '../ladder/types.js';
 import type { CabinetLayout } from '../circuit/types.js';
 
 export type Difficulty = 'tutorial' | 'easy' | 'medium' | 'hard';
@@ -150,6 +150,14 @@ export interface PuzzleDevice {
   label: string;
   io: 'input' | 'output';
   widget: WidgetType;
+  /**
+   * Identifier a symbol-mode program refers to this device by.
+   *
+   * Omit and it is derived from `label` (`Frame Blank Ready` -> `FrameBlankReady`),
+   * which is why no existing puzzle needed editing when symbols arrived. Set it
+   * where the derived name would collide or read badly.
+   */
+  symbol?: string;
   /** Field device wired normally-closed: physical rest state = energized (true). */
   normallyClosed?: boolean;
   /** Lamp/motor color hint for the HMI. */
@@ -429,6 +437,15 @@ export interface PouSlot {
    * write anywhere.
    */
   owns?: string[];
+  /**
+   * Locals this section ships with.
+   *
+   * On a non-editable fixture these are placed by the puzzle, outside the pool
+   * the player draws from, and are what let a shipped section read symbolically
+   * in the window the player is looking at. On an editable one they are a
+   * starting point the player may extend or replace.
+   */
+  vars?: VarDecl[];
   /** This section's page of the instruction manual, in the briefing's format. */
   brief?: string;
 }
@@ -460,6 +477,76 @@ export interface LadderPuzzleSpec extends PuzzleSpecBase {
    * failure the scenario is built to catch.
    */
   taskAssignment?: 'fixed' | 'player';
+
+  /**
+   * How strictly this puzzle expects declared variables instead of raw addresses.
+   *
+   * - `off` (the default) — no resolution pass runs at all, and a program is a
+   *   list of addresses exactly as it has always been. Every puzzle written
+   *   before symbols existed stays on this and is untouched by any of it.
+   * - `optional` — a name resolves if it is declared; a bare address still works.
+   * - `required` — a bare address in player-written code is an error, so the
+   *   symbol table is part of the lesson.
+   *
+   * Sections the puzzle ships pre-written are always resolved leniently whatever
+   * this says: they are content, not an answer, and holding a fixture to the
+   * player's rule could only ever break a puzzle.
+   */
+  symbols?: SymbolMode;
+
+  /**
+   * Globals the puzzle ships: the interface its fixture sections publish.
+   *
+   * Always taken from the spec rather than from a submission, for the same
+   * reason a non-editable section is — otherwise a hand-written payload could
+   * move the bit it is being graded against. Player-declared globals are merged
+   * on top and may not shadow one of these by name or by address.
+   */
+  globals?: VarDecl[];
+
+  /**
+   * Address ranges the player's declarations may be allocated from.
+   *
+   * One range per kind, as `M0-M399`. Anything the puzzle's own fixture sections
+   * use has to sit outside these, which is what keeps player storage clear of
+   * fixture storage.
+   */
+  memoryPools?: MemoryPools;
+
+  /**
+   * Plant actuators the submission as a whole may drive, as `Y28-Y41`.
+   *
+   * Replaces per-section `owns` for player-written code, which stops being
+   * expressible the moment the player names their own POUs. Everything else
+   * falls out of scoping: a POU cannot write another POU's locals because it
+   * cannot name them. What is left for validation is the part scoping cannot
+   * express, which is the part that matters — which motors this program may
+   * start. Omit to allow every output the puzzle declares.
+   */
+  writableOutputs?: string[];
+
+  /**
+   * Whether the player may add, rename, delete and reorder POUs.
+   *
+   * `fixed` (the default) gives them the slots `pous` declares and no others.
+   * Sections the puzzle ships stay pinned under `player` too: they cannot be
+   * renamed or deleted, and a submitted POU whose id collides with one is
+   * rejected rather than silently replacing it.
+   */
+  pouAuthoring?: 'fixed' | 'player';
+
+  /** Cap on total POUs when `pouAuthoring` is `player`. */
+  maxPous?: number;
+}
+
+export type SymbolMode = 'off' | 'optional' | 'required';
+
+/** Address ranges the player's declarations are allocated from, one per kind. */
+export interface MemoryPools {
+  bool?: string;
+  int?: string;
+  timer?: string;
+  counter?: string;
 }
 
 /** A control-cabinet puzzle: the player wires terminals of fixed components. */

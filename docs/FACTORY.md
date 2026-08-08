@@ -4,6 +4,13 @@ Everything about the `factory` category in one place: what it is for, what exist
 is half built, and what is left. [FEATURE-MAP.md](./FEATURE-MAP.md) is the whole codebase's
 "what exists"; this is the one category deep enough to need its own.
 
+> **The plant is being rebuilt.** [FACTORY-LINE-DESIGN.md](./FACTORY-LINE-DESIGN.md) is the
+> locked specification for the new floor: 55 x 38 m, a **fully zoned conveyor the player
+> programs** as a seventh section, and all six stations retimed so the bottleneck moves. It
+> supersedes this document's layout, its I/O totals, its station timings and the "deliberately
+> left out" note about a conveyor spine. What stays true here is the vision, the two-plants
+> decision, and the plain-versus-tuned pairing.
+
 ## The vision
 
 Every other category in this game teaches a **machine**. A drill station, a packaging line, a
@@ -126,10 +133,18 @@ rail, and it cannot let go with the head up because the part is then two meters 
 The booth and the oven are **two machines**, so the next part is blasted while the last one
 bakes. Film builds at flow × time and only inside the cure band; a frame wants 200–320 um and a
 boom 140–260, and **bake time scales with film**, so paint sprayed on is paint baked off the
-clock later. Four drums on the wall; spraying with the selector on a drum the line is not loaded
-with pulls the old color through behind the new one and the part is scrap. A purge flushes to
-the waste pot and takes exactly one blast cycle — which is the whole lever: it can be spent
-during a blast for free, or with the booth standing empty for 1.2 s a changeover.
+clock later. That is the paint shop's lever: a boom given the frame's recipe costs spray time in
+the booth and a second helping of it in the oven.
+
+Four drums on the wall; spraying with the selector on a drum the line is not loaded with pulls
+the old color through behind the new one and the part is scrap. A purge flushes to the waste pot
+and takes exactly one blast cycle. It was meant to be a second lever — spend it during a blast
+for free, or with the booth standing empty and pay for it — but there is no way to spend it
+badly: the flush does not stop the stage machine, so any purge started when a part lands is
+already hidden inside that part's blast, and no sensor tells the program the blast has finished.
+Gating it on an empty booth is not a slow program but a stopped one, since the portal refills
+the skid within half a second. So the purge is a **correctness** trap here, not a timing one:
+purge onto no drum, or spray while purging, and the station faults.
 
 - `X19` part at booth · `X20` boom in booth · `X21` oven full · `X22` lane full
 - `D0` booth temperature · `D1` film · `D8` next color due · `D9` color in gun
@@ -165,9 +180,13 @@ loaded and shuts the dock for a rotation.
 
 **`*_PLAIN`** runs the line, never faults, and leaves about a quarter of the plant's output on
 the floor. Every one of its concessions is a plausible one: give every part the heavier part's
-treatment, use one lane so the sequence cannot get out of order, change the gun over with the
-booth empty so nothing gets contaminated, claim both parts together so the jig is never caught
-holding half a machine, send for the lorry when there is nowhere left to put a machine.
+treatment at the fixture and again at the gun, use one lane so the sequence cannot get out of
+order, claim both parts together so the jig is never caught holding half a machine, send for the
+lorry when there is nowhere left to put a machine.
+
+"Never faults" is load bearing rather than decorative, and it is the property the soak test
+exists to hold: the capstone seeds all six sections with these, so a plain program that stops
+the line is not a slow answer the player improves on but a broken plant they are handed.
 
 **`*_TUNED`** is the same station after somebody has thought about it, in about the same number
 of rungs — and is the canonical solution for that station's puzzle.
@@ -204,16 +223,41 @@ All additive; nothing existing changed behavior.
 - `content/factory-line-plant.ts` — device map, analog ranges, per-section ownership blocks,
   the supervisor program.
 - `content/factory-line-programs.ts` — all five stations in plain and tuned form, 118 rungs.
-- Repo is green: `npm run test:shared` (281 tests), `npm run typecheck`, `npm run lint`.
-- The line runs end to end and ships machines at **8.4 s/machine** with no faults and no scrap.
+- `processes/factoryLine.test.ts` — 48 tests: dt-independence for the fixture and the booth's
+  integrators, every station's interlocks and faults, and a **soak** that runs all six sections
+  together for a three-minute shift in all seven shipped combinations (all tuned, all plain, and
+  each station plain against tuned neighbors). That soak is the guardrail the per-station tests
+  cannot be: both bugs below ran clean for a minute apiece before they stopped the line for good,
+  because each section was correct on its own and only collided once the buffers filled.
+- Repo is green: `npm test` (365 tests), `npm run typecheck`, `npm run lint`.
+- Tuned end to end: **9.1 s/machine**, no faults, no scrap. Plain end to end: 11.5 s/machine —
+  a quarter of the output left on the floor, which is what the pairing promised.
+
+### Fixed
+- **The portal robot's step latches collided with the rack's room flags.** `PORTAL_CYCLE` used
+  M41-M45 for its five-step chain while `STORE_TUNED` drove `M41` as a level `OUT` coil meaning
+  "there is room in a boom lane" — and drove it from a rung *above* the portal's, so the latch
+  the chain set on one scan was overwritten on the next. The portal stopped being a sequence and
+  became a follower of a rack flag, which still moves and so still reads as working; it stalled
+  for good the first time that flag went false and stayed false, which on a rack is the moment
+  the rack fills. Fixed by fencing the portal into **M60-M64** at the far end of the section's
+  block, documented in place as a block nothing else may touch.
+- **`PAINT_PLAIN`'s purge could never run.** It gated the flush on `nc X19` — an empty booth —
+  and the booth is never empty for the 1200 ms a purge takes, because the portal stages over the
+  skid holding the next part and drops it within ~400 ms of the booth clearing. The first
+  changeover therefore deadlocked the line: a part in the booth that could not be sprayed
+  (`D9 <> D8`) and a gun that could not be flushed. Regated on `nc Y14` like the tuned version.
 
 ### Known open
-- **`STORE_TUNED` deadlocks after four machines.** Throughput halves to 17 s/machine and then
-  stops with the rack full, a part on the outfeed and everything downstream empty. It is a bug
-  in the tuned store program, not in the plant model — `STORE_PLAIN` runs the same line clean
-  for 300 s. Next thing to fix.
+- **Only the weld bay and final assembly have a throughput lever.** Measured over a 300 s shift,
+  swapping one station from tuned to plain against tuned neighbors costs: weld 33 → 26 machines,
+  assembly 33 → 31, and store, paint and test **33 → 33, exactly**. From all-plain, tuning the
+  weld bay alone recovers 26 → 31 and tuning any other station alone recovers nothing at all.
+  The line is weld-paced, so three of the five station puzzles currently have a lever that
+  measures zero and the capstone reduces to "fix the weld bay". See *Balance* below.
 
 ### Not started
+- The balance pass described below, which the specs depend on.
 - The five puzzle specs and briefings.
 - Canonical solutions in `grade.test.ts`, and the negative tests that prove the plausible wrong
   answers fail.
@@ -240,6 +284,38 @@ takes the same 15 marks and the same `PAR_SLACK` taper the rest of the game uses
 puzzles grade against that station's own output (`welded`, `painted`) so a par is not silently
 set by a neighbor; the capstone grades time to ship a fixed number of machines, which is the
 same question as output in a fixed window and reuses `parMs` rather than inventing an axis.
+
+## Balance
+
+The station timings need a pass before any of the five specs are written, because three of the
+five levers in the table above currently measure nothing. Per machine, each station's own cycle
+comes to roughly:
+
+| Station | Per machine | Notes |
+|---|---|---|
+| Weld | ~7.2 s | 3.9 s frame + 2.2 s boom + ~1.1 s amortized tip change |
+| Assembly | 6.4 s | engine 2.2 + cab 1.8 + pin 2.4, with the bench overlapped |
+| Oven | ~5.2 s | two racks, bake 3.0 s + film × 1.25 |
+| Test | 5.2 s | pump 1.2 + cycle 2.6 + dispatch 1.4 |
+| Booth | ~2.8 s | blast 1.2 + spray ~0.2, twice |
+
+Weld is the constraint by a full second over the next station and by more than two over the
+rest, so the store, the booth and the dock are never asked for anything they cannot already do.
+Two ways out, and they are not exclusive:
+
+1. **Grade a station puzzle on the station**, which the plan already half says: score `welded`
+   or `painted` rather than `shipped`, and use `Scenario.initialMachine` to start the run with
+   the bay under test actually loaded — a rack that begins full, an order book that begins on a
+   changeover, a yard that begins nearly full. A lever invisible at the line's pace is plainly
+   visible when the station is the thing being asked for output.
+2. **Close the gap between the stations** so the capstone is a six-way optimization rather than
+   a one-way one. The booth in particular is idle better than half the time.
+
+The store has a third problem underneath the timing one: `STORE_TUNED` sorts by type, but the
+weld bay hands over frames and booms strictly turn about, so plain FIFO out of one lane already
+produces a perfectly alternating feed. Sorting can only pay for itself when the arrival order is
+*disturbed* — by a tip change landing mid-pair, or by a weld schedule that batches. Puzzle 49's
+scenarios have to create that disorder or its lesson has nothing to bite on.
 
 **Deliberately left out for now.** A conveyor spine with stoppers and diverters at each station.
 The store and the portal already make transport programmable, and a third transport mechanism

@@ -22,7 +22,9 @@ import {
   inDeviceRanges,
   isMultiPou,
   parseDeviceRanges,
+  playerPouIds,
 } from './project.js';
+import { resolveProject, validateDeclarations, type ResolveIssue } from './symbols.js';
 import type { LadderPuzzleSpec, PouSlot } from './types.js';
 
 export interface ValidationResult {
@@ -84,8 +86,18 @@ function checkWordOperands(el: LadderElement, where: string, errors: string[]): 
   }
 }
 
-function checkElement(el: LadderElement, where: string, errors: string[]): void {
+function checkElement(
+  el: LadderElement,
+  where: string,
+  errors: string[],
+  unresolved = false,
+): void {
   if (el.type === 'hwire') return;
+
+  // A cell whose name did not resolve has already been reported as undeclared.
+  // Letting the address check fire too would answer one mistake with two errors,
+  // the second of them about an address the player never wrote.
+  if (unresolved) return;
 
   if (isWordInstruction(el.type)) checkWordOperands(el, where, errors);
   // A compare acts on nothing — both sides are operands — so it is the one
@@ -197,6 +209,77 @@ function checkWriteScope(pou: Pou, slot: PouSlot, errors: string[]): void {
   });
 }
 
+/** A name that resolved to nothing, or a bare address where one is not allowed. */
+function symbolErrors(issues: readonly ResolveIssue[], multi: boolean): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const i of issues) {
+    const dedupe = `${i.pouId}:${i.name}:${i.reason}`;
+    if (seen.has(dedupe)) continue;
+    seen.add(dedupe);
+    const where = `${multi ? `${i.pouName} ` : ''}rung ${i.rungIndex + 1} @ r${i.row}c${i.col}`;
+    out.push(
+      i.reason === 'undeclared'
+        ? `${where}: "${i.name}" is not declared here. Add it to this program's variables, or ` +
+          `to the globals if another program needs to see it too.`
+        : `${where}: this puzzle is written in variables, so refer to ${i.name} by name. ` +
+          `Declare one for it rather than addressing the device directly.`,
+    );
+  }
+  return out;
+}
+
+/**
+ * Which plant actuators the player's own code may drive.
+ *
+ * Replaces per-section `owns` once the player names their own POUs, because a
+ * fence keyed on a section name has nothing to attach to. Only *plant* devices
+ * are held to it: working storage is what scoping already protects, and a rule
+ * that also caught a program writing its own relay would be unusable.
+ */
+function checkWritableOutputs(
+  spec: LadderPuzzleSpec,
+  project: LadderProject,
+  players: ReadonlySet<string>,
+  errors: string[],
+): void {
+  const byAddress = new Map(spec.devices.map((d) => [d.address.toUpperCase(), d]));
+  const ranges = spec.writableOutputs ? parseDeviceRanges(spec.writableOutputs) : null;
+  const reported = new Set<string>();
+
+  for (const pou of project.pous) {
+    if (!players.has(pou.id)) continue;
+    pou.rungs.forEach((rung, ri) => {
+      rung.cells.forEach((row, r) => {
+        row.forEach((el, c) => {
+          if (!el || !isOutput(el.type) || !el.device) return;
+          const device = byAddress.get(el.device.toUpperCase());
+          if (!device) return; // working storage: scoping's job, not this one
+          const site = `${pou.id}:${el.device}`;
+          if (reported.has(site)) return;
+
+          const where = `${pou.name} rung ${ri + 1} @ r${r}c${c}`;
+          if (device.io === 'input') {
+            reported.add(site);
+            errors.push(
+              `${where}: ${device.label} (${el.device}) is a field input. The plant drives it; ` +
+                `a program can only read it.`,
+            );
+            return;
+          }
+          if (ranges && ranges.length > 0 && !inDeviceRanges(el.device, ranges)) {
+            reported.add(site);
+            errors.push(
+              `${where}: this puzzle does not hand over ${device.label} (${el.device}). ` +
+                `It may drive ${ranges.map(formatDeviceRange).join(', ')}.`,
+            );
+          }
+        });
+      });
+    });
+  }
+}
+
 /**
  * The task set: does every task call POUs that exist, is every POU called, and
  * does every interval land on the scan grid?
@@ -254,6 +337,7 @@ function checkPou(
   prefix: string,
   maxRungs: number | undefined,
   errors: string[],
+  unresolved?: ReadonlySet<string>,
 ): void {
   if (maxRungs != null && pou.rungs.length > maxRungs) {
     errors.push(
@@ -277,7 +361,7 @@ function checkPou(
           errors.push(`${where}: instruction ${el.type} is not allowed in this puzzle`);
         }
         if (isOutput(el.type)) hasOutput = true;
-        checkElement(el, where, errors);
+        checkElement(el, where, errors, unresolved?.has(`${pou.id}|${ri}|${r}|${c}`) === true);
       });
     });
     if (!hasOutput) errors.push(`${prefix}rung ${ri + 1} has no output/coil`);
@@ -302,8 +386,24 @@ export function validateProgram(spec: LadderPuzzleSpec, doc: ProgramDoc): Valida
   allowed.add('hwire'); // wires are always permitted
 
   const multi = isMultiPou(spec);
-  const project = assembleProject(spec, doc);
+  const assembled = assembleProject(spec, doc);
   const slotById = new Map((spec.pous ?? []).map((slot) => [slot.id, slot]));
+
+  // Declarations are checked before they are used, on the shape the player sent:
+  // a variable pointing somewhere it may not is not a fact about any rung.
+  validateDeclarations(spec, assembled, errors);
+
+  // Everything downstream works in addresses, so resolution happens here and
+  // once. Under `symbols: 'off'` this returns the project untouched without
+  // walking a rung, which is the path every puzzle written before symbols takes.
+  const players = playerPouIds(spec, assembled);
+  const { project, issues } = resolveProject(spec, assembled, players);
+  errors.push(...symbolErrors(issues, multi));
+  const unresolved = new Set(
+    issues
+      .filter((i) => i.reason === 'undeclared')
+      .map((i) => `${i.pouId}|${i.rungIndex}|${i.row}|${i.col}`),
+  );
 
   for (const pou of project.pous) {
     const slot = slotById.get(pou.id);
@@ -317,11 +417,18 @@ export function validateProgram(spec: LadderPuzzleSpec, doc: ProgramDoc): Valida
       multi ? `${pou.name} ` : '',
       slot?.maxRungs ?? (multi ? undefined : spec.maxRungs),
       errors,
+      unresolved,
     );
     if (slot?.editable) checkWriteScope(pou, slot, errors);
   }
 
-  if (multi) checkTasks(project, errors, warnings);
+  if (multi) {
+    checkTasks(project, errors, warnings);
+    if (spec.maxPous != null && project.pous.length > spec.maxPous) {
+      errors.push(`This project has ${project.pous.length} programs but the limit is ${spec.maxPous}`);
+    }
+  }
+  checkWritableOutputs(spec, project, players, errors);
 
   warnings.push(...duplicateOutputWarnings(project, multi));
 
