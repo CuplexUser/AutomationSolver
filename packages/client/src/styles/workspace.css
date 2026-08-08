@@ -315,7 +315,10 @@
   border-radius: 8px;
   background: var(--panel, #14171c);
   box-shadow: 0 12px 34px rgb(0 0 0 / 42%);
-  overflow: hidden;
+  /* Visible, not hidden: the resize handles hang just outside the frame, which
+     is what keeps the right-hand one off the body's scrollbar. The bar and the
+     body round their own outer corners instead. */
+  overflow: visible;
 }
 /* Maximized fills the workspace, not the viewport: `position: fixed; inset: 8px`
    slid the title bar under the app's top bar, which is where the restore and
@@ -336,6 +339,7 @@
   align-items: center;
   gap: 8px;
   height: 34px;
+  border-radius: 7px 7px 0 0;
   padding: 0 6px 0 11px;
   border-bottom: 1px solid var(--edge);
   background: var(--panel-2, rgb(255 255 255 / 4%));
@@ -399,6 +403,8 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
+  /* Rounds *and* clips, which is what the window frame no longer does. */
+  border-radius: 0 0 7px 7px;
 }
 /* The ladder editor assumes it owns a scrolling column; inside a window it owns
    the window instead. */
@@ -419,14 +425,70 @@
 .fw-body .ladder-scroll > .palette.palette-pinned {
   left: 0;
 }
-.fw-grip {
+/* --- resize frame ---
+   Eight handles hung just outside the border, so the right-hand one does not
+   sit on top of the body's scrollbar and the top one clears the title bar's
+   buttons. 7px is about what a desktop window frame gives you. */
+.fw-edge {
   position: absolute;
+  touch-action: none;
+}
+.fw-n,
+.fw-s {
+  left: 10px;
+  right: 10px;
+  height: 7px;
+  cursor: ns-resize;
+}
+.fw-n {
+  top: -4px;
+}
+.fw-s {
+  bottom: -4px;
+}
+.fw-e,
+.fw-w {
+  top: 10px;
+  bottom: 10px;
+  width: 7px;
+  cursor: ew-resize;
+}
+.fw-e {
+  right: -4px;
+}
+.fw-w {
+  left: -4px;
+}
+.fw-ne,
+.fw-nw,
+.fw-se,
+.fw-sw {
+  width: 14px;
+  height: 14px;
+}
+.fw-nw {
+  top: -4px;
+  left: -4px;
+  cursor: nwse-resize;
+}
+.fw-ne {
+  top: -4px;
+  right: -4px;
+  cursor: nesw-resize;
+}
+.fw-sw {
+  bottom: -4px;
+  left: -4px;
+  cursor: nesw-resize;
+}
+/* The habitual corner keeps the drawn grip — the only visible sign that the
+   frame can be grabbed at all. It sits inside the border to stay legible. */
+.fw-se {
   right: 0;
   bottom: 0;
   width: 16px;
   height: 16px;
   cursor: nwse-resize;
-  touch-action: none;
   background: linear-gradient(
     135deg,
     transparent 0 45%,

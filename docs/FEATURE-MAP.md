@@ -725,7 +725,9 @@ Selected by `PuzzlePlayPage` when `isMultiPou(spec)`; every single-program puzzl
 `LadderPlay` and the three-column workbench exactly as it was. A station fits in three columns;
 a plant does not, so here the machine **is** the page.
 
-- `FloatingWindow.tsx` — title-bar drag, edge/corner resize, always-on-top, maximize, close,
+- `FloatingWindow.tsx` — title-bar drag, resize from any of the eight edges and corners
+  (`resizeBox` clamps a north or west delta *before* moving the origin, or a window at its
+  minimum slides sideways for as long as the pointer keeps going), always-on-top, maximize, close,
   z-order on focus, clamped so a window can never be dragged fully off screen (`KEEP_VISIBLE`).
   Geometry persists per `(puzzleSlug, windowId)` in localStorage; the on-top pin and maximize
   deliberately do not — a window remembers the size and place the player chose, never a pose.

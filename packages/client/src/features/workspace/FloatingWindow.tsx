@@ -32,7 +32,47 @@ const MIN_H = 180;
 const KEEP_VISIBLE = 80;
 const TITLEBAR_H = 34;
 
-type DragMode = 'move' | 'resize';
+/** The eight grab points of the frame, named as compass directions. */
+const EDGES = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw'] as const;
+type Edge = (typeof EDGES)[number];
+type DragMode = 'move' | Edge;
+
+const EDGE_NAME: Record<Edge, string> = {
+  n: 'top edge',
+  s: 'bottom edge',
+  e: 'right edge',
+  w: 'left edge',
+  ne: 'top right corner',
+  nw: 'top left corner',
+  se: 'bottom right corner',
+  sw: 'bottom left corner',
+};
+
+/**
+ * Apply a drag to one edge or corner.
+ *
+ * North and west move the box's origin as well as its size, and the delta has
+ * to be clamped *before* the origin moves: clamping the width afterwards (which
+ * is all `clampBox` can do) would leave a window at its minimum sliding sideways
+ * for as long as the pointer kept going.
+ */
+function resizeBox(from: WindowBox, edge: Edge, dx: number, dy: number): WindowBox {
+  const box = { ...from };
+  if (edge.includes('e')) box.w = from.w + dx;
+  if (edge.includes('s')) box.h = from.h + dy;
+  if (edge.includes('w')) {
+    const d = Math.min(dx, from.w - MIN_W);
+    box.x = from.x + d;
+    box.w = from.w - d;
+  }
+  if (edge.includes('n')) {
+    // Never past the top of the workspace, or the title bar goes under the app's.
+    const d = Math.max(-from.y, Math.min(dy, from.h - MIN_H));
+    box.y = from.y + d;
+    box.h = from.h - d;
+  }
+  return box;
+}
 
 function clampBox(box: WindowBox, vw: number, vh: number): WindowBox {
   const w = Math.max(MIN_W, Math.min(box.w, vw));
@@ -142,7 +182,7 @@ export function FloatingWindow({
     const next =
       d.mode === 'move'
         ? { ...d.from, x: d.from.x + dx, y: d.from.y + dy }
-        : { ...d.from, w: d.from.w + dx, h: d.from.h + dy };
+        : resizeBox(d.from, d.mode, dx, dy);
     setBox(clampBox(next, globalThis.innerWidth, globalThis.innerHeight));
   }, []);
 
@@ -211,17 +251,22 @@ export function FloatingWindow({
 
       <div className="fw-body">{children}</div>
 
-      {!maximized && (
-        <div
-          className="fw-grip"
-          onPointerDown={startDrag('resize')}
-          onPointerMove={onMove}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          role="separator"
-          aria-label={`Resize ${title}`}
-        />
-      )}
+      {/* Every edge and every corner, the way a window resizes anywhere else.
+          The bottom-right one keeps the drawn grip: it is the habitual one, and
+          the only visible clue that the frame can be grabbed at all. */}
+      {!maximized &&
+        EDGES.map((edge) => (
+          <div
+            key={edge}
+            className={`fw-edge fw-${edge}`}
+            onPointerDown={startDrag(edge)}
+            onPointerMove={onMove}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+            role="separator"
+            aria-label={`Resize ${title} — ${EDGE_NAME[edge]}`}
+          />
+        ))}
     </section>
   );
 }

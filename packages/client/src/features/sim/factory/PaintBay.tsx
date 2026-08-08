@@ -24,10 +24,16 @@ import {
 const PaintShell = memo(function PaintShell() {
   return (
     <group>
-      {/* Spray booth: glazed so the part inside stays visible. */}
+      {/* Spray booth: glazed so the part inside stays visible.
+
+          The glass is a box, and a box has a bottom. Sat flat on the slab that
+          face was coplanar with the floor and, being double-sided, drawn — so
+          the booth's whole floor area shimmered in bands wherever the depth
+          buffer could not separate the two. It starts a few centimetres up
+          instead, which is also where a real booth's glazing starts. */}
       <group position={[BOOTH_X, 0, 0]}>
-        <mesh position={[0, 1.7, 0]}>
-          <boxGeometry args={[4.0, 3.4, 3.6]} />
+        <mesh position={[0, 1.74, 0]}>
+          <boxGeometry args={[4.0, 3.32, 3.6]} />
           <meshPhysicalMaterial
             color="#cfe0ee"
             transparent
