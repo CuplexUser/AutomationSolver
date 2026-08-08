@@ -14,6 +14,7 @@
  * release land on the same node, so most clicks were swallowed.
  */
 import {
+  DEFAULT_POU_ID,
   GRADE_DT,
   SimEngine,
   getPuzzle,
@@ -286,7 +287,7 @@ function rebuildCells(): void {
 
 /** One scan's worth of state, as class flips on nodes that already exist. */
 function paint(): void {
-  const res = engine.lastRungResults[0];
+  const res = engine.resultsFor(DEFAULT_POU_ID)[0];
   if (!res) return;
   for (const [, node] of cellNodes) {
     const powered = res.energizedNodes.has(nodeId(node.row, node.col));

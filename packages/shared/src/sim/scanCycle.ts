@@ -1,11 +1,16 @@
 import { parseAddress } from '../ladder/address.js';
 import {
   saturate16,
+  tasksInScanOrder,
+  toProject,
   type CompareOp,
   type LadderElement,
-  type LadderProgram,
+  type LadderProject,
   type MathOp,
   type PidParams,
+  type Pou,
+  type ProgramDoc,
+  type TaskDef,
 } from '../ladder/types.js';
 import { parseValueOperand, readValue, type ValueRef } from '../ladder/value.js';
 import { evaluateRung, type RungEvalResult } from './rungSolver.js';
@@ -50,18 +55,44 @@ export interface SimSnapshot {
  * animation and the server grader produce identical traces from the same inputs.
  */
 export class SimEngine {
-  program: LadderProgram;
+  project: LadderProject;
   private bits = new Map<string, boolean>();
-  private prevBits = new Map<string, boolean>();
+  /**
+   * Previous-scan input image, one per task.
+   *
+   * Edge contacts compare against the image captured at the end of the task's
+   * own last execution, so a task running every 200 ms sees an edge that lasted
+   * one 50 ms scan exactly once, on its next execution — rather than missing it
+   * because a faster task already consumed it. For a single-task program (every
+   * puzzle before the factory) there is one image snapshotted at the end of
+   * every scan, which is precisely the behaviour this replaced.
+   */
+  private prevBits = new Map<string, Map<string, boolean>>();
   private registers = new Map<string, number>();
   private timers = new Map<string, TimerState>();
   private counters = new Map<string, CounterState>();
   private pids = new Map<string, PidState>();
-  /** Per-rung evaluation from the most recent scan (for UI highlighting). */
-  lastRungResults: RungEvalResult[] = [];
+  /** Simulated time, for deciding which periodic tasks are due. */
+  private tMs = 0;
+  /** Absolute simulated ms each periodic task is next due to run at. */
+  private taskDue = new Map<string, number>();
+  /**
+   * Rung evaluation from each POU's most recent execution, keyed by POU id (for
+   * UI highlighting). A POU whose task did not run this scan keeps its previous
+   * results, so a slow task's windows hold their picture instead of flickering
+   * dark between executions.
+   */
+  lastResults: Record<string, RungEvalResult[]> = {};
+  /** POU lookup for the task loop; rebuilt only when the program changes. */
+  private pouById = new Map<string, Pou>();
 
-  constructor(program: LadderProgram) {
-    this.program = program;
+  constructor(program: ProgramDoc) {
+    this.project = toProject(program);
+    this.indexPous();
+  }
+
+  private indexPous(): void {
+    this.pouById = new Map(this.project.pous.map((pou) => [pou.id, pou]));
   }
 
   reset(): void {
@@ -71,12 +102,20 @@ export class SimEngine {
     this.timers.clear();
     this.counters.clear();
     this.pids.clear();
-    this.lastRungResults = [];
+    this.tMs = 0;
+    this.taskDue.clear();
+    this.lastResults = {};
   }
 
-  setProgram(program: LadderProgram): void {
-    this.program = program;
-    this.lastRungResults = [];
+  setProgram(program: ProgramDoc): void {
+    this.project = toProject(program);
+    this.indexPous();
+    this.lastResults = {};
+  }
+
+  /** Rung results for one POU; empty before its first execution. */
+  resultsFor(pouId: string): RungEvalResult[] {
+    return this.lastResults[pouId] ?? [];
   }
 
   getBit(address: string): boolean {
@@ -137,7 +176,7 @@ export class SimEngine {
       return this.compare((el.op as CompareOp) ?? '=', this.operand(el, 0), this.operand(el, 1));
     }
     const cur = this.bits.get(el.device) === true;
-    const prev = this.prevBits.get(el.device) === true;
+    const prev = this.currentPrev?.get(el.device) === true;
     switch (el.type) {
       case 'contact-no':
         return cur;
@@ -310,23 +349,59 @@ export class SimEngine {
   }
 
   private currentDt = 0;
+  /** Input image the running task's edge contacts compare against. */
+  private currentPrev: Map<string, boolean> | undefined;
 
-  /** Run one scan cycle over the whole program, advancing time by dtMs. */
-  scan(dtMs: number): void {
-    this.currentDt = dtMs;
-    // Edge contacts compare live bits against `prevBits`, the image captured at
-    // the end of the previous scan (so an input changed just before this scan is
-    // seen as an edge exactly once).
-    this.lastRungResults = [];
-    for (const rung of this.program.rungs) {
-      const result = evaluateRung(rung, (el) => this.conducts(el));
-      for (const out of result.outputs) {
-        this.applyOutput(out.element, out.energized);
+  /** Every POU of one task, in call order, at the task's own dt. */
+  private runTask(task: TaskDef, taskDt: number): void {
+    // Timers, counters and PID sample clocks inside a task advance by the
+    // task's period, not by the scan's: a K10 timer on a 200 ms task still
+    // finishes in 1.0 s, having been asked five times rather than twenty.
+    this.currentDt = taskDt;
+    this.currentPrev = this.prevBits.get(task.id) ?? new Map();
+
+    for (const pouId of task.pous) {
+      const pou = this.pouById.get(pouId);
+      if (!pou) continue;
+      const results: RungEvalResult[] = [];
+      for (const rung of pou.rungs) {
+        const result = evaluateRung(rung, (el) => this.conducts(el));
+        for (const out of result.outputs) {
+          this.applyOutput(out.element, out.energized);
+        }
+        results.push(result);
       }
-      this.lastRungResults.push(result);
+      this.lastResults[pouId] = results;
     }
-    // Snapshot final image for next scan's edge detection.
-    this.prevBits = new Map(this.bits);
+
+    // Snapshot this task's image for its *next* execution's edge detection.
+    this.prevBits.set(task.id, new Map(this.bits));
+    this.currentPrev = undefined;
+  }
+
+  /**
+   * Run one scan, advancing time by dtMs.
+   *
+   * Tasks run in scan order (priority, then declaration). A task with no
+   * interval runs every scan; a periodic one runs when simulated time reaches
+   * its next due point, which advances by exact multiples of its interval so it
+   * can never drift off the scan grid — the property that lets the client's live
+   * run and the server's grade agree on which scan a slow task fired.
+   */
+  scan(dtMs: number): void {
+    for (const task of tasksInScanOrder(this.project)) {
+      if (task.intervalMs === undefined) {
+        this.runTask(task, dtMs);
+        continue;
+      }
+      // Due at t=0, so a periodic task gets its first execution on the first
+      // scan rather than leaving the plant dark for a whole period.
+      const due = this.taskDue.get(task.id) ?? 0;
+      if (this.tMs < due) continue;
+      this.taskDue.set(task.id, due + task.intervalMs);
+      this.runTask(task, task.intervalMs);
+    }
+    this.tMs += dtMs;
   }
 
   snapshot(): SimSnapshot {

@@ -3,10 +3,11 @@ import {
   gradeProgram,
   gradeWiring,
   getPuzzle,
+  isMultiPou,
   PUZZLES,
   validateProgram,
   validateWiring,
-  type LadderProgram,
+  type ProgramDoc,
   type PuzzleCategory,
   type PuzzleSpec,
   type WiringDoc,
@@ -25,22 +26,34 @@ import {
 } from '../db/repo.js';
 import { config } from '../config.js';
 import { asyncHandler, requireAuth } from '../http.js';
-import { programSchema, wiringSchema } from '../validation.js';
+import { programSchema, projectSchema, wiringSchema } from '../validation.js';
 
 function slotSummary(s: SolutionSlotRow) {
   return { id: s.id, name: s.name, updatedAt: s.updated_at, isSubmitted: s.is_submitted === 1 };
 }
 
 type ParsedProgram =
-  | { ok: true; json: string; program: LadderProgram | WiringDoc }
+  | { ok: true; json: string; program: ProgramDoc | WiringDoc }
   | { ok: false; details: unknown };
 
-/** Parse a submitted program body with the schema matching the puzzle kind. */
+/**
+ * Parse a submitted program body with the schema matching the puzzle kind.
+ *
+ * Three shapes now: a cabinet's wiring, a flat rung list, and — for a puzzle
+ * programmed in sections — a project of POUs and tasks. The spec decides, so a
+ * project posted at a single-program puzzle is rejected at the door rather than
+ * quietly graded as an empty program.
+ */
 function parseProgramBody(spec: PuzzleSpec, body: unknown): ParsedProgram {
-  const schema = spec.kind === 'cabinet' ? wiringSchema : programSchema;
+  const schema =
+    spec.kind === 'cabinet' ? wiringSchema : isMultiPou(spec) ? projectSchema : programSchema;
   const parsed = schema.safeParse(body);
   if (!parsed.success) return { ok: false, details: parsed.error.flatten() };
-  return { ok: true, json: JSON.stringify(parsed.data), program: parsed.data as LadderProgram | WiringDoc };
+  return {
+    ok: true,
+    json: JSON.stringify(parsed.data),
+    program: parsed.data as ProgramDoc | WiringDoc,
+  };
 }
 
 export const puzzlesRouter = Router();
@@ -175,7 +188,7 @@ puzzlesRouter.get(
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
     return res.json({
       ...slotSummary(slot),
-      program: JSON.parse(slot.program_json) as LadderProgram | WiringDoc,
+      program: JSON.parse(slot.program_json) as ProgramDoc | WiringDoc,
     });
   }),
 );
@@ -261,7 +274,7 @@ puzzlesRouter.post(
     const validation =
       spec.kind === 'cabinet'
         ? validateWiring(spec, parsed.program as WiringDoc)
-        : validateProgram(spec, parsed.program as LadderProgram);
+        : validateProgram(spec, parsed.program as ProgramDoc);
     if (!validation.valid) {
       upsertProgress({ userId, slug: spec.slug, status: 'in_progress', score: 0 });
       return res.json({ validation, grade: null });
@@ -270,7 +283,7 @@ puzzlesRouter.post(
     const grade =
       spec.kind === 'cabinet'
         ? gradeWiring(spec, parsed.program as WiringDoc)
-        : gradeProgram(spec, parsed.program as LadderProgram);
+        : gradeProgram(spec, parsed.program as ProgramDoc);
     upsertProgress({
       userId,
       slug: spec.slug,

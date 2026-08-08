@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  assembleProject,
   defaultInputs,
   getProcess,
   GRADE_DT,
   primeProcess,
   SimEngine,
-  type LadderProgram,
   type LadderPuzzleSpec,
   type MachineState,
+  type ProgramDoc,
   type RungEvalResult,
   type SimSnapshot,
 } from '@automationsolver/shared';
@@ -57,7 +58,11 @@ export interface SimRunner extends HmiRunner {
   /** Live D-register image, for analog gauges and the trend. */
   registers: Record<string, number>;
   machine: MachineState;
-  evalResults: RungEvalResult[];
+  /**
+   * Rung evaluation per POU, keyed by POU id. An ordinary puzzle's program is
+   * wrapped as the single POU `DEFAULT_POU_ID`, so its editor reads one entry.
+   */
+  evalResults: Record<string, RungEvalResult[]>;
   /** Rolling scan history for the trace strip, oldest first. */
   history: TraceHistorySample[];
   /** Live timer/counter state for the working-registers debug view; absent when not tracked (e.g. replay). */
@@ -65,8 +70,14 @@ export interface SimRunner extends HmiRunner {
   counters?: SimSnapshot['counters'];
 }
 
-export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): SimRunner {
-  const engineRef = useRef<SimEngine>(new SimEngine(program));
+/**
+ * `program` is whatever the editor holds — a flat rung list, or a project of
+ * the sections the player owns. Either way it goes through `assembleProject`,
+ * the same merge the grader does, so a section the puzzle ships pre-written
+ * runs here exactly as it will run on the server.
+ */
+export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRunner {
+  const engineRef = useRef<SimEngine>(new SimEngine(assembleProject(spec, program)));
   const processRef = useRef(getProcess(spec.processId));
   const machineRef = useRef<MachineState>({});
   const derivedRef = useRef<Record<string, boolean>>({});
@@ -82,12 +93,12 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
   const [timers, setTimers] = useState<SimSnapshot['timers']>({});
   const [counters, setCounters] = useState<SimSnapshot['counters']>({});
   const [machine, setMachine] = useState<MachineState>({});
-  const [evalResults, setEvalResults] = useState<RungEvalResult[]>([]);
+  const [evalResults, setEvalResults] = useState<Record<string, RungEvalResult[]>>({});
   const [history, setHistory] = useState<TraceHistorySample[]>([]);
 
   const resetInternal = useCallback(
-    (nextProgram: LadderProgram) => {
-      engineRef.current = new SimEngine(nextProgram);
+    (nextProgram: ProgramDoc) => {
+      engineRef.current = new SimEngine(assembleProject(spec, nextProgram));
       processRef.current = getProcess(spec.processId);
       machineRef.current = processRef.current.init(spec.devices);
       inputsRef.current = defaultInputs(spec.devices);
@@ -110,10 +121,10 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
       setTimers({});
       setCounters({});
       setMachine(machineRef.current);
-      setEvalResults([]);
+      setEvalResults({});
       setHistory([]);
     },
-    [spec.processId, spec.devices],
+    [spec],
   );
 
   // Rebuild whenever the program or puzzle changes (editing happens while stopped).
@@ -157,7 +168,7 @@ export function useSimRunner(program: LadderProgram, spec: LadderPuzzleSpec): Si
     if (historyRef.current.length > HISTORY_LIMIT) {
       historyRef.current = historyRef.current.slice(historyRef.current.length - HISTORY_LIMIT);
     }
-    setEvalResults(engine.lastRungResults.slice());
+    setEvalResults({ ...engine.lastResults });
     setBits(snap.bits);
     setRegisters(snap.registers);
     setTimers(snap.timers);

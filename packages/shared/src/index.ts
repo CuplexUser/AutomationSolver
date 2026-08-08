@@ -16,6 +16,7 @@ export * from './circuit/gradeWiring.js';
 
 // Puzzle schema, processes, grading
 export * from './puzzle/types.js';
+export * from './puzzle/project.js';
 export * from './puzzle/processes/index.js';
 export * from './puzzle/grade.js';
 export * from './puzzle/validate.js';

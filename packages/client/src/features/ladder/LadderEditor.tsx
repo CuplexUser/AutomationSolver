@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   COMPARE_OPS,
+  DEFAULT_POU_ID,
   formatValueOperand,
   isValueOperand,
   isWordInstruction,
@@ -26,7 +27,7 @@ import {
   type FieldSlot,
 } from './CellFields';
 import { CELL_H, CELL_W } from './CellView';
-import { useEditor } from './editorStore';
+import { pouRungs, useEditor } from './editorStore';
 import { RungView } from './RungView';
 
 interface InstrMeta {
@@ -91,11 +92,23 @@ function wordSummary(el: LadderElement): string {
 interface Props {
   /** Used to remember this puzzle's zoom — a 2-rung tutorial wants a different one from an 8-rung sequence. */
   puzzleSlug: string;
+  /** Which POU this editor edits. Single-program puzzles pass `DEFAULT_POU_ID`. */
+  pouId?: string;
   allowedInstructions: ElementType[];
   devices: PuzzleDevice[];
   registers?: PuzzleRegister[];
   evalResults: RungEvalResult[];
   running: boolean;
+  /**
+   * Whether this editor owns the keyboard.
+   *
+   * With one editor on screen it always does. In the workspace layout several
+   * POU windows are open at once, and a single global keydown listener per
+   * editor would have one keystroke placing a contact in all of them.
+   */
+  focused?: boolean;
+  /** A section the puzzle ships pre-written: shown, highlighted, never edited. */
+  readOnly?: boolean;
 }
 
 const DEVICE_TYPES = new Set(INSTRUCTIONS.filter((i) => i.needsDevice).map((i) => i.type));
@@ -142,27 +155,47 @@ function isTypingTarget(t: EventTarget | null): boolean {
 
 export function LadderEditor({
   puzzleSlug,
+  pouId = DEFAULT_POU_ID,
   allowedInstructions,
   devices,
   registers = [],
   evalResults,
   running,
+  focused = true,
+  readOnly = false,
 }: Props) {
   const {
-    program,
-    selected,
+    project,
+    selected: rawSelected,
     select,
     placeSelected,
     patchSelected,
     setCell,
     toggleVlink,
-    addRung,
-    insertRung,
-    moveRung,
-    removeRung,
-    addRow,
-    addCol,
+    addRung: addRungTo,
+    insertRung: insertRungIn,
+    moveRung: moveRungIn,
+    removeRung: removeRungIn,
+    addRow: addRowIn,
+    addCol: addColIn,
   } = useEditor();
+
+  // Everything below this line thinks in one POU's rungs, exactly as it did
+  // when there was only ever one program. The store keeps an untouched POU's
+  // rung array identical across edits, so this memo only recomputes when *this*
+  // section actually changed.
+  const rungs = pouRungs(project, pouId);
+  const program = useMemo<LadderProgram>(() => ({ rungs }), [rungs]);
+  const selected = rawSelected?.pou === pouId ? rawSelected : null;
+  const addRung = useCallback(() => addRungTo(pouId), [addRungTo, pouId]);
+  const insertRung = useCallback((i: number) => insertRungIn(pouId, i), [insertRungIn, pouId]);
+  const moveRung = useCallback(
+    (i: number, d: -1 | 1) => moveRungIn(pouId, i, d),
+    [moveRungIn, pouId],
+  );
+  const removeRung = useCallback((i: number) => removeRungIn(pouId, i), [removeRungIn, pouId]);
+  const addRow = useCallback((i: number) => addRowIn(pouId, i), [addRowIn, pouId]);
+  const addCol = useCallback((i: number) => addColIn(pouId, i), [addColIn, pouId]);
   const [address, setAddress] = useState('X0');
   const [preset, setPreset] = useState(10);
   // Word-instruction operands, primed for the next placement and retyped in
@@ -214,7 +247,9 @@ export function LadderEditor({
   }, [program]);
 
   const allowed = new Set<ElementType>([...allowedInstructions, 'hwire']);
-  const editable = !running;
+  // A pre-written section is as locked as a running one: it is shown so the
+  // player can read the handshake it publishes, not so they can change it.
+  const editable = !running && !readOnly;
   const palette = INSTRUCTIONS.filter((i) => allowed.has(i.type));
 
   const selectedEl = selected ? (program.rungs[selected.rung]?.cells[selected.row]?.[selected.col] ?? null) : null;
@@ -229,7 +264,7 @@ export function LadderEditor({
   /** Select a cell and load whatever it holds into the palette inputs. */
   const selectCell = useCallback(
     (pos: { rung: number; row: number; col: number } | null) => {
-      select(pos);
+      select(pos === null ? null : { pou: pouId, ...pos });
       // The caret is no longer in whatever box it was in for the *previous*
       // cell, so the chips stop aiming there. Without this, filling a MOV's
       // Source and then moving on leaves every later chip landing in Source.
@@ -244,7 +279,7 @@ export function LadderEditor({
       if (el?.type === 'math' && el.op) setMathOp(el.op as MathOp);
       if (el?.pid) setTuning(el.pid);
     },
-    [program, select],
+    [program, select, pouId],
   );
 
   const changeAddress = (v: string) => {
@@ -470,6 +505,9 @@ export function LadderEditor({
 
   // Keyboard shortcuts. The palette is a fallback for discovery — this is the fast path.
   useEffect(() => {
+    // Several POU windows can be open at once, each with this listener. Only the
+    // focused one may act, or one press of C lands a contact in every section.
+    if (!focused) return;
     const onKey = (e: KeyboardEvent) => {
       // Zoom works even while the sim is running, and even from inside a field.
       if (e.ctrlKey || e.metaKey) {
@@ -528,7 +566,7 @@ export function LadderEditor({
       const k = e.key.toLowerCase();
       if (k === 'b' && selected) {
         e.preventDefault();
-        toggleVlink(selected.rung, selected.row, selected.col);
+        toggleVlink(pouId, selected.rung, selected.row, selected.col);
         return;
       }
       if (k === 'a') {
@@ -550,7 +588,9 @@ export function LadderEditor({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [
+    focused,
     editable,
+    pouId,
     selected,
     palette,
     place,
@@ -772,7 +812,7 @@ export function LadderEditor({
               evalResult={evalResults[i]}
               selected={selected?.rung === i ? { row: selected.row, col: selected.col } : null}
               onSelectCell={(row, col) => selectCell({ rung: i, row, col })}
-              onToggleVlink={(row, col) => toggleVlink(i, row, col)}
+              onToggleVlink={(row, col) => toggleVlink(pouId, i, row, col)}
               onAddRow={() => addRow(i)}
               onAddCol={() => addCol(i)}
               onMoveUp={() => moveRung(i, -1)}

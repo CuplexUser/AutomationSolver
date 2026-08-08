@@ -1,6 +1,7 @@
 import { SimEngine } from '../sim/scanCycle.js';
 import type { RungEvalResult } from '../sim/rungSolver.js';
-import type { LadderProgram } from '../ladder/types.js';
+import type { ProgramDoc } from '../ladder/types.js';
+import { assembleProject } from './project.js';
 import { getProcess, primeProcess, type MachineState } from './processes/index.js';
 import {
   describeAnalogFailure,
@@ -93,7 +94,8 @@ export interface TraceSample {
   bits: Record<string, boolean>;
   /** D-register image, so a replay can redraw the trend as well as the bits. */
   registers: Record<string, number>;
-  rungResults: RungEvalResult[];
+  /** Rung evaluation per POU, keyed by POU id. Single-POU puzzles hold one entry. */
+  rungResults: Record<string, RungEvalResult[]>;
   machine: MachineState;
 }
 
@@ -135,12 +137,15 @@ function inBound(value: number, bound: AnalogBound): boolean {
 
 function simulateScenario(
   spec: LadderPuzzleSpec,
-  program: LadderProgram,
+  program: ProgramDoc,
   scenario: Scenario,
   dt: number,
   samples: TraceSample[] | undefined,
 ): { steps: TraceStep[]; elapsedMs: number; iae: number } {
-  const engine = new SimEngine(program);
+  // The submission carries only the sections the player owns; the rest ship
+  // with the puzzle. Assembling here (rather than at the route) is what keeps
+  // the client's live run and the server's grade the same run.
+  const engine = new SimEngine(assembleProject(spec, program));
   engine.reset();
   const process = getProcess(spec.processId);
   let machine = process.init(spec.devices);
@@ -220,7 +225,7 @@ function simulateScenario(
         stepIndex,
         bits: snap.bits,
         registers: snap.registers,
-        rungResults: engine.lastRungResults,
+        rungResults: engine.lastResults,
         machine,
       });
     }
@@ -330,7 +335,7 @@ function simulateScenario(
 
 function runScenario(
   spec: LadderPuzzleSpec,
-  program: LadderProgram,
+  program: ProgramDoc,
   scenario: Scenario,
   dt: number,
 ): ScenarioResult {
@@ -348,7 +353,7 @@ function runScenario(
 
 export function gradeProgram(
   spec: LadderPuzzleSpec,
-  program: LadderProgram,
+  program: ProgramDoc,
   opts: { dt?: number } = {},
 ): GradeResult {
   const dt = opts.dt ?? GRADE_DT;
@@ -392,7 +397,7 @@ export function gradeProgram(
  */
 export function traceScenario(
   spec: LadderPuzzleSpec,
-  program: LadderProgram,
+  program: ProgramDoc,
   scenarioName: string,
   opts: { dt?: number } = {},
 ): ScenarioTrace | undefined {

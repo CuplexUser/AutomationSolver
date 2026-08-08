@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   traceScenario,
-  type LadderProgram,
   type LadderPuzzleSpec,
+  type ProgramDoc,
   type ScenarioTrace,
 } from '@automationsolver/shared';
 import { trimDevMeasures } from './devMeasures';
@@ -31,7 +31,7 @@ export interface ReplayController {
   /** Where each failing step was judged, as a 0..1 position along the scrub. */
   failureMarks: number[];
   runner: SimRunner | null;
-  start: (spec: LadderPuzzleSpec, program: LadderProgram, scenarioName: string) => void;
+  start: (spec: LadderPuzzleSpec, program: ProgramDoc, scenarioName: string) => void;
   /** Play the puzzle's shipped demonstration, if it has one. */
   startDemo: (spec: LadderPuzzleSpec) => void;
   seek: (index: number) => void;
@@ -48,7 +48,7 @@ export function useReplay(): ReplayController {
   const [demo, setDemo] = useState(false);
 
   const start = useCallback(
-    (spec: LadderPuzzleSpec, program: LadderProgram, scenarioName: string) => {
+    (spec: LadderPuzzleSpec, program: ProgramDoc, scenarioName: string) => {
       const t = traceScenario(spec, program, scenarioName);
       setTrace(t ?? null);
       setIndex(0);
@@ -137,7 +137,7 @@ export function useReplay(): ReplayController {
       // A demo's rung results belong to the program that shipped with the
       // puzzle, not to the one on screen. Highlighting the player's grid from
       // them would show power flowing through cells that are not even there.
-      evalResults: demo ? [] : sample.rungResults,
+      evalResults: demo ? {} : sample.rungResults,
       history,
       start: noop,
       stop: noop,

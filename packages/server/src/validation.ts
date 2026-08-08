@@ -57,6 +57,35 @@ export const programSchema = z.object({
   rungs: z.array(rungSchema).min(1).max(50),
 });
 
+export const pouSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().min(1).max(64),
+  rungs: z.array(rungSchema).max(50),
+  comment: z.string().max(200).optional(),
+});
+
+export const taskSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().min(1).max(64),
+  // Transport bound only. That the interval is a whole multiple of the scan is
+  // `validateProgram`'s call, in shared, so client and server apply one rule.
+  intervalMs: z.number().int().min(1).max(600000).optional(),
+  priority: z.number().int().min(0).max(64),
+  pous: z.array(z.string().min(1).max(64)).max(16),
+});
+
+/**
+ * A sectioned program: the POUs the player owns, plus their task assignment.
+ *
+ * Sections the player does not own are never trusted from the wire —
+ * `assembleProject` takes those from the spec — so this only has to be big
+ * enough for the ones they do.
+ */
+export const projectSchema = z.object({
+  pous: z.array(pouSchema).min(1).max(8),
+  tasks: z.array(taskSchema).max(8),
+});
+
 export const wireSchema = z.object({
   id: z.string().min(1).max(64),
   from: z.string().min(1).max(64),

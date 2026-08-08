@@ -27,16 +27,26 @@ export function BriefColumn({
   pending,
   user,
   runner,
+  sectionBrief,
   onReplay,
   onDemo,
 }: {
   spec: PuzzleSpec;
+  /** Fixed column width. Pass 0 in the workspace, where the sidebar sizes itself. */
   width: number;
   result: ReturnType<typeof useSubmit>['data'];
   pending: boolean;
   user: boolean;
   /** Live bits/timers/counters to light up the tables below; omitted where there's nothing running (e.g. cabinet puzzles). */
   runner?: LiveRegisterState;
+  /**
+   * The focused section's own page of the manual, on a sectioned puzzle.
+   *
+   * A plant briefing read whole is a wall of text; read one station at a time,
+   * beside that station's rungs, it is an instruction manual again. The plant
+   * overview stays above it — the interface bits only make sense together.
+   */
+  sectionBrief?: string;
   /** Omit to hide the per-scenario Replay button (cabinet puzzles, for now). */
   onReplay?: (scenarioName: string) => void;
   /** Play the puzzle's shipped demonstration. Omit where there is none. */
@@ -46,7 +56,7 @@ export function BriefColumn({
   const demo = spec.kind === 'ladder' ? spec.demo : undefined;
   const hasAnalog = spec.devices.some(isAnalog);
   return (
-    <aside className="play-brief" style={{ width }}>
+    <aside className="play-brief" style={width ? { width } : undefined}>
       <div className="brief-card panel">
         <span className="eyebrow">Work Order · {spec.difficulty}</span>
         <h2>{spec.title}</h2>
@@ -61,6 +71,13 @@ export function BriefColumn({
         <Briefing text={spec.briefing} />
         {spec.hints && spec.hints.length > 0 && <HintsPanel slug={spec.slug} hints={spec.hints} />}
       </div>
+
+      {sectionBrief && (
+        <div className="brief-card panel section-brief">
+          <span className="eyebrow">This section</span>
+          <Briefing text={sectionBrief} />
+        </div>
+      )}
 
       <div className="io-card panel">
         <span className="eyebrow">Terminal Assignment</span>

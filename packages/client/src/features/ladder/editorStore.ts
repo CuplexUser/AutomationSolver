@@ -1,25 +1,43 @@
 import { create } from 'zustand';
 import {
+  DEFAULT_POU_ID,
   emptyProgram,
+  isProject,
   makeEmptyRung,
+  toProgram,
+  toProject,
   type ElementType,
   type LadderElement,
-  type LadderProgram,
+  type LadderProject,
+  type ProgramDoc,
   type Rung,
 } from '@automationsolver/shared';
 
 export interface CellPos {
+  /** Which POU the cell is in. Single-program puzzles use `DEFAULT_POU_ID`. */
+  pou: string;
   rung: number;
   row: number;
   col: number;
 }
 
+/**
+ * The editor always holds a `LadderProject`, even for the 40-odd puzzles that
+ * are one flat rung list — those are simply a project with the single POU
+ * `main`, and `program` hands that back in the shape their save slots have
+ * always held. One internal model means the grid editor, the shortcuts and the
+ * undo-shaped actions below did not have to be written twice.
+ */
 interface EditorState {
-  program: LadderProgram;
+  project: LadderProject;
+  /** The POU that keystrokes and the toolbar act on. */
+  focusedPou: string;
   selected: CellPos | null;
   dirty: boolean;
-  init: (program: LadderProgram | null) => void;
+  /** Load either program shape. A flat one is wrapped as the single `main` POU. */
+  init: (doc: ProgramDoc | null) => void;
   markClean: () => void;
+  focusPou: (pou: string) => void;
   select: (pos: CellPos | null) => void;
   setCell: (pos: CellPos, element: LadderElement | null) => void;
   placeSelected: (
@@ -33,13 +51,13 @@ interface EditorState {
   patchSelected: (
     patch: Partial<Pick<LadderElement, 'device' | 'preset' | 'operands' | 'op' | 'pid'>>,
   ) => void;
-  toggleVlink: (rung: number, row: number, col: number) => void;
-  addRung: () => void;
-  insertRung: (index: number) => void;
-  moveRung: (index: number, direction: -1 | 1) => void;
-  removeRung: (index: number) => void;
-  addRow: (index: number) => void;
-  addCol: (index: number) => void;
+  toggleVlink: (pou: string, rung: number, row: number, col: number) => void;
+  addRung: (pou: string) => void;
+  insertRung: (pou: string, index: number) => void;
+  moveRung: (pou: string, index: number, direction: -1 | 1) => void;
+  removeRung: (pou: string, index: number) => void;
+  addRow: (pou: string, index: number) => void;
+  addCol: (pou: string, index: number) => void;
 }
 
 let rungCounter = 0;
@@ -53,22 +71,61 @@ function cloneRung(r: Rung): Rung {
   };
 }
 
-function updateRung(program: LadderProgram, index: number, fn: (r: Rung) => Rung): LadderProgram {
-  return { rungs: program.rungs.map((r, i) => (i === index ? fn(cloneRung(r)) : r)) };
+/** Replace one rung of one POU, leaving every other POU's array identity intact. */
+function updateRung(
+  project: LadderProject,
+  pouId: string,
+  index: number,
+  fn: (r: Rung) => Rung,
+): LadderProject {
+  return {
+    ...project,
+    pous: project.pous.map((pou) =>
+      pou.id === pouId
+        ? { ...pou, rungs: pou.rungs.map((r, i) => (i === index ? fn(cloneRung(r)) : r)) }
+        : pou,
+    ),
+  };
+}
+
+/** Replace one POU's whole rung list. */
+function updateRungs(
+  project: LadderProject,
+  pouId: string,
+  fn: (rungs: Rung[]) => Rung[],
+): LadderProject {
+  return {
+    ...project,
+    pous: project.pous.map((pou) => (pou.id === pouId ? { ...pou, rungs: fn(pou.rungs) } : pou)),
+  };
+}
+
+function rungsOf(project: LadderProject, pouId: string): Rung[] {
+  return project.pous.find((p) => p.id === pouId)?.rungs ?? [];
 }
 
 export const useEditor = create<EditorState>((set, get) => ({
-  program: emptyProgram(),
+  project: toProject(emptyProgram()),
+  focusedPou: DEFAULT_POU_ID,
   selected: null,
   dirty: false,
 
-  init: (program) => set({ program: program ?? emptyProgram(), selected: null, dirty: false }),
+  init: (doc) => {
+    const project = toProject(doc ?? emptyProgram());
+    set({
+      project,
+      focusedPou: project.pous[0]?.id ?? DEFAULT_POU_ID,
+      selected: null,
+      dirty: false,
+    });
+  },
   markClean: () => set({ dirty: false }),
+  focusPou: (pou) => set({ focusedPou: pou }),
   select: (pos) => set({ selected: pos }),
 
   setCell: (pos, element) =>
     set((s) => ({
-      program: updateRung(s.program, pos.rung, (r) => {
+      project: updateRung(s.project, pos.pou, pos.rung, (r) => {
         r.cells[pos.row][pos.col] = element;
         return r;
       }),
@@ -91,10 +148,10 @@ export const useEditor = create<EditorState>((set, get) => ({
     set((s) => {
       const sel = s.selected;
       if (!sel) return s;
-      const cur = s.program.rungs[sel.rung]?.cells[sel.row]?.[sel.col];
+      const cur = rungsOf(s.project, sel.pou)[sel.rung]?.cells[sel.row]?.[sel.col];
       if (!cur) return s;
       return {
-        program: updateRung(s.program, sel.rung, (r) => {
+        project: updateRung(s.project, sel.pou, sel.rung, (r) => {
           r.cells[sel.row][sel.col] = { ...r.cells[sel.row][sel.col]!, ...patch };
           return r;
         }),
@@ -102,9 +159,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       };
     }),
 
-  toggleVlink: (rung, row, col) =>
+  toggleVlink: (pou, rung, row, col) =>
     set((s) => ({
-      program: updateRung(s.program, rung, (r) => {
+      project: updateRung(s.project, pou, rung, (r) => {
         const idx = r.vlinks.findIndex((v) => v.row === row && v.col === col);
         if (idx >= 0) r.vlinks.splice(idx, 1);
         else r.vlinks.push({ row, col });
@@ -113,48 +170,57 @@ export const useEditor = create<EditorState>((set, get) => ({
       dirty: true,
     })),
 
-  addRung: () =>
+  addRung: (pou) =>
     set((s) => ({
-      program: { rungs: [...s.program.rungs, makeEmptyRung(nextRungId(), 3, 8)] },
+      project: updateRungs(s.project, pou, (rungs) => [...rungs, makeEmptyRung(nextRungId(), 3, 8)]),
       dirty: true,
     })),
 
-  insertRung: (index) =>
+  insertRung: (pou, index) =>
     set((s) => {
-      const rungs = [...s.program.rungs];
-      rungs.splice(index, 0, makeEmptyRung(nextRungId(), 3, 8));
+      const project = updateRungs(s.project, pou, (rungs) => {
+        const next = [...rungs];
+        next.splice(index, 0, makeEmptyRung(nextRungId(), 3, 8));
+        return next;
+      });
       let selected = s.selected;
-      if (selected && selected.rung >= index) selected = { ...selected, rung: selected.rung + 1 };
-      return { program: { rungs }, selected, dirty: true };
+      if (selected && selected.pou === pou && selected.rung >= index) {
+        selected = { ...selected, rung: selected.rung + 1 };
+      }
+      return { project, selected, dirty: true };
     }),
 
-  moveRung: (index, direction) =>
+  moveRung: (pou, index, direction) =>
     set((s) => {
       const target = index + direction;
-      if (target < 0 || target >= s.program.rungs.length) return s;
-      const rungs = [...s.program.rungs];
-      [rungs[index], rungs[target]] = [rungs[target], rungs[index]];
+      const count = rungsOf(s.project, pou).length;
+      if (target < 0 || target >= count) return s;
+      const project = updateRungs(s.project, pou, (rungs) => {
+        const next = [...rungs];
+        [next[index], next[target]] = [next[target], next[index]];
+        return next;
+      });
       let selected = s.selected;
-      if (selected) {
+      if (selected && selected.pou === pou) {
         if (selected.rung === index) selected = { ...selected, rung: target };
         else if (selected.rung === target) selected = { ...selected, rung: index };
       }
-      return { program: { rungs }, selected, dirty: true };
+      return { project, selected, dirty: true };
     }),
 
-  removeRung: (index) =>
+  removeRung: (pou, index) =>
     set((s) => {
-      if (s.program.rungs.length <= 1) return s;
+      if (rungsOf(s.project, pou).length <= 1) return s;
       return {
-        program: { rungs: s.program.rungs.filter((_, i) => i !== index) },
+        project: updateRungs(s.project, pou, (rungs) => rungs.filter((_, i) => i !== index)),
         selected: null,
         dirty: true,
       };
     }),
 
-  addRow: (index) =>
+  addRow: (pou, index) =>
     set((s) => ({
-      program: updateRung(s.program, index, (r) => {
+      project: updateRung(s.project, pou, index, (r) => {
         if (r.rows >= 6) return r;
         r.rows += 1;
         r.cells.push(Array.from({ length: r.cols }, () => null));
@@ -163,9 +229,9 @@ export const useEditor = create<EditorState>((set, get) => ({
       dirty: true,
     })),
 
-  addCol: (index) =>
+  addCol: (pou, index) =>
     set((s) => ({
-      program: updateRung(s.program, index, (r) => {
+      project: updateRung(s.project, pou, index, (r) => {
         if (r.cols >= 12) return r;
         r.cols += 1;
         for (const row of r.cells) row.push(null);
@@ -174,3 +240,21 @@ export const useEditor = create<EditorState>((set, get) => ({
       dirty: true,
     })),
 }));
+
+/**
+ * The document to save for this puzzle.
+ *
+ * A single-program puzzle flattens back to `{ rungs }` — the shape its slots
+ * already hold and its server schema already accepts — so nothing about the
+ * project model reaches the wire until a puzzle actually has sections.
+ */
+export function documentToSave(project: LadderProject, multiPou: boolean): ProgramDoc {
+  return multiPou ? project : toProgram(project);
+}
+
+/** The rungs of one POU, for a view that renders a single section. */
+export function pouRungs(project: LadderProject, pouId: string): Rung[] {
+  return rungsOf(project, pouId);
+}
+
+export { isProject };

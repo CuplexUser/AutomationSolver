@@ -1,14 +1,20 @@
 import type {
   GradeResult,
-  LadderProgram,
+  ProgramDoc,
   PuzzleCategory,
   PuzzleSpec,
   ValidationResult,
   WiringDoc,
 } from '@automationsolver/shared';
 
-/** A saved/submitted solution document — shape depends on the puzzle kind. */
-export type PuzzleProgram = LadderProgram | WiringDoc;
+/**
+ * A saved/submitted solution document — shape depends on the puzzle kind.
+ *
+ * Three of them now: a cabinet's wiring, a flat rung list, and a project of
+ * POUs and tasks for a puzzle written in sections. The server picks the schema
+ * off the spec, so the client only has to be able to carry all three.
+ */
+export type PuzzleProgram = ProgramDoc | WiringDoc;
 
 export class ApiError extends Error {
   status: number;

@@ -1,4 +1,4 @@
-import type { ElementType, LadderProgram } from '../ladder/types.js';
+import type { ElementType, LadderProgram, Rung, TaskDef } from '../ladder/types.js';
 import type { CabinetLayout } from '../circuit/types.js';
 
 export type Difficulty = 'tutorial' | 'easy' | 'medium' | 'hard';
@@ -292,6 +292,40 @@ export interface PuzzleDemo {
   program: LadderProgram;
 }
 
+/**
+ * One section of a multi-POU puzzle.
+ *
+ * A plant is too much program to hand over in one piece, so a puzzle can ship
+ * some sections already working and open only the ones it is teaching. That is
+ * what makes a five-POU factory a fair first puzzle rather than a wall: the
+ * first one opens the supervisor and runs the four stations for you, and each
+ * puzzle after it takes one more away.
+ */
+export interface PouSlot {
+  id: string;
+  /** Program name in the tree, e.g. `SEC2_PAINT`. */
+  name: string;
+  /** Human title for the window and the section brief, e.g. `Paint shop`. */
+  title: string;
+  /** The player writes this one. Otherwise it ships pre-written and read-only. */
+  editable: boolean;
+  /** The rungs this section ships with. Required when `editable` is false. */
+  program?: Rung[];
+  maxRungs?: number;
+  /**
+   * Device ranges this POU may write, as `M120-M139` or a bare `M16`.
+   *
+   * The device space is flat, so nothing stops section 2 latching section 3's
+   * working relay — except that on a real plant it is the bug nobody finds for a
+   * week. Declaring the ownership makes it a validation error instead, which is
+   * the whole discipline of splitting a program into sections. Omit to let a POU
+   * write anywhere.
+   */
+  owns?: string[];
+  /** This section's page of the instruction manual, in the briefing's format. */
+  brief?: string;
+}
+
 /** A classic PLC puzzle: the player writes a ladder program. */
 export interface LadderPuzzleSpec extends PuzzleSpecBase {
   kind: 'ladder';
@@ -303,6 +337,22 @@ export interface LadderPuzzleSpec extends PuzzleSpecBase {
   processId: string;
   /** A run of the machine the player can watch before starting. */
   demo?: PuzzleDemo;
+  /**
+   * The sections this puzzle is programmed in. Present = a multi-POU puzzle,
+   * which is also what selects the workspace layout on the client.
+   */
+  pous?: PouSlot[];
+  /** The task set the puzzle declares. Required alongside `pous`. */
+  tasks?: TaskDef[];
+  /**
+   * Whether the player may move POUs between tasks and reorder them.
+   *
+   * `fixed` (the default) grades the schedule the puzzle declared; `player`
+   * hands over the task configuration, which is the capstone's job — where the
+   * supervisor placed last, or an interlock parked in the slow task, is the
+   * failure the scenario is built to catch.
+   */
+  taskAssignment?: 'fixed' | 'player';
 }
 
 /** A control-cabinet puzzle: the player wires terminals of fixed components. */

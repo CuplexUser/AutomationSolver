@@ -12,6 +12,7 @@
 @import './styles/auth.css';
 @import './styles/puzzle-list.css';
 @import './styles/play.css';
+@import './styles/workspace.css';
 @import './styles/save-slots.css';
 @import './styles/replay.css';
 @import './styles/ladder-editor.css';

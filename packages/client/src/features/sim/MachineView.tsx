@@ -36,8 +36,21 @@ const signedCounts = (v: number) => `${v > 0 ? '+' : ''}${counts(v)}`;
 /**
  * Puzzle-specific machine visualization. Falls back to nothing when a puzzle has
  * no bespoke scene (the I/O widgets alone tell the story for the simple ones).
+ *
+ * `section` is the plant workspace asking for one bay rather than the whole
+ * factory. Single-machine scenes ignore it — there is nothing to zoom into.
  */
-export function MachineView({ spec, runner }: { spec: LadderPuzzleSpec; runner: SimRunner }) {
+export function MachineView({
+  spec,
+  runner,
+  section,
+}: {
+  spec: LadderPuzzleSpec;
+  runner: SimRunner;
+  /** POU id of the bay to frame, or undefined for the whole plant. */
+  section?: string;
+}) {
+  void section; // consumed by the factory scene, which lands with the plant
   if (spec.processId === 'drill') {
     const m = runner.machine;
     // Same feature detection the process model does: the readout grows with the

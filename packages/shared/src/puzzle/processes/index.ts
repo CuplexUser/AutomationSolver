@@ -6,11 +6,13 @@ import type { PuzzleDevice } from '../types.js';
 import { tank } from './tank.js';
 import { axis } from './axis.js';
 import { warehouse } from './warehouse.js';
+import { factory } from './factory.js';
 
 /** Arbitrary per-puzzle machine state (positions, speeds, flags). */
 export type MachineState = Record<string, number | boolean | string>;
 
-export { tank, axis, warehouse };
+export { tank, axis, warehouse, factory };
+export { FACTORY_LIMITS } from './factory.js';
 // The rack layout and the inbound sequence are content the machine view reads
 // to place and colour pallets, so they travel with the model.
 export {
@@ -1004,6 +1006,7 @@ const registry = new Map<string, ProcessModel>([
   [tank.id, tank],
   [axis.id, axis],
   [warehouse.id, warehouse],
+  [factory.id, factory],
   [conveyor.id, conveyor],
   [drill.id, drill],
   [press.id, press],

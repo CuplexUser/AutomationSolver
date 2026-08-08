@@ -1,5 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
-import { emptyProgram, type LadderProgram, type LadderPuzzleSpec } from '@automationsolver/shared';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  DEFAULT_POU_ID,
+  emptyProgram,
+  toProgram,
+  type LadderProgram,
+  type LadderPuzzleSpec,
+} from '@automationsolver/shared';
 import { useCreateSlot, useSubmit, useUpdateSlot } from '../../api/queries';
 import type { useAuth } from '../../auth/AuthContext';
 import { useEditor } from '../../features/ladder/editorStore';
@@ -25,7 +31,11 @@ export type PlayProps<S> = {
 };
 
 export function LadderPlay({ spec, user, submit, previousPuzzle }: PlayProps<LadderPuzzleSpec>) {
-  const { program, init, dirty, markClean } = useEditor();
+  const { project, init, dirty, markClean } = useEditor();
+  // This page only ever shows single-program puzzles (a sectioned one routes to
+  // the workspace), so the document it saves and submits is the flat rung list
+  // its slots have always held.
+  const program = useMemo(() => toProgram(project), [project]);
   const activeSlot = useActiveSlot(spec);
   const updateSlot = useUpdateSlot(spec.slug);
   const createSlot = useCreateSlot(spec.slug);
@@ -190,7 +200,7 @@ export function LadderPlay({ spec, user, submit, previousPuzzle }: PlayProps<Lad
           allowedInstructions={spec.allowedInstructions}
           devices={spec.devices}
           registers={spec.registers}
-          evalResults={activeRunner.evalResults}
+          evalResults={activeRunner.evalResults[DEFAULT_POU_ID] ?? []}
           running={activeRunner.running}
         />
 

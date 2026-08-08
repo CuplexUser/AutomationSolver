@@ -9,11 +9,21 @@ import {
   type CompareOp,
   type ElementType,
   type LadderElement,
-  type LadderProgram,
+  type LadderProject,
   type MathOp,
+  type Pou,
+  type ProgramDoc,
 } from '../ladder/types.js';
 import { isValueOperand } from '../ladder/value.js';
-import type { LadderPuzzleSpec } from './types.js';
+import { GRADE_DT } from './grade.js';
+import {
+  assembleProject,
+  formatDeviceRange,
+  inDeviceRanges,
+  isMultiPou,
+  parseDeviceRanges,
+} from './project.js';
+import type { LadderPuzzleSpec, PouSlot } from './types.js';
 
 export interface ValidationResult {
   valid: boolean;
@@ -118,50 +128,147 @@ const LAST_WRITER_WINS = new Set<ElementType>(['coil-out', 'timer', 'counter', '
 /**
  * Classic "double coil" check. A device is counted once per rung however many
  * cells reference it, so this only reports the cross-rung case.
+ *
+ * Run across the whole project rather than one rung list: two *sections* driving
+ * one coil is the same last-writer-wins bug, and on a plant split into POUs it
+ * is the easiest one in the game to write by accident — which is why the message
+ * names the section as well as the rung once there is more than one.
  */
-function duplicateOutputWarnings(program: LadderProgram): string[] {
-  const rungsByDevice = new Map<string, number[]>();
-  program.rungs.forEach((rung, ri) => {
-    const seen = new Set<string>();
-    for (const row of rung.cells) {
-      for (const el of row) {
-        // A block placed but not yet addressed isn't a double coil; the
-        // per-element check already asks it for an address.
-        if (!el || !el.device || !LAST_WRITER_WINS.has(el.type) || seen.has(el.device)) continue;
-        seen.add(el.device);
-        const rungs = rungsByDevice.get(el.device);
-        if (rungs) rungs.push(ri + 1);
-        else rungsByDevice.set(el.device, [ri + 1]);
+function duplicateOutputWarnings(project: LadderProject, multi: boolean): string[] {
+  const sitesByDevice = new Map<string, string[]>();
+  for (const pou of project.pous) {
+    pou.rungs.forEach((rung, ri) => {
+      const seen = new Set<string>();
+      for (const row of rung.cells) {
+        for (const el of row) {
+          // A block placed but not yet addressed isn't a double coil; the
+          // per-element check already asks it for an address.
+          if (!el || !el.device || !LAST_WRITER_WINS.has(el.type) || seen.has(el.device)) continue;
+          seen.add(el.device);
+          const site = multi ? `${pou.name} rung ${ri + 1}` : `${ri + 1}`;
+          const sites = sitesByDevice.get(el.device);
+          if (sites) sites.push(site);
+          else sitesByDevice.set(el.device, [site]);
+        }
       }
-    }
-  });
+    });
+  }
 
   const warnings: string[] = [];
-  for (const [device, rungs] of rungsByDevice) {
-    if (rungs.length < 2) continue;
+  for (const [device, sites] of sitesByDevice) {
+    if (sites.length < 2) continue;
     warnings.push(
-      `${device} is driven from rungs ${rungs.join(', ')} — only the last one takes effect each ` +
-        `scan. Merge them into one rung (parallel rows joined by vertical links), or use SET/RST.`,
+      `${device} is driven from ${multi ? '' : 'rungs '}${sites.join(', ')} — only the last one ` +
+        `takes effect each scan. Merge them into one rung (parallel rows joined by vertical ` +
+        `links), or use SET/RST.`,
     );
   }
   return warnings;
 }
 
-export function validateProgram(spec: LadderPuzzleSpec, program: LadderProgram): ValidationResult {
-  const errors: string[] = [];
-  const allowed = new Set<ElementType>(spec.allowedInstructions);
-  allowed.add('hwire'); // wires are always permitted
+/**
+ * Every device an editable section writes must be one it owns.
+ *
+ * The device space is flat, so this is the only thing standing between a
+ * sectioned program and section 3 quietly latching section 2's step relay. The
+ * interface bits a section publishes are part of what it owns; everything it
+ * only *reads* — its neighbours' handshakes, the plant run bit — is not, and
+ * that asymmetry is the point.
+ */
+function checkWriteScope(pou: Pou, slot: PouSlot, errors: string[]): void {
+  if (!slot.owns || slot.owns.length === 0) return;
+  const ranges = parseDeviceRanges(slot.owns);
+  if (ranges.length === 0) return;
+  const reported = new Set<string>();
 
-  if (spec.maxRungs != null && program.rungs.length > spec.maxRungs) {
-    errors.push(`Program uses ${program.rungs.length} rungs but the limit is ${spec.maxRungs}`);
+  pou.rungs.forEach((rung, ri) => {
+    rung.cells.forEach((row, r) => {
+      row.forEach((el, c) => {
+        if (!el || !isOutput(el.type) || !el.device || reported.has(el.device)) return;
+        if (inDeviceRanges(el.device, ranges)) return;
+        reported.add(el.device);
+        errors.push(
+          `${slot.name} rung ${ri + 1} @ r${r}c${c}: ${slot.name} may not write ${el.device}. ` +
+            `It owns ${ranges.map(formatDeviceRange).join(', ')} — read another section's ` +
+            `devices, but let that section drive them.`,
+        );
+      });
+    });
+  });
+}
+
+/**
+ * The task set: does every task call POUs that exist, is every POU called, and
+ * does every interval land on the scan grid?
+ *
+ * That last one is not pedantry. A period that is not a whole number of scans
+ * fires on whichever scan the accumulated remainder happens to cross it, and
+ * client and server would have to agree about a rounding to agree about the run.
+ */
+function checkTasks(project: LadderProject, errors: string[], warnings: string[]): void {
+  const known = new Set(project.pous.map((p) => p.id));
+  const nameOf = new Map(project.pous.map((p) => [p.id, p.name]));
+  const called = new Map<string, string[]>();
+
+  for (const task of project.tasks) {
+    if (task.intervalMs !== undefined) {
+      if (!Number.isInteger(task.intervalMs) || task.intervalMs <= 0) {
+        errors.push(`Task ${task.name}: interval must be a whole number of milliseconds`);
+      } else if (task.intervalMs % GRADE_DT !== 0) {
+        errors.push(
+          `Task ${task.name}: a ${task.intervalMs} ms interval does not land on the ${GRADE_DT} ms ` +
+            `scan. Use a multiple of ${GRADE_DT}.`,
+        );
+      }
+    }
+    for (const pouId of task.pous) {
+      if (!known.has(pouId)) {
+        errors.push(`Task ${task.name} calls ${pouId}, which is not a program in this project`);
+        continue;
+      }
+      const tasks = called.get(pouId);
+      if (tasks) tasks.push(task.name);
+      else called.set(pouId, [task.name]);
+    }
   }
 
-  program.rungs.forEach((rung, ri) => {
+  for (const [pouId, tasks] of called) {
+    if (tasks.length > 1) {
+      errors.push(
+        `${nameOf.get(pouId) ?? pouId} is called from ${tasks.join(' and ')} — a program runs in ` +
+          `one task, or its timers advance twice a scan.`,
+      );
+    }
+  }
+  for (const pou of project.pous) {
+    if (!called.has(pou.id)) {
+      warnings.push(`${pou.name} is not called from any task, so none of its rungs ever run.`);
+    }
+  }
+}
+
+/** One POU's rungs, held to the instruction allow-list, addressing and presets. */
+function checkPou(
+  pou: Pou,
+  allowed: ReadonlySet<ElementType>,
+  prefix: string,
+  maxRungs: number | undefined,
+  errors: string[],
+): void {
+  if (maxRungs != null && pou.rungs.length > maxRungs) {
+    errors.push(
+      prefix === ''
+        ? `Program uses ${pou.rungs.length} rungs but the limit is ${maxRungs}`
+        : `${pou.name} uses ${pou.rungs.length} rungs but the limit is ${maxRungs}`,
+    );
+  }
+
+  pou.rungs.forEach((rung, ri) => {
     let hasOutput = false;
     rung.cells.forEach((row, r) => {
       row.forEach((el, c) => {
         if (!el) return;
-        const where = `rung ${ri + 1} @ r${r}c${c}`;
+        const where = `${prefix}rung ${ri + 1} @ r${r}c${c}`;
         if (!isConducting(el.type) && !isOutput(el.type)) {
           errors.push(`${where}: unknown element type`);
           return;
@@ -173,12 +280,50 @@ export function validateProgram(spec: LadderPuzzleSpec, program: LadderProgram):
         checkElement(el, where, errors);
       });
     });
-    if (!hasOutput) errors.push(`rung ${ri + 1} has no output/coil`);
+    if (!hasOutput) errors.push(`${prefix}rung ${ri + 1} has no output/coil`);
   });
+}
 
-  return {
-    valid: errors.length === 0,
-    errors,
-    warnings: duplicateOutputWarnings(program),
-  };
+/**
+ * Structural check, ahead of grading: instructions the puzzle allows, addresses
+ * the elements can legally act on, presets, word-operand shape, and — once a
+ * puzzle is written in sections — the task set and each section's device
+ * ownership.
+ *
+ * Takes either program shape. A flat rung list is wrapped as the single POU
+ * `main`, and reports against it read exactly as they always have (`rung 3 @
+ * r1c2`, no section prefix) — the messages are player-facing, and a puzzle with
+ * one program should not start talking about which one.
+ */
+export function validateProgram(spec: LadderPuzzleSpec, doc: ProgramDoc): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const allowed = new Set<ElementType>(spec.allowedInstructions);
+  allowed.add('hwire'); // wires are always permitted
+
+  const multi = isMultiPou(spec);
+  const project = assembleProject(spec, doc);
+  const slotById = new Map((spec.pous ?? []).map((slot) => [slot.id, slot]));
+
+  for (const pou of project.pous) {
+    const slot = slotById.get(pou.id);
+    // A section the puzzle ships pre-written is a fixture, not an answer: hold
+    // it to the same structural rules (an authoring bug should surface), but
+    // only an editable one can break the ownership rule, since it is the only
+    // one the player can have written.
+    checkPou(
+      pou,
+      allowed,
+      multi ? `${pou.name} ` : '',
+      slot?.maxRungs ?? (multi ? undefined : spec.maxRungs),
+      errors,
+    );
+    if (slot?.editable) checkWriteScope(pou, slot, errors);
+  }
+
+  if (multi) checkTasks(project, errors, warnings);
+
+  warnings.push(...duplicateOutputWarnings(project, multi));
+
+  return { valid: errors.length === 0, errors, warnings };
 }

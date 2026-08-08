@@ -214,6 +214,111 @@ export interface LadderProgram {
   rungs: Rung[];
 }
 
+/**
+ * A program organization unit: one named, independently editable list of rungs.
+ *
+ * A station fits in one flat rung list; a plant does not. Splitting it into POUs
+ * is how a real line is written — one per section, each owning its own devices
+ * and talking to its neighbours through a documented handful of interface bits.
+ * The device space stays flat (Mitsubishi-style, every M and D global), so the
+ * separation is a discipline the validator enforces rather than a scope the
+ * language provides. That is deliberate: the handshake between two sections is
+ * the thing worth teaching, and it only exists if both can see it.
+ */
+export interface Pou {
+  id: string;
+  /** Program name as it appears in the tree, e.g. `SEC2_PRESS`. */
+  name: string;
+  rungs: Rung[];
+  comment?: string;
+}
+
+/**
+ * A task: which POUs run, in what order, and how often.
+ *
+ * Two things a flat program cannot express, and both are content:
+ * *order* (a supervisor that runs after its sections acts on last scan's state)
+ * and *rate* (an interlock on a 200 ms task reacts up to 200 ms late, which on a
+ * press is a part in the die when the ram comes down).
+ */
+export interface TaskDef {
+  id: string;
+  /** Display name, e.g. `MAIN` or `SLOW`. */
+  name: string;
+  /**
+   * Run every `intervalMs`; omit to run on every scan.
+   *
+   * Must be a positive integer multiple of the grading dt. Anything else would
+   * make the task fire on a scan boundary that depends on floating-point
+   * accumulation, and client and server would stop agreeing about which scan.
+   * `validateProject` holds authored and submitted task sets to it.
+   */
+  intervalMs?: number;
+  /** Lower runs first among the tasks due on the same scan. */
+  priority: number;
+  /** POU ids, in call order. */
+  pous: string[];
+}
+
+/** A multi-POU program: the POUs themselves plus the tasks that call them. */
+export interface LadderProject {
+  pous: Pou[];
+  tasks: TaskDef[];
+}
+
+/**
+ * Either program shape.
+ *
+ * `LadderProgram` is left exactly as it was rather than folded into the project
+ * type, because 40-odd shipped puzzles, every saved solution slot in the
+ * database and the landing page's demo are all written against it. `toProject`
+ * is the one boundary where the old shape becomes the new one.
+ */
+export type ProgramDoc = LadderProgram | LadderProject;
+
+/** Id of the single POU a flat program is wrapped into. */
+export const DEFAULT_POU_ID = 'main';
+/** Id of the single every-scan task a flat program is wrapped into. */
+export const DEFAULT_TASK_ID = 'main';
+
+export function isProject(doc: ProgramDoc): doc is LadderProject {
+  return Array.isArray((doc as LadderProject).pous);
+}
+
+/**
+ * Normalize either shape to a project.
+ *
+ * A flat rung list becomes one POU under one every-scan task, which is what the
+ * engine has always done implicitly — so a single-POU project scans identically
+ * to the program it came from, scan for scan and bit for bit.
+ */
+export function toProject(doc: ProgramDoc): LadderProject {
+  if (isProject(doc)) return doc;
+  return {
+    pous: [{ id: DEFAULT_POU_ID, name: 'MAIN', rungs: doc.rungs }],
+    tasks: [{ id: DEFAULT_TASK_ID, name: 'MAIN', priority: 0, pous: [DEFAULT_POU_ID] }],
+  };
+}
+
+/**
+ * Flatten a project back to a plain program, when it holds exactly one POU.
+ *
+ * The inverse of `toProject` for the single-POU case, so an ordinary puzzle's
+ * editor can work in project terms internally and still save the shape its
+ * slots have always held.
+ */
+export function toProgram(project: LadderProject): LadderProgram {
+  return { rungs: project.pous[0]?.rungs ?? [] };
+}
+
+/** Tasks in the order a scan runs them: by priority, ties by declaration order. */
+export function tasksInScanOrder(project: LadderProject): TaskDef[] {
+  return project.tasks
+    .map((task, i) => ({ task, i }))
+    .sort((a, b) => a.task.priority - b.task.priority || a.i - b.i)
+    .map(({ task }) => task);
+}
+
 /** Convenience: an empty rung of the given size. */
 export function makeEmptyRung(id: string, rows = 3, cols = 8): Rung {
   const cells: (LadderElement | null)[][] = Array.from({ length: rows }, () =>
