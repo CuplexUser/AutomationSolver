@@ -1,4 +1,4 @@
-import type { ElementType, LadderProgram, Rung, TaskDef } from '../ladder/types.js';
+import type { ElementType, ProgramDoc, Rung, TaskDef } from '../ladder/types.js';
 import type { CabinetLayout } from '../circuit/types.js';
 
 export type Difficulty = 'tutorial' | 'easy' | 'medium' | 'hard';
@@ -357,8 +357,24 @@ export interface PuzzleDemo {
   scenario: string;
   /** One line saying what is about to be shown. */
   caption: string;
-  /** The program that drives it. Graded alongside the canonical solutions. */
-  program: LadderProgram;
+  /**
+   * The program that drives it. Graded alongside the canonical solutions.
+   *
+   * A `ProgramDoc`, not a rung list, because a sectioned puzzle's demo has to
+   * name the section it is filling in: `assembleProject` takes every other
+   * section from the spec, so a bare rung list would run the plant with its
+   * supervisor blank.
+   */
+  program: ProgramDoc;
+  /**
+   * Play it end to end, over and over, until the player closes it.
+   *
+   * For a plant rather than a machine. One pass of a station is a thing you
+   * watch; a line is a thing you study, and having to press play again every
+   * time the last machine reaches the yard is exactly the interruption that
+   * stops it being studied.
+   */
+  loop?: boolean;
 }
 
 /**

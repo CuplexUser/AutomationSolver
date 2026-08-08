@@ -64,7 +64,9 @@ export function BriefColumn({
             know what the machine is before reading three screens about it. */}
         {demo && onDemo && (
           <button className="btn btn-ghost demo-watch" onClick={onDemo}>
-            ▶ Watch the machine run
+            {/* A looping demo is a line rather than a machine, and it runs until
+                the player stops it — say so on the button they press. */}
+            {demo.loop ? '▶ Watch the plant run' : '▶ Watch the machine run'}
             <span className="demo-caption">{demo.caption}</span>
           </button>
         )}

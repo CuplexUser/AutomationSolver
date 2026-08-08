@@ -304,6 +304,35 @@
   color: var(--live);
 }
 
+/* --- a running demonstration --- */
+.demo-strip {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  flex: 0 0 auto;
+  border-color: color-mix(in srgb, var(--live) 45%, var(--edge));
+}
+.demo-live {
+  color: var(--live);
+  white-space: nowrap;
+}
+.demo-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.demo-lines p {
+  margin: 0;
+}
+.demo-clock {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 /* --- floating windows --- */
 .float-win {
   position: fixed;

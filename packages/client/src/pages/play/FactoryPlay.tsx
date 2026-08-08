@@ -14,7 +14,7 @@ import { useEditor } from '../../features/ladder/editorStore';
 import { HmiPanel } from '../../features/sim/HmiPanel';
 import { MachineView } from '../../features/sim/MachineView';
 import { ReplayBar } from '../../features/sim/ReplayBar';
-import { useReplay } from '../../features/sim/useReplay';
+import { useReplay, type ReplayController } from '../../features/sim/useReplay';
 import { useSimRunner } from '../../features/sim/useSimRunner';
 import { useActiveSlot } from '../../features/slots/useActiveSlot';
 import { cascadeBox, FloatingWindow } from '../../features/workspace/FloatingWindow';
@@ -150,29 +150,51 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
           <SectionSwitcher slots={slots} active={section} onPick={setSection} />
           {/* The same two commands the operator panel carries, on the same
               runner — the plant is watchable with every window closed, so
-              starting it must not require opening one. */}
-          <div className="ws-run" role="group" aria-label="Simulation">
-            <button
-              className={`run-btn${activeRunner.running ? ' on' : ''}`}
-              onClick={activeRunner.start}
-              disabled={activeRunner.running}
-              title="Run the simulation"
-              aria-label="Run the simulation"
-            >
-              ▶
-            </button>
-            <button
-              className="run-btn stop"
-              onClick={activeRunner.stop}
-              disabled={!activeRunner.running}
-              title="Stop the simulation"
-              aria-label="Stop the simulation"
-            >
-              ■
-            </button>
-          </div>
+              starting it must not require opening one. A demonstration owns the
+              machine while it plays, so the only command left is to end it. */}
+          {replay.demo ? (
+            <div className="ws-run">
+              <button
+                className="run-btn stop"
+                onClick={replay.close}
+                title="End the demonstration and take the plant back"
+                aria-label="End the demonstration"
+              >
+                ■
+              </button>
+            </div>
+          ) : (
+            <div className="ws-run" role="group" aria-label="Simulation">
+              <button
+                className={`run-btn${activeRunner.running ? ' on' : ''}`}
+                onClick={activeRunner.start}
+                disabled={activeRunner.running}
+                title="Run the simulation"
+                aria-label="Run the simulation"
+              >
+                ▶
+              </button>
+              <button
+                className="run-btn stop"
+                onClick={activeRunner.stop}
+                disabled={!activeRunner.running}
+                title="Stop the simulation"
+                aria-label="Stop the simulation"
+              >
+                ■
+              </button>
+            </div>
+          )}
         </div>
-        <ReplayBar replay={replay} demoCaption={spec.demo?.caption} />
+        {/* A looping demonstration gets a caption, not a transport. There is
+            nothing to scrub to and nothing to pause for: it is the plant
+            running, and the point is to watch it long enough to see the shape
+            of a cycle. Graded replays keep the full bar. */}
+        {replay.demo && replay.looping ? (
+          <DemoStrip replay={replay} caption={spec.demo?.caption} />
+        ) : (
+          <ReplayBar replay={replay} demoCaption={spec.demo?.caption} />
+        )}
         <div className="ws-machine">
           <MachineView spec={spec} runner={activeRunner} section={section ?? undefined} />
         </div>
@@ -257,6 +279,29 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
           }}
         />
       </PinnableSidebar>
+    </div>
+  );
+}
+
+/**
+ * A running demonstration, announced but not driveable.
+ *
+ * One line saying what is on screen and one saying which part of the cycle the
+ * plant is in — no scrub, no pause. The player is studying a line, and a
+ * transport bar under it is an invitation to poke at the playhead instead.
+ */
+function DemoStrip({ replay, caption }: { replay: ReplayController; caption?: string }) {
+  const { trace, index, currentStep } = replay;
+  if (!trace) return null;
+  const tMs = trace.samples[index]?.tMs ?? 0;
+  return (
+    <div className="demo-strip panel">
+      <span className="eyebrow demo-live">● Demonstration</span>
+      <div className="demo-lines">
+        {caption && <p className="sm">{caption}</p>}
+        {currentStep && <p className="muted sm">{currentStep.label}</p>}
+      </div>
+      <span className="demo-clock mono">{(tMs / 1000).toFixed(0)}s</span>
     </div>
   );
 }

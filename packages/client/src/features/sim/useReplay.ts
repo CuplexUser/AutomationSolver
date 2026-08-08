@@ -9,6 +9,15 @@ import { trimDevMeasures } from './devMeasures';
 import type { SimRunner } from './useSimRunner';
 
 const PLAY_INTERVAL_MS = 80;
+/**
+ * A looping demo plays at the trace's own cadence.
+ *
+ * Samples are one `GRADE_DT` apart, so one every 50 ms is the plant running at
+ * the speed it really runs at — which is the whole point of watching it. The
+ * slower default above is for picking a failure apart, where real time is a
+ * hindrance.
+ */
+const LOOP_INTERVAL_MS = 50;
 
 const noop = () => {
   // replay is driven by the controller below, not by SimRunner controls
@@ -26,6 +35,8 @@ export interface ReplayController {
    * rungs on screen are the player's, and the ones driving the machine are not.
    */
   demo: boolean;
+  /** This demo restarts at the end rather than stopping (`PuzzleDemo.loop`). */
+  looping: boolean;
   /** The step the playhead is inside, so the bar can show why it failed. */
   currentStep: ScenarioTrace['steps'][number] | undefined;
   /** Where each failing step was judged, as a 0..1 position along the scrub. */
@@ -46,6 +57,7 @@ export function useReplay(): ReplayController {
   const [index, setIndex] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [demo, setDemo] = useState(false);
+  const [looping, setLooping] = useState(false);
 
   const start = useCallback(
     (spec: LadderPuzzleSpec, program: ProgramDoc, scenarioName: string) => {
@@ -54,6 +66,7 @@ export function useReplay(): ReplayController {
       setIndex(0);
       setPlaying(false);
       setDemo(false);
+      setLooping(false);
     },
     [],
   );
@@ -66,6 +79,7 @@ export function useReplay(): ReplayController {
     setTrace(t ?? null);
     setIndex(0);
     setDemo(true);
+    setLooping(spec.demo.loop === true);
     setPlaying(t !== undefined);
   }, []);
 
@@ -98,27 +112,30 @@ export function useReplay(): ReplayController {
     setIndex(0);
     setPlaying(false);
     setDemo(false);
+    setLooping(false);
   }, []);
 
-  // Auto-advance while playing; stop at the end of the trace.
+  // Auto-advance while playing. A looping demo starts over at the end; anything
+  // else stops there.
   useEffect(() => {
     if (!playing || !trace) return;
     const total = trace.samples.length;
     const id = setInterval(() => {
       setIndex((i) => {
         if (i >= total - 1) {
+          if (looping) return 0;
           setPlaying(false);
           return i;
         }
         return i + 1;
       });
-    }, PLAY_INTERVAL_MS);
+    }, looping ? LOOP_INTERVAL_MS : PLAY_INTERVAL_MS);
     const stopTrim = trimDevMeasures();
     return () => {
       clearInterval(id);
       stopTrim();
     };
-  }, [playing, trace]);
+  }, [playing, trace, looping]);
 
   const history = useMemo(
     () => trace?.samples.map((s) => ({ tMs: s.tMs, bits: s.bits, registers: s.registers })) ?? [],
@@ -168,6 +185,7 @@ export function useReplay(): ReplayController {
     index,
     playing,
     demo,
+    looping,
     currentStep,
     failureMarks,
     runner,

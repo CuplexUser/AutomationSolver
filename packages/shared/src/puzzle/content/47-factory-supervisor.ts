@@ -1,4 +1,4 @@
-import type { CompareOp, LadderElement, Rung, VLink } from '../../ladder/types.js';
+import type { CompareOp, LadderElement, LadderProject, Rung, VLink } from '../../ladder/types.js';
 import type { AnalogRange, PuzzleDevice, PuzzleSpec } from '../types.js';
 
 /**
@@ -320,6 +320,54 @@ export const TEST_PROGRAM: Rung[] = [
   rung('t-dispatch', [[no('M0'), no('X18'), no('X17'), out('Y18')]]),
 ];
 
+// --- The demonstration -------------------------------------------------------------
+
+/**
+ * A commissioned supervisor, so the plant can be watched before it is written.
+ *
+ * This is the answer, and it is shown *running* rather than as rungs: the demo
+ * plays through the same replay machinery a graded submission does, with the
+ * machine, the panel and the readouts live and the ladder windows deliberately
+ * dark. What the player takes from it is what a working plant looks like — which
+ * station feeds which, how long a cycle is, what the buffers do between them —
+ * and none of that is in the three rungs below.
+ *
+ * A project rather than a rung list because `assembleProject` fills the other
+ * four sections from the spec and needs to know which one this is.
+ */
+const SUPERVISOR_DEMO: LadderProject = {
+  pous: [
+    {
+      id: 'SUP',
+      name: 'SUPERVISOR',
+      rungs: [
+        // Start, sealed in around M0, broken by stop, e-stop or leaving auto.
+        // X1 and X2 are normally closed field devices, so both take NO contacts.
+        rung(
+          'demo-sup-run',
+          [
+            [no('X0'), no('X1'), no('X2'), no('X3'), out('M0')],
+            [no('M0')],
+          ],
+          [{ row: 0, col: 1 }],
+        ),
+        rung('demo-sup-lamp', [[no('M0'), out('Y0')]]),
+        // Three ways the line backs up, ORed into the one amber lamp. X17 is on
+        // while there IS yard space, so it is the one that inverts.
+        rung(
+          'demo-sup-held',
+          [[no('X8'), out('Y1')], [no('X11')], [nc('X17')]],
+          [
+            { row: 0, col: 1 },
+            { row: 1, col: 1 },
+          ],
+        ),
+      ],
+    },
+  ],
+  tasks: [],
+};
+
 // --- The puzzle ------------------------------------------------------------------------
 
 export const factorySupervisor: PuzzleSpec = {
@@ -441,6 +489,14 @@ export const factorySupervisor: PuzzleSpec = {
     'mov',
   ],
   processId: 'factory',
+  // Looped, and it runs until a machine is standing in the yard: this is a line,
+  // not a station, and the thing worth watching is the whole cycle repeating.
+  demo: {
+    scenario: 'One machine off the line',
+    caption: 'A commissioned plant, running a complete excavator off the line and round again.',
+    program: SUPERVISOR_DEMO,
+    loop: true,
+  },
   pous: [
     {
       id: 'SUP',

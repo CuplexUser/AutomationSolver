@@ -752,6 +752,12 @@ a plant does not, so here the machine **is** the page.
   and the one thing a player reaches for mid-run, so it is the only item with a filled face and
   a lit on-state; "clear the desk" is housekeeping and recedes; Save and Submit sit under a
   hairline as the pair that commits work. Each carries a drawn icon.
+- **The demonstration loops, and has no transport** (`DemoStrip`). A station's demo is a thing
+  you watch once; a line is a thing you study, so `factory-supervisor` ships `demo.loop` and the
+  plant runs a complete excavator off the line — weld, paint, marry up, test, yard — in 36.5 s
+  and starts again, at the trace's own 50 ms cadence so it moves at the speed it really moves.
+  In place of the scrub bar there is a caption and the step the cycle is in; the only command on
+  screen is the one that ends it. Graded replays keep the full `ReplayBar`.
 - The section chips only offer bays the scene can frame. The supervisor POU's "bay" is the
   whole floor, so its chip did precisely what "Whole plant" does — two buttons for one view,
   which reads as one of them being broken.
