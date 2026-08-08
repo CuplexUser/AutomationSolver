@@ -33,14 +33,20 @@ export function editableSlots(spec: LadderPuzzleSpec): PouSlot[] {
 /**
  * The project a fresh multi-POU puzzle opens with: every section present, the
  * provided ones filled in and the editable ones an empty rung apiece.
+ *
+ * Unless an editable section ships a `program` of its own, in which case that is
+ * where the player starts. A capstone that hands over a whole plant cannot ask
+ * for five programs from a blank page — and does not want to: the interesting
+ * question there is not "can you write a line" but "here is a line that works,
+ * now make it earn more", and the answer to that begins by reading the code
+ * somebody else left you. `assembleProject` still takes an editable section from
+ * the submission, so a player who changes nothing submits exactly this.
  */
 export function initialProject(spec: LadderPuzzleSpec): LadderProject {
   const pous: Pou[] = (spec.pous ?? []).map((slot) => ({
     id: slot.id,
     name: slot.name,
-    rungs: slot.editable
-      ? [makeEmptyRung(`${slot.id}-r1`)]
-      : (slot.program ?? [makeEmptyRung(`${slot.id}-r1`)]),
+    rungs: slot.program ?? [makeEmptyRung(`${slot.id}-r1`)],
   }));
   return { pous, tasks: (spec.tasks ?? []).map((task) => ({ ...task })) };
 }

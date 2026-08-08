@@ -298,6 +298,21 @@ export interface Scenario {
   description?: string;
   /** Initial X input overrides before step 0 (on top of NC rest defaults). */
   initialInputs?: Record<string, boolean>;
+  /**
+   * Machine-state overrides merged over the process model's own `init`.
+   *
+   * The plant does not start every shift empty, and a puzzle about one station
+   * of five cannot afford to spend forty seconds filling the four upstream of it
+   * before the station under test has anything to do. This starts the run where
+   * the lesson is: a paint shop with parts already on the rail, a dispatch bay
+   * with machines already in the yard.
+   *
+   * Deliberately a blunt merge rather than a scripted history — it seeds a
+   * plausible standing state, and everything after the first scan is the model's
+   * own doing. Keep it to counters and buffers; half-completing an actuator
+   * describes a machine that could not have got there.
+   */
+  initialMachine?: Record<string, string | number | boolean>;
   steps: ScenarioStep[];
   /**
    * Simulated ms a well-paced program takes to run this scenario end to end.
@@ -394,7 +409,14 @@ export interface PouSlot {
   title: string;
   /** The player writes this one. Otherwise it ships pre-written and read-only. */
   editable: boolean;
-  /** The rungs this section ships with. Required when `editable` is false. */
+  /**
+   * The rungs this section ships with.
+   *
+   * Required when `editable` is false, where it is the fixture the player is
+   * graded against. On an *editable* section it is a starting point instead —
+   * the capstone's "here is a line that works, make it earn more" — and the
+   * player may rewrite every rung of it.
+   */
   program?: Rung[];
   maxRungs?: number;
   /**

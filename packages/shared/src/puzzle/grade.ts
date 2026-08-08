@@ -148,7 +148,7 @@ function simulateScenario(
   const engine = new SimEngine(assembleProject(spec, program));
   engine.reset();
   const process = getProcess(spec.processId);
-  let machine = process.init(spec.devices);
+  let machine: MachineState = { ...process.init(spec.devices), ...scenario.initialMachine };
   const outDevs = outputDevices(spec);
   const analogDevs = analogDevices(spec);
 

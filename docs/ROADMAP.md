@@ -5,7 +5,7 @@ and leaves the codebase healthy — no phase depends on a later one to make sens
 ordered so that the risky, load-bearing work (the engine) stays ahead of the work that depends
 on it (content, then UI, then new puzzle families).
 
-See [FEATURE-MAP.md](./FEATURE-MAP.md) for what already exists.
+See [FEATURE-MAP.md](./FEATURE-MAP.md) for what already exists, and [FACTORY.md](./FACTORY.md) for the excavator plant, which is deep enough to have its own document.
 
 ---
 
@@ -373,9 +373,12 @@ Two bugs the fixtures found, both worth keeping in mind when writing any station
   the timer rungs ever see it low, so the second machine inherited three finished timers and the
   jig pinned a boom onto an empty fixture. Reset step timers explicitly.
 
-Still to come in this category: four more puzzles, each opening one more station, and a capstone
-that grades throughput, injects a fault mid-run and hands over `taskAssignment: 'player'` so the
-supervisor's placement in MAIN and what gets parked in the slow task become the player's problem.
+Still to come in this category: four more puzzles, each opening one more area, and a capstone
+graded on throughput. That work has since grown its own plant — a rack store, a portal robot,
+multi-pass welding and a four-drum booth, in a second process model (`factory-line`) that leaves
+the commissioning puzzle's plant untouched. It is detailed enough to have its own document:
+**[FACTORY.md](./FACTORY.md)** carries the vision, the station-by-station design, the plan for
+puzzles 48-52 and the current state of play. Read that rather than this section.
 
 ## Next: the rest of the analog plan
 

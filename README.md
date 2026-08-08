@@ -148,7 +148,7 @@ packages/
             process models, validator, grader  (no runtime deps)
   server/   Express + Passport, node:sqlite data layer, submit + grading API
   client/   Vite React SPA: ladder editor, cabinet editor, live sim, 3D machines
-docs/       FEATURE-MAP.md (what exists), ROADMAP.md (what's next)
+docs/       FEATURE-MAP.md (what exists), ROADMAP.md (what's next), FACTORY.md (the plant)
 site/       the GitHub Pages landing page: a small Vite app whose playable
             rung imports the shared engine, built by `npm run build:pages`
 ```
@@ -179,6 +179,7 @@ Write the briefing as an instruction manual rather than prose: a short lead para
 
 - [`docs/FEATURE-MAP.md`](docs/FEATURE-MAP.md) — where every capability lives and why it is built that way
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — the phased plan for what comes next
+- [`docs/FACTORY.md`](docs/FACTORY.md) — the excavator plant: its vision, its two process models, and where the category stands
 
 ## License
 
