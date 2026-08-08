@@ -579,6 +579,21 @@ function sensors(m: MachineState): Record<string, boolean> {
   };
 }
 
+/**
+ * POU ids the factory puzzles give their four station programs.
+ *
+ * These are a contract, not a naming convention: the plant view frames a bay by
+ * the id of the section the player has selected, so a puzzle that renamed one
+ * would silently lose its camera preset.
+ */
+export const FACTORY_SECTIONS = {
+  supervisor: 'SUP',
+  weld: 'WELD',
+  paint: 'PAINT',
+  assembly: 'ASSY',
+  test: 'TEST',
+} as const;
+
 /** Capacities and band limits the 3D view and the briefings both quote. */
 export const FACTORY_LIMITS = {
   WP_CAP,

@@ -12,7 +12,7 @@ import { factory } from './factory.js';
 export type MachineState = Record<string, number | boolean | string>;
 
 export { tank, axis, warehouse, factory };
-export { FACTORY_LIMITS } from './factory.js';
+export { FACTORY_LIMITS, FACTORY_SECTIONS } from './factory.js';
 // The rack layout and the inbound sequence are content the machine view reads
 // to place and colour pallets, so they travel with the model.
 export {

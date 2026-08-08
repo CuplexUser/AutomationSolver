@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import type { LadderPuzzleSpec, MachineState } from '@automationsolver/shared';
+import { FACTORY_LIMITS, type LadderPuzzleSpec, type MachineState } from '@automationsolver/shared';
 import type { SimRunner } from './useSimRunner';
 
 // Lazy so three.js + react-three-fiber + drei (the bulk of the bundle) stay in
@@ -21,11 +21,13 @@ const TankVessel3D = lazy(() =>
 );
 const AxisRig3D = lazy(() => import('./AxisRig3D').then((m) => ({ default: m.AxisRig3D })));
 const Warehouse3D = lazy(() => import('./Warehouse3D').then((m) => ({ default: m.Warehouse3D })));
+const Factory3D = lazy(() => import('./Factory3D').then((m) => ({ default: m.Factory3D })));
 
 /** Reserves the scene's footprint while its chunk downloads (no layout shift). */
 const sceneFallback = <div className="machine3d" style={{ height: 300 }} />;
 
 const numOf = (v: unknown, f = 0): number => (typeof v === 'number' ? v : f);
+const strOf = (v: unknown, f = ''): string => (typeof v === 'string' ? v : f);
 const boolOf = (v: unknown): boolean => v === true;
 const pct = (v: number) => `${Math.round(v * 100)}%`;
 /** Raw counts as the percent of full scale they stand for: "62% (2480)". */
@@ -50,7 +52,43 @@ export function MachineView({
   /** POU id of the bay to frame, or undefined for the whole plant. */
   section?: string;
 }) {
-  void section; // consumed by the factory scene, which lands with the plant
+  if (spec.processId === 'factory') {
+    const m = runner.machine;
+    const temp = Math.round(numOf(m.boothTempM) / 100);
+    const film = Math.round(numOf(m.filmM) / 100);
+    return (
+      // No panel chrome and no readout strip: in the plant workspace the scene
+      // *is* the page, and the numbers below would eat the floor it needs.
+      <div className="machine-view plant">
+        <div className="mv-head floating">
+          <span className="eyebrow">Excavator Plant</span>
+          <StatusTag tag={factoryTag(m)} />
+          <span className="mv-flow">
+            <Flow label="Weld" value={`${strOf(m.bufWp).length}/${FACTORY_LIMITS.WP_CAP}`} on={strOf(m.bufWp).length > 0} />
+            <Flow
+              label="Painted F/B"
+              value={`${numOf(m.bufPaFrames)} / ${numOf(m.bufPaBooms)}`}
+              // A lane at zero while the other has stock is the wrong mix, and
+              // it is worth shouting about before the starve latch trips.
+              on={numOf(m.bufPaFrames) > 0 && numOf(m.bufPaBooms) > 0}
+              warn={
+                (numOf(m.bufPaFrames) === 0) !== (numOf(m.bufPaBooms) === 0) &&
+                numOf(m.bufPaFrames) + numOf(m.bufPaBooms) > 0
+              }
+            />
+            <Flow label="Booth" value={counts(temp)} on={temp >= FACTORY_LIMITS.CURE_MIN && temp <= FACTORY_LIMITS.CURE_MAX} />
+            <Flow label="Film" value={counts(film)} on={film >= FACTORY_LIMITS.FILM_MIN && film <= FACTORY_LIMITS.FILM_MAX} />
+            <Flow label="Test" value={`${numOf(m.bufAt)}/${FACTORY_LIMITS.AT_CAP}`} on={numOf(m.bufAt) > 0} />
+            <Flow label="Shipped" value={`${numOf(m.shipped)}`} on={numOf(m.shipped) > 0} />
+            {numOf(m.scrapped) > 0 && <Flow label="Scrap" value={`${numOf(m.scrapped)}`} on warn />}
+          </span>
+        </div>
+        <Suspense fallback={<div className="machine3d" style={{ height: '100%' }} />}>
+          <Factory3D machine={m} outputs={runner.bits} section={section} height="100%" />
+        </Suspense>
+      </div>
+    );
+  }
   if (spec.processId === 'drill') {
     const m = runner.machine;
     // Same feature detection the process model does: the readout grows with the
@@ -388,6 +426,31 @@ function jamTag(m: MachineState): MachineTag {
   };
 }
 
+/**
+ * A readout sized for the plant's floating header rather than for a panel's
+ * readout strip. Same idea as `Readout`, but it can also go amber: on a line,
+ * "two in the buffer" is fine and "two frames and no booms" is not, and only
+ * one of those is a number you can read off a count.
+ */
+function Flow({
+  label,
+  value,
+  on,
+  warn,
+}: {
+  label: string;
+  value: string;
+  on: boolean;
+  warn?: boolean;
+}) {
+  return (
+    <span className={`mv-flow-stat${on ? ' on' : ''}${warn ? ' warn' : ''}`}>
+      <span className="mv-stat-label">{label}</span>
+      <span className="mv-stat-value">{value}</span>
+    </span>
+  );
+}
+
 function Readout({ label, value, on }: { label: string; value: string; on: boolean }) {
   return (
     <span className={`mv-stat${on ? ' on' : ''}`}>
@@ -519,6 +582,52 @@ function warehouseTag(m: MachineState): MachineTag {
   if (numOf(m.liftDir) > 0) return { text: 'hoisting', icon: 'up' };
   if (numOf(m.liftDir) < 0) return { text: 'lowering', icon: 'down' };
   if (boolOf(m.carrying)) return { text: 'loaded', icon: 'box' };
+  return { text: 'idle' };
+}
+
+// --- Excavator plant ------------------------------------------------------------
+
+/**
+ * Three ways a line stops, and only one of them is a crash.
+ *
+ * `blocked` and `starved` leave every mechanism perfectly healthy, so unlike a
+ * jam there is nothing in the picture that looks wrong — which is exactly why
+ * they have to be said out loud, and why each one names the section that has
+ * the problem rather than just the plant.
+ */
+function factoryTag(m: MachineState): MachineTag {
+  if (m.jam === true) return jamTag(m);
+  if (m.starved === true) {
+    return {
+      text: 'assembly starved',
+      icon: 'warn',
+      warn: true,
+      tip: 'Final assembly is holding half a machine and the other part type never arrived. The line built the wrong mix: it needs one frame and one boom, not two of whichever is quicker. The run has already failed.',
+    };
+  }
+  if (m.blocked === true) {
+    const reason = typeof m.jamReason === 'string' ? m.jamReason : '';
+    return {
+      text: 'line blocked',
+      icon: 'block',
+      warn: true,
+      tip: `${reason ? `${reason[0].toUpperCase()}${reason.slice(1)}.` : 'A buffer overran.'} Every buffer's full bit is a sensor the program can read, so this is a section that pushed without looking. The run has already failed.`,
+    };
+  }
+  const stage = typeof m.paintStage === 'string' ? m.paintStage : 'idle';
+  if (stage === 'cure') return { text: 'curing', icon: 'gear' };
+  if (stage === 'spray') return { text: 'spraying', icon: 'gear' };
+  if (numOf(m.testCycle) > 0 && numOf(m.testCycle) < 1) return { text: 'function test', icon: 'gear' };
+  if (numOf(m.testDispatch) > 0) return { text: 'dispatching', icon: 'right' };
+  if (numOf(m.weldSeam) > 0 && numOf(m.weldSeam) < 1) return { text: 'welding', icon: 'gear' };
+  if (numOf(m.assyStarveMs) > 3000) {
+    return {
+      text: 'assembly waiting',
+      icon: 'warn',
+      tip: 'A part is in the jig and its partner has not come out of paint. Still recoverable, but the starve timer is running.',
+    };
+  }
+  if (numOf(m.shipped) > 0) return { text: 'running', icon: 'check' };
   return { text: 'idle' };
 }
 

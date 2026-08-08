@@ -45,6 +45,7 @@ import { asrsRetrieval } from './43-asrs-retrieval.js';
 import { asrsTwoLines } from './44-asrs-two-lines.js';
 import { asrsReplenish } from './45-asrs-replenish.js';
 import { asrsDualCycle } from './46-asrs-dual-cycle.js';
+import { factorySupervisor } from './47-factory-supervisor.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
@@ -93,6 +94,7 @@ export const PUZZLES: PuzzleSpec[] = [
   asrsTwoLines,
   asrsReplenish,
   asrsDualCycle,
+  factorySupervisor,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

@@ -21,6 +21,10 @@ export function App() {
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/puzzles" element={<PuzzleListPage />} />
+          {/* Both sit before `/puzzles/:slug`; React Router ranks by specificity
+              rather than by order, so the two-segment paths are never read as a
+              slug either way, but keeping them together reads better. */}
+          <Route path="/puzzles/track/:track" element={<PuzzleListPage />} />
           <Route path="/puzzles/category/:category" element={<PuzzleListPage />} />
           <Route path="/puzzles/:slug" element={<PuzzlePlayPage />} />
           <Route path="/settings" element={<SettingsPage />} />

@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { LadderElement, LadderProgram, Rung, VLink } from '../ladder/types.js';
+import type {
+  LadderElement,
+  LadderProgram,
+  LadderProject,
+  Rung,
+  VLink,
+} from '../ladder/types.js';
 import { getPuzzle, PUZZLES } from './content/index.js';
 import {
   CORRECTNESS_WEIGHT,
@@ -1354,6 +1360,84 @@ const solutions: Record<string, LadderProgram> = {
   },
 };
 
+/**
+ * Canonical answers to the puzzles written in sections.
+ *
+ * These are `LadderProject`s rather than rung lists because that is what the
+ * client posts: only the POUs the player owns, merged over the puzzle's own
+ * fixtures by `assembleProject`. Submitting the editable section alone is the
+ * shape under test, so the maps below deliberately do not carry the four
+ * station programs — if `assembleProject` ever stopped supplying them, every
+ * one of these would fail rather than quietly grading the player's copy.
+ */
+const projectSolutions: Record<string, LadderProject> = {
+  'factory-supervisor': {
+    pous: [
+      {
+        id: 'SUP',
+        name: 'SUPERVISOR',
+        rungs: [
+          // Start, sealed in around M0, broken by stop, e-stop or leaving auto.
+          // X1 and X2 are normally closed field devices, so both take NO
+          // contacts: their bits are on at rest and drop when pressed.
+          R(
+            'sup-run',
+            2,
+            5,
+            {
+              '0,0': no('X0'),
+              '1,0': no('M0'),
+              '0,1': no('X1'),
+              '0,2': no('X2'),
+              '0,3': no('X3'),
+              '0,4': out('M0'),
+            },
+            [{ row: 0, col: 1 }],
+          ),
+          R('sup-lamp', 1, 2, { '0,0': no('M0'), '0,1': out('Y0') }),
+          // Three ways the line backs up, ORed into the one amber lamp. X17 is
+          // on while there IS yard space, so it is the one that inverts.
+          R(
+            'sup-held',
+            3,
+            2,
+            {
+              '0,0': no('X8'),
+              '1,0': no('X11'),
+              '2,0': nc('X17'),
+              '0,1': out('Y1'),
+            },
+            [
+              { row: 0, col: 1 },
+              { row: 1, col: 1 },
+            ],
+          ),
+        ],
+      },
+    ],
+    tasks: [],
+  },
+};
+
+describe('gradeProgram — canonical solutions solve every sectioned puzzle', () => {
+  for (const [slug, project] of Object.entries(projectSolutions)) {
+    it(`solves "${slug}"`, () => {
+      const spec = getLadderPuzzle(slug);
+      expect(spec, `puzzle ${slug} exists`).toBeDefined();
+      const validation = validateProgram(spec!, project);
+      expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+      expect(validation.warnings, JSON.stringify(validation.warnings)).toEqual([]);
+      const result = gradeProgram(spec!, project);
+      const failed = result.scenarios
+        .filter((s) => !s.passed)
+        .map((s) => `${s.name}: ${s.steps.flatMap((st) => st.failures).join('; ')}`);
+      expect(failed, failed.join(' | ')).toEqual([]);
+      expect(result.solved).toBe(true);
+      expect(result.score).toBe(100);
+    });
+  }
+});
+
 describe('gradeProgram — canonical solutions solve every puzzle', () => {
   for (const [slug, program] of Object.entries(solutions)) {
     it(`solves "${slug}"`, () => {
@@ -2255,6 +2339,115 @@ describe('gradeProgram — warehouse puzzles reject the plausible wrong answer',
     );
     const result = gradeProgram(spec, ordersOnly);
     expect(result.solved).toBe(false);
+  });
+});
+
+describe('gradeProgram — the plausible wrong supervisor is rejected', () => {
+  const spec = () => getLadderPuzzle('factory-supervisor')!;
+
+  /** The canonical project with its supervisor swapped for a different one. */
+  function supervisor(rungs: Rung[]): LadderProject {
+    return { pous: [{ id: 'SUP', name: 'SUPERVISOR', rungs }], tasks: [] };
+  }
+
+  const lamp = R('lamp', 1, 2, { '0,0': no('M0'), '0,1': out('Y0') });
+  const held = R(
+    'held',
+    3,
+    2,
+    { '0,0': no('X8'), '1,0': no('X11'), '2,0': nc('X17'), '0,1': out('Y1') },
+    [
+      { row: 0, col: 1 },
+      { row: 1, col: 1 },
+    ],
+  );
+
+  it('no seal-in: the plant runs only while the button is held', () => {
+    const result = gradeProgram(
+      spec(),
+      supervisor([
+        R('run', 1, 5, {
+          '0,0': no('X0'),
+          '0,1': no('X1'),
+          '0,2': no('X2'),
+          '0,3': no('X3'),
+          '0,4': out('M0'),
+        }),
+        lamp,
+        held,
+      ]),
+    );
+    expect(result.solved).toBe(false);
+  });
+
+  it('auto in the seal branch: turning the selector to manual does not stop it', () => {
+    // A seal that carries X3 in the *branch* rather than in series still starts
+    // correctly and still stops on either button, so three of the four scenarios
+    // pass. Only the last step of the first one catches it, which is exactly why
+    // that step is in there.
+    const result = gradeProgram(
+      spec(),
+      supervisor([
+        R(
+          'run',
+          2,
+          4,
+          {
+            '0,0': no('X0'),
+            '0,1': no('X3'),
+            '1,0': no('M0'),
+            '0,2': no('X1'),
+            '0,3': out('M0'),
+          },
+          [{ row: 0, col: 2 }],
+        ),
+        lamp,
+        held,
+      ]),
+    );
+    expect(result.solved).toBe(false);
+  });
+
+  it('NC contacts on the normally closed buttons: the plant never starts', () => {
+    const result = gradeProgram(
+      spec(),
+      supervisor([
+        R(
+          'run',
+          2,
+          5,
+          {
+            '0,0': no('X0'),
+            '1,0': no('M0'),
+            '0,1': nc('X1'),
+            '0,2': nc('X2'),
+            '0,3': no('X3'),
+            '0,4': out('M0'),
+          },
+          [{ row: 0, col: 1 }],
+        ),
+        lamp,
+        held,
+      ]),
+    );
+    expect(result.solved).toBe(false);
+  });
+
+  it('a supervisor reaching into the weld shop is a validation error', () => {
+    // The device space is flat, so nothing in the engine stops this. The
+    // ownership declaration is the only thing that does, and it is the whole
+    // discipline of writing a plant in sections.
+    const validation = validateProgram(
+      spec(),
+      supervisor([
+        R('run', 1, 2, { '0,0': no('X0'), '0,1': out('M0') }),
+        lamp,
+        held,
+        R('meddle', 1, 2, { '0,0': no('M0'), '0,1': out('Y2') }),
+      ]),
+    );
+    expect(validation.valid).toBe(false);
+    expect(validation.errors.join(' ')).toContain('Y2');
   });
 });
 

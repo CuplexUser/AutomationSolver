@@ -130,3 +130,62 @@
 .mv-stat.on .mv-stat-value {
   color: var(--run);
 }
+
+/* ---- Plant view -------------------------------------------------------------
+   The factory scene fills the workspace instead of sitting in a panel, so its
+   header floats over the top-left of the canvas rather than reserving a row
+   above it. Every pixel the chrome takes is floor the plant loses. */
+.machine-view.plant {
+  position: relative;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  min-height: 0;
+  background: none;
+  border: none;
+}
+.machine-view.plant > .machine3d {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.mv-head.floating {
+  position: absolute;
+  inset: 8px 8px auto 10px;
+  z-index: 3;
+  margin: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+  /* Clicks belong to the canvas underneath; only the chips themselves catch. */
+  pointer-events: none;
+}
+.mv-head.floating > * {
+  pointer-events: auto;
+}
+.mv-flow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.mv-flow-stat {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  /* Semi-opaque: the plant floor has to stay readable behind the chips. */
+  background: color-mix(in srgb, var(--inset) 82%, transparent);
+  backdrop-filter: blur(3px);
+}
+.mv-flow-stat.on {
+  border-color: color-mix(in srgb, var(--run) 55%, var(--edge));
+}
+.mv-flow-stat.on .mv-stat-value {
+  color: var(--run);
+}
+.mv-flow-stat.warn {
+  border-color: color-mix(in srgb, var(--stop) 60%, var(--edge));
+}
+.mv-flow-stat.warn .mv-stat-value {
+  color: var(--stop);
+}

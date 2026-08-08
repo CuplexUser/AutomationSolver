@@ -14,7 +14,8 @@ export type PuzzleCategory =
   | 'drill'
   | 'process-control'
   | 'motion'
-  | 'warehouse';
+  | 'warehouse'
+  | 'factory';
 
 /** Display order of category sections on the puzzle list. */
 export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
@@ -29,6 +30,7 @@ export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
   'process-control',
   'motion',
   'warehouse',
+  'factory',
 ];
 
 export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
@@ -43,6 +45,7 @@ export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
   'process-control': 'Process Control',
   motion: 'Motion Control',
   warehouse: 'Automated Warehouse',
+  factory: 'Excavator Plant',
 };
 
 /** One-line blurb per category for the puzzle-list section headers / nav. */
@@ -61,7 +64,73 @@ export const CATEGORY_BLURBS: Record<PuzzleCategory, string> = {
     'Speed references, ramp parameters and stopping distance on a drive that carries a load.',
   warehouse:
     'One stacker crane, eight rack slots and two production lines that both want feeding.',
+  factory:
+    'A whole plant in five programs: weld, paint, assembly and test, scheduled by one supervisor.',
 };
+
+/**
+ * The handful of tracks the categories group into.
+ *
+ * Twelve categories is the right granularity for *unlocking* — a track is far
+ * too coarse a thing to gate progress on — and much too fine a granularity for
+ * navigation, where it wrapped the list page's pill row onto two lines and made
+ * a flat wall of choices out of what is actually a curriculum. So the track is
+ * the top level of the menu and the category stays the unit of progression;
+ * nothing about locking, grading or content changes.
+ */
+export type PuzzleTrack = 'fundamentals' | 'panel' | 'machines' | 'process' | 'plants';
+
+export const TRACK_ORDER: readonly PuzzleTrack[] = [
+  'fundamentals',
+  'panel',
+  'machines',
+  'process',
+  'plants',
+];
+
+export const TRACK_TITLES: Record<PuzzleTrack, string> = {
+  fundamentals: 'Fundamentals',
+  panel: 'Panel Wiring',
+  machines: 'Machines',
+  process: 'Process',
+  plants: 'Plants',
+};
+
+export const TRACK_BLURBS: Record<PuzzleTrack, string> = {
+  fundamentals: 'Contacts, coils, timers and counters, on machines small enough to hold in your head.',
+  panel: 'No ladder at all: wire real 400 V starters terminal to terminal.',
+  machines: 'Whole automatic machines, sequenced end to end.',
+  process: 'Analog signals: regulators that hold a value, and drives that ramp to one.',
+  plants: 'Several machines that only work as one, and the scheduling that makes them.',
+};
+
+/**
+ * Which track each category belongs to.
+ *
+ * `control-cabinet` has a track to itself because it is a different *kind* of
+ * puzzle, not a harder version of the same one: the player wires terminals
+ * rather than drawing rungs. Folding it in with the fundamentals would put a
+ * cabinet in front of somebody who came looking for ladder.
+ */
+export const CATEGORY_TRACK: Record<PuzzleCategory, PuzzleTrack> = {
+  basics: 'fundamentals',
+  'timers-counters': 'fundamentals',
+  stations: 'fundamentals',
+  'control-cabinet': 'panel',
+  elevator: 'machines',
+  packaging: 'machines',
+  'pick-place': 'machines',
+  drill: 'machines',
+  'process-control': 'process',
+  motion: 'process',
+  warehouse: 'plants',
+  factory: 'plants',
+};
+
+/** The categories in a track, in `CATEGORY_ORDER`. */
+export function categoriesInTrack(track: PuzzleTrack): PuzzleCategory[] {
+  return CATEGORY_ORDER.filter((cat) => CATEGORY_TRACK[cat] === track);
+}
 
 /** How a device is drawn/driven on the HMI panel. */
 export type WidgetType =

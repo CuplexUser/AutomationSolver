@@ -67,6 +67,35 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   60/50 mismatch because every process model's timings are exact multiples of both; an
   integrator does not, so this is now a single constant with the client importing it.
 
+#### POUs and tasks
+
+A station is one rung list; a plant is not. `LadderProject` layers **program organization
+units** and **tasks** over the existing model without touching it:
+
+- `Pou` is an id, a name and a rung list. `TaskDef` is a priority, an optional `intervalMs` and
+  the POU ids it calls, in order. `LadderProject` is the two lists. `ProgramDoc` is
+  `LadderProgram | LadderProject`, and **`toProject()` is the single boundary** where the old
+  shape becomes the new one — which is why all 46 pre-existing puzzles, every saved slot in the
+  database and the Pages demo needed no migration at all.
+- `SimEngine.scan(dt)` walks `tasksInScanOrder` (priority, then declaration order). A task with
+  no `intervalMs` runs every scan with the caller's `dt`; a periodic one runs when `tMs` reaches
+  an absolute `nextDue` and is handed `intervalMs` as its `dt`, so **a timer in a 200 ms task
+  advances 200 ms per execution**, not 50.
+- Task intervals **must be integer multiples of `GRADE_DT`** (enforced in `validate.ts`).
+  Then `nextDue` lands exactly on the grid, the arithmetic is integer-exact, and there is
+  nothing for client and server to disagree about.
+- **Edge detection uses one input image per task**, snapshotted at the end of that task's
+  execution; `conducts()` reads the image of the task currently running. For a single-task
+  project this is byte-identical to the old single end-of-scan snapshot — which is what
+  preserved every existing behaviour — and for a slow task it means the task sees edges at its
+  own rate, which is the authentic behaviour and the mechanism behind the "the interlock ran
+  too slowly" lesson. Rejected: per-instance edge memory. It is what real LDP does, but its
+  `prev` is mid-scan rather than end-of-scan, which silently changes any rung that reads a bit
+  a later rung writes.
+- Timer/counter/PID state stays keyed by device, because a `T` device is global on real
+  hardware. `lastResults` is a `Record<pouId, RungEvalResult[]>`, and a POU whose task did not
+  run this scan keeps its previous results so the UI does not flicker.
+
 ### 3. Puzzle system — `shared/src/puzzle/`
 - **`PuzzleSpec`** (`types.ts`) — a discriminated union on `kind`:
   - **`LadderPuzzleSpec`** (`kind: 'ladder'`) — briefing, hints, `devices` (the physical I/O),
@@ -83,6 +112,28 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   - **`CabinetPuzzleSpec`** (`kind: 'cabinet'`) — same base (devices/scenarios/briefing) but a
     fixed `cabinet` component layout instead of ladder fields; the player's "program" is a
     `WiringDoc` (see §3b).
+  - **`pous` / `tasks` / `taskAssignment`** — present means the puzzle is written in sections,
+    and that is also what selects the workspace layout on the client (§9). A `PouSlot` is
+    `{ id, name, title, editable, program?, maxRungs?, owns?, brief? }`.
+    - `editable: false` ships the section pre-written and read-only, which is what makes a
+      five-POU factory a fair first puzzle: puzzle 1 opens the supervisor and runs the four
+      stations for you, and each later one takes another away. Same on-ramp shape as the ASRS
+      commissioning puzzle, applied to whole programs instead of whole rungs.
+    - `owns` is a list of device ranges (`M120-M139`, `T4-T7`, a bare `D2`) the section may
+      **write**. The device space is flat, so this is the only thing standing between a
+      sectioned program and section 3 quietly latching section 2's step relay. Reads are
+      deliberately unfenced — a section reads its neighbours' handshakes and the plant run bit,
+      and that asymmetry is the point. Checked only for `editable` slots: a shipped fixture is
+      the author's own code.
+    - `brief` is that section's page of the manual, in the same format as `briefing`. A plant
+      manual read one station at a time is a manual; read whole it is a wall.
+  - **`project.ts`** is where a submission and a puzzle's own sections become one runnable
+    program, and it is shared by client and server for the same reason the grader is:
+    `assembleProject(spec, submitted)` always takes non-editable sections **from the spec**, so
+    a hand-written payload cannot rewrite the fixtures it is graded against, and takes tasks
+    from the spec unless `taskAssignment: 'player'`. `initialProject(spec)` is the empty
+    starting state; `editableSlots`, `parseDeviceRange`/`inDeviceRanges` back the ownership
+    check.
   - **`briefing`** is written as an instruction manual, not prose: a one-paragraph lead, then
     `## Section` blocks (`Equipment`, `Sequence of operation`, `Interlocks and safety`,
     `Field notes`, `Acceptance`; cabinet puzzles use `Power circuit` / `Control circuit` /
@@ -90,9 +141,16 @@ never wall-clock time. Everything else in the system is arranged around keeping 
     `a.` sub-steps) becomes an `<ol>`, `- ` a `<ul>`, anything else a paragraph. The renderer
     is `Briefing` in `client/src/pages/play/BriefColumn.tsx`.
   - Every spec also carries a **`category`** (`basics` / `timers-counters` / `stations` /
-    `elevator` / `control-cabinet` / `packaging` / `pick-place` / `drill` / `process-control`) —
-    the unit of unlock progression and list grouping (`CATEGORY_ORDER` / `CATEGORY_TITLES` /
-    `CATEGORY_BLURBS` in `types.ts`).
+    `elevator` / `control-cabinet` / `packaging` / `pick-place` / `drill` / `process-control` /
+    `motion` / `warehouse` / `factory`) — the unit of unlock progression and list grouping
+    (`CATEGORY_ORDER` / `CATEGORY_TITLES` / `CATEGORY_BLURBS` in `types.ts`).
+  - Categories group into five **tracks** (`CATEGORY_TRACK`, `TRACK_ORDER`, `TRACK_TITLES`,
+    `TRACK_BLURBS`, `categoriesInTrack`): `fundamentals`, `panel`, `machines`, `process`,
+    `plants`. Twelve categories is the right granularity for gating progress and much too fine
+    a one for navigation — as a flat pill row it wrapped onto two lines and turned a curriculum
+    into a wall. **A track is navigation only**: nothing about locking, grading or content knows
+    it exists. `control-cabinet` gets a track to itself because it is a different *kind* of
+    puzzle rather than a harder version of the same one.
   - **Analog devices** set `signal: 'analog'`, address a `D` register and carry an
     `AnalogRange` (raw count span plus what those counts mean in the field). Transmitters
     report **raw counts**, never pre-scaled engineering units, because that is what an A/D card
@@ -243,6 +301,38 @@ never wall-clock time. Everything else in the system is arranged around keeping 
       Rates are the category's difficulty dial: goods in supplies at half a line's consume
       period so two lines and the inbound flow roughly balance, and the capstone then sits at
       about nine tenths of the crane.
+  - `factory` — the excavator plant. Every other model here is a *machine*; this one is a
+    **line**, and the difference is that no station in it can be programmed correctly on its
+    own. Four stations coupled by finite buffers: weld -> paint -> final assembly ->
+    test and dispatch.
+    - **Two part streams.** Weld and paint each handle chassis frames and booms, and final
+      assembly needs one of *each* to build a machine. So the plant's real problem is the
+      **mix**, not utilisation: a shop that welds frames as fast as it can fills every buffer
+      with frames and starves assembly while looking perfectly busy.
+    - **Backpressure is real and visible.** Buffers are small (`WP_CAP` 3, `PA_CAP` 3 per type,
+      `AT_CAP` 2, `YARD_CAP` 6) and every one of them publishes a full/space sensor the program
+      can read. Overrunning one latches `blocked`; a half-built machine that cannot be finished
+      latches `starved` after `STARVE_MS`. Both assert through the existing `expectMachine`
+      path, so the grader needed nothing new — the warehouse's finding, reused.
+    - **`starved` is specifically a half-built machine**, not an idle one. The first version
+      ran the clock whenever assembly's buffers were empty, which failed every scenario during
+      its own start-up. An empty line at the start of a shift is idle; a jig holding a frame
+      with no boom anywhere is starved.
+    - **The oven paces everything.** Cure is a fixed `PAINT_CURE_MS` dwell no program can
+      shorten, and it is the slowest single step by design, so throughput targets are only
+      reachable by pipelining rather than by running the four stations in turn.
+    - **The one continuous plant here is the paint booth**: booth temperature is a first-order
+      lag on the heater command, and film builds as flow x time but *only inside the cure
+      band*. Both are integer milli-counts on the fixed `SUB_MS` sub-step with a carried
+      remainder, same discipline as `tank.ts`/`axis.ts` and pinned by the same first test.
+      Spraying a cold booth lays down paint that never cross-links, and a booth that drifts out
+      of band during the bake spoils the finish; either way the part comes out of the oven as
+      scrap, which shows up two stations later as a machine assembly never got to build.
+    - Buffers travel as **strings** (`bufWp: 'ffb'`) rather than counts, so the order and the
+      mix are both in the state and the 3D view can draw exactly what is queued.
+    - `FACTORY_SECTIONS` exports the POU ids the puzzles use (`SUP`/`WELD`/`PAINT`/`ASSY`/
+      `TEST`). They are a contract, not a convention: the plant view frames a bay by the id of
+      the selected section.
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
   - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
     buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by
@@ -385,10 +475,11 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 45 | `asrs-two-lines` | hard | two lines at opposite ends: latch which one a cycle belongs to, and compute distance from *its* station | warehouse |
 | 46 | `asrs-replenish` | hard | a second job in the opposite direction — put-away into the nearest empty slot, without letting goods in back up | warehouse |
 | 47 | `asrs-dual-cycle` | hard | capstone: three demands on one crane, trips planned as a list of stops, a stop switch, and dual-command cycling | warehouse |
+| 48 | `factory-supervisor` | tutorial | the first puzzle written in **sections**: four station POUs ship working and read-only, the player writes the supervisor whose one bit lets them run | factory |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 `elevator`,
 15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`, 29–32 `drill`,
-33–37 `process-control`, 38–41 `motion`, 42–47 `warehouse`.
+33–37 `process-control`, 38–41 `motion`, 42–47 `warehouse`, 48 `factory`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -614,12 +705,41 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
   program being supplied by the play surface (`emptyProgram()` for ladder, `{ wires: [] }` for
   cabinet) so the panel stays kind-agnostic. The editor waits for slot resolution before rendering interactively, so a fast typist
   can't have their first edits clobbered by the async slot load.
-- **Puzzle list + category nav** (`pages/PuzzleListPage.tsx`) — grouped by category, each section
-  headed with its `CATEGORY_BLURBS` line. A pill nav routes between an **All** view and a single
-  category via `/puzzles/category/:category` (the route sits before `/puzzles/:slug` in `App.tsx`;
-  React Router's specificity ranking, not order, keeps the two-segment category path from being
-  read as a slug). Each pill shows that category's `solved/total` and lights green when complete.
+- **Puzzle list, navigated in two levels** (`pages/PuzzleListPage.tsx`) — the five tracks live in
+  the **top bar**, in the space the brand and the account links were leaving empty
+  (`components/TopBar.tsx`, shown on list routes only: a play screen has its own nav and no room
+  to spare, the plant workspace least of all). The page's pill row is then *within* the current
+  track, so it holds at most five pills and never wraps; on the All view it is absent entirely
+  and each group of category sections gets a track rule across the page instead. Categories are
+  still what a section header names and still the unit of progression. Routes:
+  `/puzzles`, `/puzzles/track/:track`, `/puzzles/category/:category`, all before
+  `/puzzles/:slug` in `App.tsx` (React Router's specificity ranking, not order, is what keeps a
+  two-segment path from being read as a slug). Each pill shows `solved/total` and lights green
+  when complete. A track holding a single category suppresses that category's header titles,
+  which would otherwise repeat the page heading two lines below itself.
 - **Server state** via TanStack Query; auth context wraps the app.
+
+#### The plant workspace — `features/workspace/`, `pages/play/FactoryPlay.tsx`
+
+Selected by `PuzzlePlayPage` when `isMultiPou(spec)`; every single-program puzzle keeps
+`LadderPlay` and the three-column workbench exactly as it was. A station fits in three columns;
+a plant does not, so here the machine **is** the page.
+
+- `FloatingWindow.tsx` — title-bar drag, edge/corner resize, maximize on double-click, z-order
+  on focus, clamped so a window can never be dragged fully off screen (`KEEP_VISIBLE`).
+  Geometry persists per `(puzzleSlug, windowId)` in localStorage. Pointer capture, following
+  `features/layout/Resizable.tsx`.
+- `useWindows.ts` — the open set as an array whose order *is* the z-order, so focus is a splice.
+- `PinnableSidebar.tsx` — the briefing, demoted from a column to a tab down the edge. Click
+  opens it as an overlay over the 3D; the pin pushes the layout instead. Reuses `BriefColumn`
+  whole; only the chrome is new, and it shows the focused section's `brief` when there is one.
+- `PouExplorer.tsx` — tasks in scan order, POUs numbered in call order underneath, rung counts,
+  read-only badges, and a warning on a POU no task calls.
+- `LadderEditor` gained `pouId`, `focused` and `readOnly`. The global keydown handler bails when
+  `!focused`, which is what stops four open windows all reacting to one keypress, and each
+  window is handed `evalResults[pouId]` alone so editing one does not re-render the other three
+  twenty times a second.
+- "Clear the desk" closes every window: the 3D-only view is simply that state, not a mode.
 
 ### 6. Server — `packages/server/src/`
 - **Auth** (`auth/`) — Passport local + Google + GitHub OAuth, `node:crypto` scrypt hashing,
@@ -673,7 +793,31 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
   same file kept working. An unfiltered trigger costs about a minute of free Actions time and
   removes the failure mode; `gh workflow run pages.yml --ref main` remains the manual lever.
 
-### 8. Constraints that shape everything
+### 8. The plant scene — `features/sim/Factory3D.tsx`
+
+Procedural, not glTF, for a reason the other scenes do not have: the same excavator is visible
+at every stage of its own build, so the geometry has to turn parts on and off and recolor them
+as it moves down the line. That is a node-toggling chore in an imported model and a plain
+function of machine state in code.
+
+- **One composed scene, four camera presets.** `SECTION_FOCUS` is keyed by `FACTORY_SECTIONS`,
+  and `SectionCamera` flies to the selected bay over `FLY_MS`, deriving the distance from the
+  live viewport rather than baking it into a position. `MachineCanvas` is deliberately given no
+  `fitExtent` here so that `SectionCamera` is the *only* thing touching the camera — two
+  authorities fight on every resize.
+- The floor plan is a **U**: weld -> weld buffer -> booth -> oven along the back row, the two
+  painted lanes running across the middle, then assembly -> test queue -> test -> yard back
+  along the front. A straight line 40 units long frames badly and no real plant builds one
+  either. Painted floor chevrons say which way each leg runs.
+- `ExcavatorFrame` / `ExcavatorHouse` / `ExcavatorCab` / `ExcavatorBoom` are the four pieces the
+  line actually builds with, and `Excavator` assembles them with 0..1 fittings so the jig's job
+  is watchable. The frame and the boom double as the two loose part types in every buffer.
+- The scene takes the **coil image as well as the machine state**, because a snapshot cannot
+  tell a torch that is striking from a seam that merely stopped.
+- `memo` with scalar props on everything static, following `Warehouse3D`'s discipline: the sim
+  re-renders this tree twenty times a second.
+
+### 9. Constraints that shape everything
 - **Zero native dependencies.** `npm install` must work with no C++ toolchain. No
   better-sqlite3, argon2, bcrypt, sqlite3. The README's "Zero native dependencies" table lists
   the established substitutions.

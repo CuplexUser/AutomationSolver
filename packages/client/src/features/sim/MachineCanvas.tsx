@@ -135,9 +135,12 @@ export function MachineCanvas({
   zoomable = false,
   panBounds,
   fitExtent,
+  shadowExtent = 16,
   children,
 }: {
-  height?: number;
+  /** A CSS length: the single-machine panels want a fixed 300, the plant
+      workspace wants to fill whatever the floating windows leave it. */
+  height?: number | string;
   cameraPosition: [number, number, number];
   fov?: number;
   target: [number, number, number];
@@ -163,6 +166,12 @@ export function MachineCanvas({
    * can ask for, or OrbitControls will pull the camera back in and re-crop.
    */
   fitExtent?: FitExtent;
+  /**
+   * Half-size of the shadow camera's box. The default frames a single machine;
+   * a whole plant floor needs it widened, or half the scene falls outside the
+   * map and its shadows simply stop at a line across the floor.
+   */
+  shadowExtent?: number;
   children: ReactNode;
 }) {
   const showControls = interactive || zoomable || !!panBounds;
@@ -212,12 +221,12 @@ export function MachineCanvas({
           intensity={2.2}
           castShadow
           shadow-mapSize={[2048, 2048]}
-          shadow-camera-left={-16}
-          shadow-camera-right={16}
-          shadow-camera-top={16}
-          shadow-camera-bottom={-16}
+          shadow-camera-left={-shadowExtent}
+          shadow-camera-right={shadowExtent}
+          shadow-camera-top={shadowExtent}
+          shadow-camera-bottom={-shadowExtent}
           shadow-camera-near={0.5}
-          shadow-camera-far={60}
+          shadow-camera-far={shadowExtent * 4 + 20}
           shadow-normalBias={0.04}
         />
         <directionalLight position={[-6, 4, -4]} intensity={0.25} />

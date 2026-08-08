@@ -100,3 +100,53 @@
   text-align: center;
 }
 
+
+/* ---- Track nav ---------------------------------------------------------------
+   The five tracks, in the space between the brand and the account links. The
+   bar was already `space-between` with two children, so this simply becomes the
+   third and the gap it used to leave is where it goes. */
+.track-nav {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  /* Takes the slack, so the tracks sit centred in the bar rather than crowding
+     either end, and collapse before the brand or the account links do. */
+  flex: 1 1 auto;
+  justify-content: center;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.track-nav::-webkit-scrollbar {
+  display: none;
+}
+.track-link {
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  color: var(--ink-dim);
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
+}
+.track-link:hover {
+  color: var(--ink);
+  border-color: var(--edge);
+}
+.track-link.active {
+  color: var(--live);
+  border-color: color-mix(in srgb, var(--live) 55%, transparent);
+  background: color-mix(in srgb, var(--live) 10%, transparent);
+}
+@media (max-width: 900px) {
+  .track-nav {
+    display: none;
+  }
+}

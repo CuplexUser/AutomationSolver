@@ -314,6 +314,69 @@ alone (it strokes between slots), delivering everything to the aisle head (line 
 overflows and line B never eats), never putting anything away (goods in blocks), and running
 orders only at full rate (the rack empties out from under the lines).
 
+## Excavator plant — first puzzle shipped
+
+An eleventh category, `factory`, and the first thing in the game that is not a machine but a
+**plant**: four stations coupled into one line, and the first puzzle written in more than one
+program. It needed the largest engine change since the analog expansion, and every bit of it
+was additive.
+
+**POUs and tasks.** `LadderProject` layers program organization units and tasks over
+`LadderProgram`, which was not touched; `toProject()` is the single boundary between the two
+shapes, which is why 46 puzzles, every saved slot and the Pages demo needed no migration at all.
+The gate for the phase was the existing suite passing with no edits to any canonical solution,
+and it did. Two decisions are worth recording:
+
+- **Task intervals are forced to integer multiples of `GRADE_DT`**, and scheduling uses an
+  absolute `nextDue`. Anything else drifts off the 50 ms grid and client and server stop
+  agreeing, which is the one thing this codebase will not trade.
+- **Edge detection is one input image per task**, not per instance. Real LDP keys edge memory
+  to the instruction instance, but that `prev` is mid-scan rather than end-of-scan, which
+  silently changes behaviour for any rung reading a bit a later rung writes. Per-task keeps a
+  single-task project byte-identical to what it was, and still lets a slow task see edges at
+  its own rate — which is the mechanism a later puzzle's "the interlock ran too slowly" lesson
+  needs.
+
+**The plant.** Mid-size excavators, built in four bays: weld, paint, final assembly, and test
+and dispatch. What makes it a plant rather than four machines is that **two part streams**
+(chassis frames and booms) run through the same weld shop and the same booth, and final assembly
+needs one of each. So the line's real problem is the *mix*: a weld shop running flat out on
+frames fills every buffer and starves assembly while looking perfectly busy. Buffers are small,
+finite and instrumented, so ignoring a downstream full bit latches `blocked`, and a jig holding
+half a machine it can never finish latches `starved` — both through the existing `expectMachine`
+path, exactly as the warehouse's two latches do. The cure oven is a fixed dwell no program can
+shorten, which is what makes pipelining the only route to a throughput target.
+
+**A new play layout**, used by this category only. A station fits in a three-column workbench; a
+plant does not. The 3D floor is the page, the section programs float in resizable windows the
+player opens for whatever they are working on, and the briefing collapses to a pinnable tab. The
+3D is one composed scene with a camera preset per bay rather than four scenes swapped in, so the
+whole plant and one bay are the same model at two distances. It is drawn procedurally because
+the same excavator appears in every bay at a different stage of its own build, and turning parts
+on and off is a function in code and a chore in a `.glb`.
+
+`factory-supervisor` is the on-ramp, and it takes the same shape the ASRS rebuild arrived at,
+applied to whole programs instead of whole rungs: four stations ship **working and read-only**,
+and the player writes only the supervisor whose one bit lets them run. The ladder is three rungs
+they have built before; everything new is around it. `PouSlot.editable` is what makes that
+possible, and `owns` makes structured programming enforceable in a flat device space — an
+editable section writing outside its block is a validation error, while reads stay deliberately
+free.
+
+Two bugs the fixtures found, both worth keeping in mind when writing any station program here:
+
+- **A held clamp reloads.** The weld fixture kept its grip through the release stroke, so on the
+  scan the old part left it picked up the next blank — using the part selector as it stood
+  *before* the alternating relay flipped. The station welded two frames in a row and the plant
+  slowly filled with frames. Opening the clamp when the release begins fixes it.
+- **Step timers do not reset themselves.** Assembly re-sets its cycle latch in rung one, before
+  the timer rungs ever see it low, so the second machine inherited three finished timers and the
+  jig pinned a boom onto an empty fixture. Reset step timers explicitly.
+
+Still to come in this category: four more puzzles, each opening one more station, and a capstone
+that grades throughput, injects a fault mid-run and hands over `taskAssignment: 'player'` so the
+supervisor's placement in MAIN and what gets parked in the slow task become the player's problem.
+
 ## Next: the rest of the analog plan
 
 Agreed with the analog design and still to build:
