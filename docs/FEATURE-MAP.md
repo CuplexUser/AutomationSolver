@@ -725,20 +725,50 @@ Selected by `PuzzlePlayPage` when `isMultiPou(spec)`; every single-program puzzl
 `LadderPlay` and the three-column workbench exactly as it was. A station fits in three columns;
 a plant does not, so here the machine **is** the page.
 
-- `FloatingWindow.tsx` — title-bar drag, edge/corner resize, maximize on double-click, z-order
-  on focus, clamped so a window can never be dragged fully off screen (`KEEP_VISIBLE`).
-  Geometry persists per `(puzzleSlug, windowId)` in localStorage. Pointer capture, following
-  `features/layout/Resizable.tsx`.
+- `FloatingWindow.tsx` — title-bar drag, edge/corner resize, always-on-top, maximize, close,
+  z-order on focus, clamped so a window can never be dragged fully off screen (`KEEP_VISIBLE`).
+  Geometry persists per `(puzzleSlug, windowId)` in localStorage; the on-top pin and maximize
+  deliberately do not — a window remembers the size and place the player chose, never a pose.
+  Pointer capture, following `features/layout/Resizable.tsx` — which is exactly why the drag
+  handler has to bail out on a press that lands on a button: a captured pointer retargets the
+  *click* to the capture element, so grabbing the bar unconditionally swallowed every one of
+  the window's own controls. Maximize is `position: absolute` inside `.workspace`, not `fixed`
+  over the viewport, so the title bar (and with it the way back out) can't slide under the app's
+  top bar. On-top windows sit in a z-band above the others; the top bar is above both.
 - `useWindows.ts` — the open set as an array whose order *is* the z-order, so focus is a splice.
 - `PinnableSidebar.tsx` — the briefing, demoted from a column to a tab down the edge. Click
   opens it as an overlay over the 3D; the pin pushes the layout instead. Reuses `BriefColumn`
   whole; only the chrome is new, and it shows the focused section's `brief` when there is one.
+  It opens **pinned unless the player has said otherwise** (absent preference ≠ collapsed): a
+  work order nobody has read yet is not optional chrome.
+- **Run/Stop over the plant** (`.ws-stage-bar`). The only run commands used to live in the
+  operator panel, which in this layout is a window you have to open first — so the plant could
+  not be started at all from the view it is meant to be watched in. The stage carries a small
+  ▶/■ pair on the *same* runner the panel drives, so the two are always in step.
+- **The rail's foot is weighted, not uniform** (`components/icons.tsx`). Five identical outlined
+  buttons said nothing about which mattered: the operator panel is the plant's own control desk
+  and the one thing a player reaches for mid-run, so it is the only item with a filled face and
+  a lit on-state; "clear the desk" is housekeeping and recedes; Save and Submit sit under a
+  hairline as the pair that commits work. Each carries a drawn icon.
+- The section chips only offer bays the scene can frame. The supervisor POU's "bay" is the
+  whole floor, so its chip did precisely what "Whole plant" does — two buttons for one view,
+  which reads as one of them being broken.
 - `PouExplorer.tsx` — tasks in scan order, POUs numbered in call order underneath, rung counts,
   read-only badges, and a warning on a POU no task calls.
 - `LadderEditor` gained `pouId`, `focused` and `readOnly`. The global keydown handler bails when
   `!focused`, which is what stops four open windows all reacting to one keypress, and each
   window is handed `evalResults[pouId]` alone so editing one does not re-render the other three
-  twenty times a second.
+  twenty times a second. It also gained `windowed`, which moves the toolbar *inside* the ladder
+  scroller: a window body doesn't scroll (the ladder inside it does), so a toolbar above the
+  scroller could never scroll out of reach and its `position: sticky` pin did nothing. Rendered
+  inside, the pin means exactly what it means in the play column — pinned it sticks to the top
+  of the program, unpinned it scrolls away with it.
+- **Pins are drawn, not typed** (`components/PinIcon.tsx`). All three pins (window on-top, work
+  order, ladder toolbar) were the 📌 emoji, which the font paints in colour whatever the CSS
+  says, so an unpinned control still looked lit and the only thing separating the states was a
+  ring around the button. The icon is `currentColor`: upright and filled when pinned, tilted
+  and hollow when not — and because it carries its own state, `.pin-toggle.on` drops the ring
+  the other toggles keep, which around a lit icon read as a second control behind the first.
 - "Clear the desk" closes every window: the 3D-only view is simply that state, not a mode.
 
 ### 6. Server — `packages/server/src/`
@@ -793,13 +823,21 @@ a plant does not, so here the machine **is** the page.
   same file kept working. An unfiltered trigger costs about a minute of free Actions time and
   removes the failure mode; `gh workflow run pages.yml --ref main` remains the manual lever.
 
-### 8. The plant scene — `features/sim/Factory3D.tsx`
+### 8. The plant scene — `features/sim/Factory3D.tsx` + `features/sim/factory/`
 
 Procedural, not glTF, for a reason the other scenes do not have: the same excavator is visible
 at every stage of its own build, so the geometry has to turn parts on and off and recolor them
 as it moves down the line. That is a node-toggling chore in an imported model and a plain
 function of machine state in code.
 
+- **`Factory3D.tsx` is the plan of the floor and nothing else** — where each bay stands, which
+  lane runs between them, which sign hangs over what — plus `FactoryRig` (the bare scene) and
+  the canvas around it. Each bay is one file under `factory/`: `WeldBay`, `PaintBay`,
+  `AssemblyBay`, `TestBay` (with the yard), `buffers` (the three queues between them),
+  `Building`, `camera`. What they share lives in `factory/plant.ts` (layout constants,
+  materials, `FINISH`, and the `numOf`/`strOf`/`boolOf` readers every bay narrows
+  `MachineState` with), `factory/Excavator.tsx`, `factory/indicators.tsx` (bar gauge, stack
+  light) and `factory/textures.tsx` (the canvas-painted slab, lanes and signs).
 - **One composed scene, four camera presets.** `SECTION_FOCUS` is keyed by `FACTORY_SECTIONS`,
   and `SectionCamera` flies to the selected bay over `FLY_MS`, deriving the distance from the
   live viewport rather than baking it into a position. `MachineCanvas` is deliberately given no

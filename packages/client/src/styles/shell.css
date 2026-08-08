@@ -40,7 +40,9 @@
   background: linear-gradient(180deg, var(--rail), transparent);
   position: sticky;
   top: 0;
-  z-index: 20;
+  /* Above everything, including an always-on-top workspace window: the way out
+     of a page must never be the thing a panel covers. */
+  z-index: 3000;
   backdrop-filter: blur(8px);
 }
 .brand {

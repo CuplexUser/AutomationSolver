@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   assembleProject,
+  FACTORY_SECTIONS,
   initialProject,
   type LadderProject,
   type LadderPuzzleSpec,
   type PouSlot,
 } from '@automationsolver/shared';
+import { DeskIcon, PanelIcon, SaveIcon, SubmitIcon } from '../../components/icons';
 import { useCreateSlot, useUpdateSlot } from '../../api/queries';
 import { LadderEditor } from '../../features/ladder/LadderEditor';
 import { useEditor } from '../../features/ladder/editorStore';
@@ -97,35 +99,45 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
           openPous={windows.open}
           onOpen={openSection}
         />
+        {/* Three jobs, not five buttons: the tool that opens the plant's own
+            controls, the quiet housekeeping one, and the pair that commits
+            work. They are weighted in that order. */}
         <div className="ws-rail-actions">
           <button
-            className={`pane-toggle${windows.isOpen(HMI_WINDOW) ? ' on' : ''}`}
+            className={`rail-tool${windows.isOpen(HMI_WINDOW) ? ' on' : ''}`}
             onClick={() => windows.toggle(HMI_WINDOW)}
             aria-pressed={windows.isOpen(HMI_WINDOW)}
+            title="The plant's pushbuttons, lamps and analog readouts"
           >
-            Operator panel
+            <PanelIcon size={16} />
+            <span>Operator panel</span>
           </button>
           <button
-            className="pane-toggle"
+            className="rail-quiet"
             onClick={windows.closeAll}
             disabled={windows.open.length === 0}
             title="Close every window and watch the plant on its own"
           >
-            Clear the desk
+            <DeskIcon size={14} />
+            <span>Clear the desk</span>
           </button>
-          {dirty ? <span className="dirty-dot">● unsaved</span> : <span className="muted sm">saved</span>}
+          <div className="rail-status">
+            {dirty ? <span className="dirty-dot">● unsaved</span> : <span className="muted sm">saved</span>}
+          </div>
           <button
-            className="btn btn-ghost"
+            className="btn btn-ghost rail-act"
             disabled={!user || updateSlot.isPending || createSlot.isPending}
             onClick={saveCurrent}
           >
+            <SaveIcon size={14} />
             {updateSlot.isPending || createSlot.isPending ? 'Saving…' : 'Save'}
           </button>
           <button
-            className="btn btn-primary"
+            className="btn btn-primary rail-act"
             disabled={!user || submit.isPending || runner.running}
             onClick={() => submit.mutate(project, { onSuccess: markClean })}
           >
+            <SubmitIcon size={15} />
             {submit.isPending ? 'Grading…' : 'Submit'}
           </button>
         </div>
@@ -134,7 +146,32 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
       {/* The plant fills whatever the rail and a pinned sidebar leave. With no
           windows open and the brief collapsed, it is the whole page. */}
       <main className="ws-stage">
-        <SectionSwitcher slots={slots} active={section} onPick={setSection} />
+        <div className="ws-stage-bar">
+          <SectionSwitcher slots={slots} active={section} onPick={setSection} />
+          {/* The same two commands the operator panel carries, on the same
+              runner — the plant is watchable with every window closed, so
+              starting it must not require opening one. */}
+          <div className="ws-run" role="group" aria-label="Simulation">
+            <button
+              className={`run-btn${activeRunner.running ? ' on' : ''}`}
+              onClick={activeRunner.start}
+              disabled={activeRunner.running}
+              title="Run the simulation"
+              aria-label="Run the simulation"
+            >
+              ▶
+            </button>
+            <button
+              className="run-btn stop"
+              onClick={activeRunner.stop}
+              disabled={!activeRunner.running}
+              title="Stop the simulation"
+              aria-label="Stop the simulation"
+            >
+              ■
+            </button>
+          </div>
+        </div>
         <ReplayBar replay={replay} demoCaption={spec.demo?.caption} />
         <div className="ws-machine">
           <MachineView spec={spec} runner={activeRunner} section={section ?? undefined} />
@@ -177,6 +214,7 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
                 running={activeRunner.running}
                 focused={windows.focused === pouId}
                 readOnly={slot?.editable === false}
+                windowed
               />
             </FloatingWindow>
           );
@@ -223,7 +261,13 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
   );
 }
 
-/** Whole plant, or one bay. Drives the 3D camera rather than swapping scenes. */
+/**
+ * Whole plant, or one bay. Drives the 3D camera rather than swapping scenes.
+ *
+ * Only sections the scene can actually frame get a chip. The supervisor's
+ * "bay" is the whole floor, so its chip did exactly what "Whole plant" does —
+ * two buttons for one view, which reads as one of them being broken.
+ */
 function SectionSwitcher({
   slots,
   active,
@@ -239,7 +283,7 @@ function SectionSwitcher({
         Whole plant
       </button>
       {slots
-        .filter((s) => s.title)
+        .filter((s) => s.title && s.id !== FACTORY_SECTIONS.supervisor)
         .map((s) => (
           <button
             key={s.id}

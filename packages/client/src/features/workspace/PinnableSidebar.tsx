@@ -1,4 +1,5 @@
 import { useEffect, useState, type ReactNode } from 'react';
+import { PinIcon } from '../../components/PinIcon';
 
 /**
  * The work order, demoted from a column to a tab.
@@ -24,9 +25,12 @@ export function PinnableSidebar({
   storageKey: string;
   children: ReactNode;
 }) {
+  // Pinned unless the player has said otherwise. A work order nobody has read
+  // yet is not optional chrome, and a plant that opens with the manual already
+  // collapsed to a tab down the edge asks the player to find it first.
   const [pinned, setPinned] = useState(() => {
-    if (typeof localStorage === 'undefined') return false;
-    return localStorage.getItem(storageKey) === '1';
+    if (typeof localStorage === 'undefined') return true;
+    return localStorage.getItem(storageKey) !== '0';
   });
   const [open, setOpen] = useState(pinned);
 
@@ -63,12 +67,12 @@ export function PinnableSidebar({
         <span className="eyebrow">{title}</span>
         <span className="fw-spacer" />
         <button
-          className={`fw-btn${pinned ? ' on' : ''}`}
+          className={`fw-btn pin-toggle${pinned ? ' on' : ''}`}
           onClick={() => (pinned ? unpin() : setPinned(true))}
           aria-pressed={pinned}
           title={pinned ? 'Unpin — let it float over the plant' : 'Pin — keep it beside the plant'}
         >
-          📌
+          <PinIcon pinned={pinned} />
         </button>
         <button
           className="fw-btn"

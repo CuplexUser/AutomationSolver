@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { PinIcon } from '../../components/PinIcon';
 
 /** A window's box in viewport pixels. */
 export interface WindowBox {
@@ -46,6 +47,9 @@ function clampBox(box: WindowBox, vw: number, vh: number): WindowBox {
   };
 }
 
+/** Windows sit in one band, the always-on-top ones in a band above it. */
+const ONTOP_BAND = 1000;
+
 function loadBox(key: string, fallback: WindowBox): WindowBox {
   if (typeof localStorage === 'undefined') return fallback;
   const raw = localStorage.getItem(key);
@@ -89,6 +93,11 @@ export function FloatingWindow({
 }: Props) {
   const [box, setBox] = useState<WindowBox>(() => loadBox(storageKey, initial));
   const [maximized, setMaximized] = useState(false);
+  // Not persisted, and neither is `maximized`: a window remembers the size and
+  // place the player chose, never a pose. Reopening the desk with a window
+  // already forced over everything else is the sort of state nobody asked for
+  // and everybody then has to undo.
+  const [onTop, setOnTop] = useState(false);
   const drag = useRef<{ mode: DragMode; startX: number; startY: number; from: WindowBox } | null>(
     null,
   );
@@ -112,6 +121,11 @@ export function FloatingWindow({
   const startDrag = useCallback(
     (mode: DragMode) => (e: React.PointerEvent) => {
       if (maximized) return;
+      // A press on a title-bar button is not the start of a drag. It has to bail
+      // out *before* the capture: a captured pointer retargets the click to the
+      // capture element, so grabbing the bar here swallowed every button press
+      // in it — which is why none of the window controls did anything.
+      if ((e.target as Element).closest('button')) return;
       e.preventDefault();
       onFocus();
       (e.currentTarget as Element).setPointerCapture(e.pointerId);
@@ -136,9 +150,18 @@ export function FloatingWindow({
     drag.current = null;
   }, []);
 
+  // Maximized geometry is CSS (`position: absolute` inside the workspace), not
+  // inline pixels: filling the viewport put the title bar — and with it the only
+  // way back out — underneath the app's top bar.
   const style: React.CSSProperties = maximized
-    ? { inset: '8px', width: 'auto', height: 'auto', zIndex: z }
-    : { left: box.x, top: box.y, width: box.w, height: box.h, zIndex: z };
+    ? { zIndex: (onTop ? ONTOP_BAND : 0) + z }
+    : {
+        left: box.x,
+        top: box.y,
+        width: box.w,
+        height: box.h,
+        zIndex: (onTop ? ONTOP_BAND : 0) + z,
+      };
 
   return (
     <section
@@ -155,16 +178,28 @@ export function FloatingWindow({
         onPointerMove={onMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        onDoubleClick={() => setMaximized((v) => !v)}
+        onDoubleClick={(e) => {
+          if ((e.target as Element).closest('button')) return;
+          setMaximized((v) => !v);
+        }}
       >
         <span className="fw-title">{title}</span>
         {subtitle && <span className="fw-sub">{subtitle}</span>}
         <span className="fw-spacer" />
         {badge}
         <button
+          className={`fw-btn pin-toggle${onTop ? ' on' : ''}`}
+          onClick={() => setOnTop((v) => !v)}
+          aria-pressed={onTop}
+          title={onTop ? 'On top of every window — click to release' : 'Keep on top of other windows'}
+          aria-label="Keep window on top"
+        >
+          <PinIcon pinned={onTop} />
+        </button>
+        <button
           className="fw-btn"
           onClick={() => setMaximized((v) => !v)}
-          title={maximized ? 'Restore' : 'Maximize'}
+          title={maximized ? 'Restore (or double-click the title bar)' : 'Maximize (or double-click the title bar)'}
           aria-label={maximized ? 'Restore window' : 'Maximize window'}
         >
           {maximized ? '❐' : '□'}

@@ -208,6 +208,20 @@ button {
 .btn-primary:hover {
   border-color: #fff;
 }
+/* A pin toggle whose icon already carries its state (filled and upright when it
+   is holding something, tilted and hollow when it is not). It must not ring
+   itself as well: an offset square around an already-lit icon reads as a second
+   control sitting behind the first. Colour only, hover included.
+
+   The `button` qualifier is load-bearing — every context this appears in
+   (`.fw-btn.on`, `.pref-btn.on`) rings its own toggles at the same specificity,
+   so a plain `.pin-toggle.on` would only win where its stylesheet happened to
+   be imported last. */
+button.pin-toggle.on,
+button.pin-toggle.on:hover {
+  border-color: transparent;
+  color: var(--live);
+}
 .btn-run {
   background: linear-gradient(180deg, #4be894, var(--run));
   border-color: #6cf0a9;

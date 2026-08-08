@@ -17,6 +17,7 @@ import {
   type PuzzleRegister,
   type RungEvalResult,
 } from '@automationsolver/shared';
+import { PinIcon } from '../../components/PinIcon';
 import {
   CellFields,
   chipTarget,
@@ -109,6 +110,15 @@ interface Props {
   focused?: boolean;
   /** A section the puzzle ships pre-written: shown, highlighted, never edited. */
   readOnly?: boolean;
+  /**
+   * Rendered inside a floating workspace window.
+   *
+   * The window's body does not scroll — the ladder inside it does — so the
+   * toolbar rides *inside* the scroller here. That is what makes the pin mean
+   * the same thing it means in the play column: pinned it stays at the top of
+   * the program, unpinned it scrolls away with it.
+   */
+  windowed?: boolean;
 }
 
 const DEVICE_TYPES = new Set(INSTRUCTIONS.filter((i) => i.needsDevice).map((i) => i.type));
@@ -163,6 +173,7 @@ export function LadderEditor({
   running,
   focused = true,
   readOnly = false,
+  windowed = false,
 }: Props) {
   const {
     project,
@@ -216,6 +227,7 @@ export function LadderEditor({
   const addressRef = useRef<HTMLInputElement>(null);
   const operandRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const paletteRef = useRef<HTMLDivElement>(null);
 
   const zoomKey = `ladder.zoom:${puzzleSlug}`;
   const [zoom, setZoom] = useState(() => {
@@ -241,10 +253,13 @@ export function LadderEditor({
     const el = scrollRef.current;
     if (!el) return;
     const { w, h } = naturalSize(program);
+    // In a window the toolbar is inside the scrollport, and while it is pinned
+    // it covers the top of it — so that height is not the program's to fill.
+    const chrome = windowed && stickyPalette ? (paletteRef.current?.offsetHeight ?? 0) : 0;
     const availW = el.clientWidth - 24;
-    const availH = el.clientHeight - 24;
+    const availH = el.clientHeight - chrome - 24;
     setZoom(clampZoom(Math.min(availW / w, availH / h)));
-  }, [program]);
+  }, [program, windowed, stickyPalette]);
 
   const allowed = new Set<ElementType>([...allowedInstructions, 'hwire']);
   // A pre-written section is as locked as a running one: it is shown so the
@@ -606,199 +621,210 @@ export function LadderEditor({
     program.rungs.length,
   ]);
 
-  return (
-    <div className="ladder-editor">
-      <div className={`palette panel${stickyPalette ? ' palette-pinned' : ''}`}>
-        {/* One row, not four: fields, chips, prefs and zoom share it and wrap
-            only when they must. Every row of chrome here is a row of ladder the
-            player doesn't get. */}
-        <div className="palette-row">
-          <div className="palette-fields">
-            <button
-              className="icon-btn palette-fold"
-              onClick={() => setPaletteOpen(!paletteOpen)}
-              title={paletteOpen ? 'Hide the instruction buttons' : 'Show the instruction buttons'}
-              aria-expanded={paletteOpen}
-            >
-              {paletteOpen ? '▾' : '▸'}
-            </button>
-            {/* Only the fields the active instruction actually uses, in the
-                order it reads: operands, then operator, then destination. */}
-            <CellFields
-              fields={fields}
-              values={{ opA, opB, address, preset, cmpOp, mathOp }}
-              handlers={fieldHandlers}
-              editable={editable}
-              target={chipSlot}
-              addressRef={addressRef}
-              operandRef={operandRef}
-            />
-            {/* Chips fill whichever field can take the address they carry. */}
-            <div className="dev-quick">
-              {chips.map((d) => (
-                <button
-                  key={d.address}
-                  className={`dev-chip dev-${d.address[0]}`}
-                  onClick={() => applyChip(d.address)}
-                  disabled={!editable || !d.slot}
-                  title={d.slot ? `${d.label} → ${d.into}` : `${d.label} — no field here takes a ${d.address[0]} address`}
-                >
-                  {d.address}
-                </button>
-              ))}
-            </div>
-            <div className="palette-controls">
-              <div className="zoom-ctl" role="group" aria-label="Ladder zoom">
-                <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z - 0.1))} title="Zoom out (Ctrl −)">
-                  −
-                </button>
-                <span className="zoom-val">{Math.round(zoom * 100)}%</span>
-                <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z + 0.1))} title="Zoom in (Ctrl +)">
-                  +
-                </button>
-                <button className="icon-btn" onClick={fitZoom} title="Fit the program to the window">
-                  Fit
-                </button>
-                <button className="icon-btn" onClick={() => setZoom(1)} title="Reset zoom (Ctrl 0)">
-                  100%
-                </button>
-              </div>
-              <div className="editor-prefs" role="group" aria-label="Editor preferences">
-                <button
-                  className={`icon-btn pref-btn${stickyPalette ? ' on' : ''}`}
-                  onClick={() => setStickyPalette(!stickyPalette)}
-                  aria-pressed={stickyPalette}
-                  aria-label="Pin the toolbar"
-                  title="Keep this toolbar pinned to the top while scrolling a long program"
-                >
-                  📌
-                </button>
-                <button
-                  className={`icon-btn pref-btn${floatingEditor ? ' on' : ''}`}
-                  onClick={() => setFloatingEditor(!floatingEditor)}
-                  aria-pressed={floatingEditor}
-                  aria-label="Floating cell editor"
-                  title="Echo the selected cell's fields in a floating corner editor"
-                >
-                  ⬓
-                </button>
-              </div>
-            </div>
-          </div>
-          {/* Tuning is only meaningful with a loop block in hand, so it appears
-              with one and stays out of the way otherwise. */}
-          {activeType === 'pid' && (
-            <PidTuning
-              tuning={tuning}
-              onChange={changeTuning}
-              editable={editable}
-              editing={selectedEl?.type === 'pid'}
-            />
-          )}
-        </div>
-
-        {paletteOpen && (
-          <>
-            <div className="palette-instr">
-              {palette.map((meta) => (
-                <button
-                  key={meta.type}
-                  className="instr-btn"
-                  disabled={!editable || !selected}
-                  onClick={() => place(meta)}
-                  title={`${meta.label} — key: ${meta.key.toUpperCase()}`}
-                >
-                  <span className="instr-glyph">{meta.glyph}</span>
-                  <span className="instr-label">{meta.label}</span>
-                  <span className="instr-key">{meta.key.toUpperCase()}</span>
-                </button>
-              ))}
+  // The toolbar as one value, because a floating window renders it *inside*
+  // the ladder scroller rather than above it — see the return below.
+  const toolbar = (
+    <div ref={paletteRef} className={`palette panel${stickyPalette ? ' palette-pinned' : ''}`}>
+      {/* One row, not four: fields, chips, prefs and zoom share it and wrap
+          only when they must. Every row of chrome here is a row of ladder the
+          player doesn't get. */}
+      <div className="palette-row">
+        <div className="palette-fields">
+          <button
+            className="icon-btn palette-fold"
+            onClick={() => setPaletteOpen(!paletteOpen)}
+            title={paletteOpen ? 'Hide the instruction buttons' : 'Show the instruction buttons'}
+            aria-expanded={paletteOpen}
+          >
+            {paletteOpen ? '▾' : '▸'}
+          </button>
+          {/* Only the fields the active instruction actually uses, in the
+              order it reads: operands, then operator, then destination. */}
+          <CellFields
+            fields={fields}
+            values={{ opA, opB, address, preset, cmpOp, mathOp }}
+            handlers={fieldHandlers}
+            editable={editable}
+            target={chipSlot}
+            addressRef={addressRef}
+            operandRef={operandRef}
+          />
+          {/* Chips fill whichever field can take the address they carry. */}
+          <div className="dev-quick">
+            {chips.map((d) => (
               <button
-                className="instr-btn danger"
-                disabled={!editable || !selected}
-                onClick={() => selected && setCell(selected, null)}
-                title="Clear cell — key: Delete"
+                key={d.address}
+                className={`dev-chip dev-${d.address[0]}`}
+                onClick={() => applyChip(d.address)}
+                disabled={!editable || !d.slot}
+                title={d.slot ? `${d.label} → ${d.into}` : `${d.label} — no field here takes a ${d.address[0]} address`}
               >
-                <span className="instr-glyph">⌫</span>
-                <span className="instr-label">Clear</span>
-                <span className="instr-key">DEL</span>
+                {d.address}
+              </button>
+            ))}
+          </div>
+          <div className="palette-controls">
+            <div className="zoom-ctl" role="group" aria-label="Ladder zoom">
+              <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z - 0.1))} title="Zoom out (Ctrl −)">
+                −
+              </button>
+              <span className="zoom-val">{Math.round(zoom * 100)}%</span>
+              <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z + 0.1))} title="Zoom in (Ctrl +)">
+                +
+              </button>
+              <button className="icon-btn" onClick={fitZoom} title="Fit the program to the window">
+                Fit
+              </button>
+              <button className="icon-btn" onClick={() => setZoom(1)} title="Reset zoom (Ctrl 0)">
+                100%
               </button>
             </div>
-
-            <div className="palette-foot">
-              {running ? (
-                <p className="palette-hint live">Simulation running — stop to edit.</p>
-              ) : note ? (
-                <p className="palette-hint note">{note}</p>
-              ) : retypeWord && selectedEl ? (
-                <p className="palette-hint">
-                  Editing <span className="mono">{wordSummary(selectedEl)}</span>. Operands take a
-                  register like <span className="mono">D10</span> or a constant like{' '}
-                  <span className="mono">K500</span>.
-                </p>
-              ) : retypeDevice ? (
-                <p className="palette-hint">
-                  Editing <span className="mono">{selectedEl?.device || '—'}</span> — change the Address to retype it in
-                  place, or press another instruction key to replace it.
-                </p>
-              ) : (
-                <p className="palette-hint">Select a cell (or use the arrow keys), then press an instruction key.</p>
-              )}
-              <details className="shortcuts">
-                <summary>Shortcuts</summary>
-                <dl>
-                  <div>
-                    <dt>← ↑ → ↓</dt>
-                    <dd>move the selected cell (wraps between rungs)</dd>
-                  </div>
-                  <div>
-                    <dt>{palette.map((i) => i.key.toUpperCase()).join(' · ')}</dt>
-                    <dd>place {palette.map((i) => i.label).join(', ').toLowerCase()}</dd>
-                  </div>
-                  <div>
-                    <dt>Del</dt>
-                    <dd>clear the cell</dd>
-                  </div>
-                  <div>
-                    <dt>B</dt>
-                    <dd>toggle a branch (vertical link) at the cell&apos;s left node</dd>
-                  </div>
-                  <div>
-                    <dt>A</dt>
-                    <dd>add a rung at the end</dd>
-                  </div>
-                  <div>
-                    <dt>I</dt>
-                    <dd>insert a rung after the selected one</dd>
-                  </div>
-                  <div>
-                    <dt>Ctrl + ↑ / ↓</dt>
-                    <dd>move the selected rung up / down</dd>
-                  </div>
-                  <div>
-                    <dt>Shift + → / ↓</dt>
-                    <dd>add a column / a branch row to this rung</dd>
-                  </div>
-                  <div>
-                    <dt>Enter</dt>
-                    <dd>jump to the address field</dd>
-                  </div>
-                  <div>
-                    <dt>Esc</dt>
-                    <dd>deselect</dd>
-                  </div>
-                  <div>
-                    <dt>Ctrl + / − / 0</dt>
-                    <dd>zoom in / out / reset — or press Fit to size the program to the window</dd>
-                  </div>
-                </dl>
-              </details>
+            <div className="editor-prefs" role="group" aria-label="Editor preferences">
+              <button
+                className={`icon-btn pref-btn pin-toggle${stickyPalette ? ' on' : ''}`}
+                onClick={() => setStickyPalette(!stickyPalette)}
+                aria-pressed={stickyPalette}
+                aria-label="Pin the toolbar"
+                title={
+                  stickyPalette
+                    ? 'Pinned — the toolbar stays put however far you scroll'
+                    : 'Unpinned — the toolbar scrolls away with the program'
+                }
+              >
+                <PinIcon pinned={stickyPalette} />
+              </button>
+              <button
+                className={`icon-btn pref-btn${floatingEditor ? ' on' : ''}`}
+                onClick={() => setFloatingEditor(!floatingEditor)}
+                aria-pressed={floatingEditor}
+                aria-label="Floating cell editor"
+                title="Echo the selected cell's fields in a floating corner editor"
+              >
+                ⬓
+              </button>
             </div>
-          </>
+          </div>
+        </div>
+        {/* Tuning is only meaningful with a loop block in hand, so it appears
+            with one and stays out of the way otherwise. */}
+        {activeType === 'pid' && (
+          <PidTuning
+            tuning={tuning}
+            onChange={changeTuning}
+            editable={editable}
+            editing={selectedEl?.type === 'pid'}
+          />
         )}
       </div>
 
+      {paletteOpen && (
+        <>
+          <div className="palette-instr">
+            {palette.map((meta) => (
+              <button
+                key={meta.type}
+                className="instr-btn"
+                disabled={!editable || !selected}
+                onClick={() => place(meta)}
+                title={`${meta.label} — key: ${meta.key.toUpperCase()}`}
+              >
+                <span className="instr-glyph">{meta.glyph}</span>
+                <span className="instr-label">{meta.label}</span>
+                <span className="instr-key">{meta.key.toUpperCase()}</span>
+              </button>
+            ))}
+            <button
+              className="instr-btn danger"
+              disabled={!editable || !selected}
+              onClick={() => selected && setCell(selected, null)}
+              title="Clear cell — key: Delete"
+            >
+              <span className="instr-glyph">⌫</span>
+              <span className="instr-label">Clear</span>
+              <span className="instr-key">DEL</span>
+            </button>
+          </div>
+
+          <div className="palette-foot">
+            {running ? (
+              <p className="palette-hint live">Simulation running — stop to edit.</p>
+            ) : note ? (
+              <p className="palette-hint note">{note}</p>
+            ) : retypeWord && selectedEl ? (
+              <p className="palette-hint">
+                Editing <span className="mono">{wordSummary(selectedEl)}</span>. Operands take a
+                register like <span className="mono">D10</span> or a constant like{' '}
+                <span className="mono">K500</span>.
+              </p>
+            ) : retypeDevice ? (
+              <p className="palette-hint">
+                Editing <span className="mono">{selectedEl?.device || '—'}</span> — change the Address to retype it in
+                place, or press another instruction key to replace it.
+              </p>
+            ) : (
+              <p className="palette-hint">Select a cell (or use the arrow keys), then press an instruction key.</p>
+            )}
+            <details className="shortcuts">
+              <summary>Shortcuts</summary>
+              <dl>
+                <div>
+                  <dt>← ↑ → ↓</dt>
+                  <dd>move the selected cell (wraps between rungs)</dd>
+                </div>
+                <div>
+                  <dt>{palette.map((i) => i.key.toUpperCase()).join(' · ')}</dt>
+                  <dd>place {palette.map((i) => i.label).join(', ').toLowerCase()}</dd>
+                </div>
+                <div>
+                  <dt>Del</dt>
+                  <dd>clear the cell</dd>
+                </div>
+                <div>
+                  <dt>B</dt>
+                  <dd>toggle a branch (vertical link) at the cell&apos;s left node</dd>
+                </div>
+                <div>
+                  <dt>A</dt>
+                  <dd>add a rung at the end</dd>
+                </div>
+                <div>
+                  <dt>I</dt>
+                  <dd>insert a rung after the selected one</dd>
+                </div>
+                <div>
+                  <dt>Ctrl + ↑ / ↓</dt>
+                  <dd>move the selected rung up / down</dd>
+                </div>
+                <div>
+                  <dt>Shift + → / ↓</dt>
+                  <dd>add a column / a branch row to this rung</dd>
+                </div>
+                <div>
+                  <dt>Enter</dt>
+                  <dd>jump to the address field</dd>
+                </div>
+                <div>
+                  <dt>Esc</dt>
+                  <dd>deselect</dd>
+                </div>
+                <div>
+                  <dt>Ctrl + / − / 0</dt>
+                  <dd>zoom in / out / reset — or press Fit to size the program to the window</dd>
+                </div>
+              </dl>
+            </details>
+          </div>
+        </>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="ladder-editor">
+      {!windowed && toolbar}
+
       <div className="ladder-scroll inset" ref={scrollRef}>
+        {windowed && toolbar}
         {/* Scaling the canvas (rather than the scroller) keeps the scrollable area
             correct at any zoom — the compensating width undoes the transform. */}
         <div className="ladder-canvas" style={{ transform: `scale(${zoom})`, width: `${100 / zoom}%` }}>
