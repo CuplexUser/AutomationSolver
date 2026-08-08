@@ -47,6 +47,36 @@ import { asrsReplenish } from './45-asrs-replenish.js';
 import { asrsDualCycle } from './46-asrs-dual-cycle.js';
 import { factorySupervisor } from './47-factory-supervisor.js';
 
+/**
+ * The excavator line's plant definition, ahead of the puzzles that use it.
+ *
+ * Re-exported by name rather than with `export *` because `factory-line-plant`
+ * also exports a rung-building kit under names (`build`, `no`, `nc`) that would
+ * be a poor thing to put in the package's top-level namespace.
+ *
+ * These are content, not puzzles: nothing here appears in `PUZZLES` until a
+ * spec declares `processId: 'factory-line'`. The client's dev preview drives the
+ * line from them so the scene can be looked at before that spec exists.
+ */
+export {
+  LINE_DEVICES,
+  LINE_INSTRUCTIONS,
+  LINE_OWNS,
+  SUP_PROGRAM,
+} from './factory-line-plant.js';
+export {
+  ASSEMBLY_PLAIN,
+  ASSEMBLY_TUNED,
+  PAINT_PLAIN,
+  PAINT_TUNED,
+  STORE_PLAIN,
+  STORE_TUNED,
+  TEST_PLAIN,
+  TEST_TUNED,
+  WELD_PLAIN,
+  WELD_TUNED,
+} from './factory-line-programs.js';
+
 export const PUZZLES: PuzzleSpec[] = [
   directControl,
   sealIn,

@@ -189,3 +189,58 @@
 .mv-flow-stat.warn .mv-stat-value {
   color: var(--stop);
 }
+
+/* --- Dev line preview -------------------------------------------------------
+   The scene under construction, with no puzzle around it. Deliberately plain:
+   it is a window onto the plant, and every pixel it spends on chrome is a pixel
+   the thing being looked at does not get. */
+.line-preview {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.lp-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--edge);
+  background: var(--panel);
+  font-size: 13px;
+}
+.lp-clock {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.lp-cams {
+  display: flex;
+  gap: 4px;
+}
+.lp-bar button {
+  padding: 3px 9px;
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  background: var(--inset);
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.lp-bar button:hover {
+  border-color: var(--muted);
+}
+.lp-bar button.on {
+  border-color: var(--run);
+  color: var(--run);
+}
+.lp-note {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+.lp-scene {
+  flex: 1;
+  min-height: 0;
+}

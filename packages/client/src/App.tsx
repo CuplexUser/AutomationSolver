@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Route, Routes } from 'react-router';
 import { TopBar } from './components/TopBar';
 import { LandingPage } from './pages/LandingPage';
@@ -8,6 +9,20 @@ import { VerifyEmailPage } from './pages/VerifyEmailPage';
 import { PuzzleListPage } from './pages/PuzzleListPage';
 import { PuzzlePlayPage } from './pages/PuzzlePlayPage';
 import { SettingsPage } from './pages/SettingsPage';
+
+/**
+ * A dev door onto a scene that has no puzzle pointing at it yet.
+ *
+ * Both halves of this matter. `lazy` keeps three.js out of the entry chunk — a
+ * static import of a page that mounts `MachineCanvas` pulls the whole renderer
+ * into `index.js` and undoes every other scene's code splitting. And putting
+ * `import.meta.env.DEV` in front of the `import()` rather than only in front of
+ * the `<Route>` is what stops the chunk being emitted at all in production:
+ * the flag folds to `false` and the dynamic import goes with it.
+ */
+const LinePreviewPage = import.meta.env.DEV
+  ? lazy(() => import('./pages/LinePreviewPage').then((m) => ({ default: m.LinePreviewPage })))
+  : null;
 
 export function App() {
   return (
@@ -28,6 +43,16 @@ export function App() {
           <Route path="/puzzles/category/:category" element={<PuzzleListPage />} />
           <Route path="/puzzles/:slug" element={<PuzzlePlayPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          {LinePreviewPage && (
+            <Route
+              path="/dev/line"
+              element={
+                <Suspense fallback={null}>
+                  <LinePreviewPage />
+                </Suspense>
+              }
+            />
+          )}
           <Route path="*" element={<LandingPage />} />
         </Routes>
       </div>

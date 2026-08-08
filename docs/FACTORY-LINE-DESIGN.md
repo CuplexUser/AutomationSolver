@@ -362,15 +362,19 @@ is 4 m tall as cheaply.
 Procedural first, as agreed. Everything below is three.js primitives and canvas textures, which
 is what `factory/` already is, so nothing has to be unwound to get here.
 
-1. **Floor plan and shell.** New `plant.ts` constants, `Building` at 55 x 38, aisle, wall
-   treatment. Nothing functional; this is the box everything else is placed in.
-2. **Cameras.** The eight presets against the empty floor. Doing this second rather than last is
+1. ~~**Floor plan and shell.**~~ Done — `factoryLine/plant.ts` and `factoryLine/Shell.tsx`.
+2. ~~**Cameras.**~~ Done — `factoryLine/camera.tsx`. Doing this second rather than last was
    deliberate: a layout that only works from overhead is a layout you find out about early, when
    moving a cell is free.
-3. **Scene vocabulary.** Striping, fencing, markings, services, HMI, stack lights, figures.
-   Applied to the empty cells, so the language is settled before six machines are dressed in it.
+3. ~~**Scene vocabulary.**~~ Done — `factoryLine/textures.tsx` and `factoryLine/props.tsx`, applied
+   across all eight cells in `rowA.tsx` and `rowB.tsx` and assembled by `FactoryLine3D.tsx`.
+   `MachineView` dispatches `processId: 'factory-line'` to it. **Nothing declares that process id
+   yet, so the scene is built but not reachable** — the first puzzle to declare it (step 7) is also
+   the first chance to look at it.
 4. **The spine.** `processes/factoryLine.ts` gains the zone model; `CONV` device map, ownership,
-   plain and tuned programs. Extend the soak test to seven sections.
+   plain and tuned programs. Extend the soak test to seven sections. The scene already draws the
+   spine and stands a photo-eye at every zone boundary, so this step adds behaviour to a floor that
+   is already laid out for it.
 5. **Retime**, measured against the soak harness rather than against the table in §4.
 6. **Re-model the cells**, one at a time, inside their fixed footprints.
 7. **Blender**, later and per cell, replacing procedural geometry where a GLB earns its download.

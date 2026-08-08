@@ -1,5 +1,10 @@
 import { lazy, Suspense } from 'react';
-import { FACTORY_LIMITS, type LadderPuzzleSpec, type MachineState } from '@automationsolver/shared';
+import {
+  FACTORY_LIMITS,
+  LINE_LIMITS,
+  type LadderPuzzleSpec,
+  type MachineState,
+} from '@automationsolver/shared';
 import type { SimRunner } from './useSimRunner';
 
 // Lazy so three.js + react-three-fiber + drei (the bulk of the bundle) stay in
@@ -22,6 +27,9 @@ const TankVessel3D = lazy(() =>
 const AxisRig3D = lazy(() => import('./AxisRig3D').then((m) => ({ default: m.AxisRig3D })));
 const Warehouse3D = lazy(() => import('./Warehouse3D').then((m) => ({ default: m.Warehouse3D })));
 const Factory3D = lazy(() => import('./Factory3D').then((m) => ({ default: m.Factory3D })));
+const FactoryLine3D = lazy(() =>
+  import('./factoryLine/FactoryLine3D').then((m) => ({ default: m.FactoryLine3D })),
+);
 
 /** Reserves the scene's footprint while its chunk downloads (no layout shift). */
 const sceneFallback = <div className="machine3d" style={{ height: 300 }} />;
@@ -34,6 +42,9 @@ const pct = (v: number) => `${Math.round(v * 100)}%`;
 const counts = (v: number) => `${Math.round((v / 4000) * 100)}% (${Math.round(v)})`;
 /** The same, keeping the sign, for a drive that runs both ways. */
 const signedCounts = (v: number) => `${v > 0 ? '+' : ''}${counts(v)}`;
+const inBand = (v: number, lo: number, hi: number) => v >= lo && v <= hi;
+/** How many of one part code a buffer string holds. */
+const countOf = (s: string, code: string) => [...s].filter((c) => c === code).length;
 
 /**
  * Puzzle-specific machine visualization. Falls back to nothing when a puzzle has
@@ -85,6 +96,56 @@ export function MachineView({
         </div>
         <Suspense fallback={<div className="machine3d" style={{ height: '100%' }} />}>
           <Factory3D machine={m} outputs={runner.bits} section={section} height="100%" />
+        </Suspense>
+      </div>
+    );
+  }
+  if (spec.processId === 'factory-line') {
+    const m = runner.machine;
+    const temp = Math.round(numOf(m.boothTempM) / 100);
+    const film = Math.round(numOf(m.filmM) / 100);
+    const laneF = strOf(m.laneF);
+    const laneB = strOf(m.laneB);
+    const stored = Array.from({ length: LINE_LIMITS.STORE_LANES }, (_, i) =>
+      strOf(m[`lane${i}`]),
+    ).join('');
+    return (
+      // Same contract as the tutorial plant: no panel chrome and no readout
+      // strip, because in the plant workspace the scene *is* the page.
+      <div className="machine-view plant">
+        <div className="mv-head floating">
+          <span className="eyebrow">Excavator Line</span>
+          <StatusTag tag={lineTag(m)} />
+          <span className="mv-flow">
+            <Flow
+              label="Store F/B"
+              value={`${countOf(stored, 'f')} / ${countOf(stored, 'b')}`}
+              on={stored.length > 0}
+              // A store holding only one kind is a store about to starve the jig,
+              // and it is worth saying before the starve latch trips.
+              warn={stored.length > 0 && (countOf(stored, 'f') === 0 || countOf(stored, 'b') === 0)}
+            />
+            <Flow label="Booth" value={counts(temp)} on={inBand(temp, LINE_LIMITS.CURE_MIN, LINE_LIMITS.CURE_MAX)} />
+            <Flow label="Film" value={counts(film)} on={film > 0} />
+            <Flow
+              label="Painted F/B"
+              value={`${laneF.length} / ${laneB.length}`}
+              on={laneF.length > 0 && laneB.length > 0}
+              warn={(laneF.length === 0) !== (laneB.length === 0) && laneF.length + laneB.length > 0}
+            />
+            <Flow label="Test" value={`${numOf(m.bufAt)}/${LINE_LIMITS.AT_CAP}`} on={numOf(m.bufAt) > 0} />
+            <Flow
+              label="Yard"
+              value={`${numOf(m.yard)}/${LINE_LIMITS.YARD_CAP}`}
+              on={numOf(m.yard) > 0}
+              warn={numOf(m.yard) >= LINE_LIMITS.YARD_CAP}
+            />
+            <Flow label="Shipped" value={`${numOf(m.shipped)}`} on={numOf(m.shipped) > 0} />
+            {numOf(m.scrapped) > 0 && <Flow label="Scrap" value={`${numOf(m.scrapped)}`} on warn />}
+          </span>
+        </div>
+        <Suspense fallback={<div className="machine3d" style={{ height: '100%' }} />}>
+          <FactoryLine3D machine={m} outputs={runner.bits} section={section} height="100%" />
         </Suspense>
       </div>
     );
@@ -625,6 +686,64 @@ function factoryTag(m: MachineState): MachineTag {
       text: 'assembly waiting',
       icon: 'warn',
       tip: 'A part is in the jig and its partner has not come out of paint. Still recoverable, but the starve timer is running.',
+    };
+  }
+  if (numOf(m.shipped) > 0) return { text: 'running', icon: 'check' };
+  return { text: 'idle' };
+}
+
+// --- Excavator line -------------------------------------------------------------
+
+/**
+ * The line has more ways to stop than the tutorial plant, and more of them look
+ * fine in the picture.
+ *
+ * A jam is a crash. Starved and blocked leave every mechanism healthy, so they
+ * have to be said out loud. And a truck that has not been called is not a fault
+ * at all — it is a decision the player has not made yet, which is why it gets a
+ * plain tag rather than a warning.
+ */
+function lineTag(m: MachineState): MachineTag {
+  if (m.jam === true) return jamTag(m);
+  if (m.starved === true) {
+    return {
+      text: 'assembly starved',
+      icon: 'warn',
+      warn: true,
+      tip: 'Final assembly is holding half a machine and its partner never arrived. The line built the wrong mix: it needs one frame and one boom, not two of whichever is quicker. The run has already failed.',
+    };
+  }
+  if (m.blocked === true) {
+    const reason = typeof m.jamReason === 'string' ? m.jamReason : '';
+    return {
+      text: 'line blocked',
+      icon: 'block',
+      warn: true,
+      tip: `${reason ? `${reason[0].toUpperCase()}${reason.slice(1)}.` : 'A buffer overran.'} Every buffer's full bit is a sensor the program can read, so this is a section that pushed without looking. The run has already failed.`,
+    };
+  }
+  if (numOf(m.tipChange) > 0) return { text: 'changing tip', icon: 'gear' };
+  if (numOf(m.purge) > 0) return { text: 'purging gun', icon: 'gear' };
+  const stage = strOf(m.boothStage, 'idle');
+  if (stage === 'spray') return { text: 'spraying', icon: 'gear' };
+  if (numOf(m.portalAt) > 0 && numOf(m.portalAt) < 1) {
+    return { text: 'portal travelling', icon: 'right' };
+  }
+  if (numOf(m.testCycle) > 0 && numOf(m.testCycle) < 1) return { text: 'function test', icon: 'gear' };
+  if (numOf(m.weldSeam) > 0 && numOf(m.weldSeam) < 1) return { text: 'welding', icon: 'gear' };
+  if (numOf(m.assyStarveMs) > 3000) {
+    return {
+      text: 'assembly waiting',
+      icon: 'warn',
+      tip: 'A part is in the jig and its partner has not come out of paint. Still recoverable, but the starve timer is running.',
+    };
+  }
+  if (numOf(m.yard) >= LINE_LIMITS.YARD_CAP) {
+    return {
+      text: 'yard full',
+      icon: 'block',
+      warn: false,
+      tip: 'The yard is full, so test cannot dispatch and the line will back up behind it. Call a lorry.',
     };
   }
   if (numOf(m.shipped) > 0) return { text: 'running', icon: 'check' };
