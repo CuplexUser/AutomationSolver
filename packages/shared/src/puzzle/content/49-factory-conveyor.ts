@@ -121,21 +121,21 @@ export const factoryConveyor: PuzzleSpec = {
   ].join('\n'),
   hints: [
     'Start with one rung per zone and the simplest rule that can work: run this belt while ' +
-      'this zone is clear. That is an NC contact on the zone eye driving the zone drive, ' +
-      'twelve times over. A zone with nothing on it pulls in whatever is behind it and then ' +
-      'stops, which is exactly what accumulation is.',
+    'this zone is clear. That is an NC contact on the zone eye driving the zone drive, ' +
+    'twelve times over. A zone with nothing on it pulls in whatever is behind it and then ' +
+    'stops, which is exactly what accumulation is.',
     'That rule is also what stops the belt at the right moment. A zone holding a part has ' +
-      'its own eye made, so its drive is already off, and the station on the end of it can ' +
-      'lift the part away. You do not need a separate rung to stop a zone for a station.',
+    'its own eye made, so its drive is already off, and the station on the end of it can ' +
+    'lift the part away. You do not need a separate rung to stop a zone for a station.',
     'The two painted lanes are the exception and cannot follow the rule, because they hold ' +
-      'three parts and their eye reads occupied rather than full. Run each lane only while ' +
-      'you are paddling into it, and it will be stopped every other moment, which is when ' +
-      'the jig wants it.',
+    'three parts and their eye reads occupied rather than full. Run each lane only while ' +
+    'you are paddling into it, and it will be stopped every other moment, which is when ' +
+    'the jig wants it.',
     'The sort is two coils per direction, not one. Raise the paddle and run the lane it ' +
-      'pushes into, together, off the same rung: a paddle raised against a dead lane leaves ' +
-      'the part standing on Z7 for ever.',
+    'pushes into, together, off the same rung: a paddle raised against a dead lane leaves ' +
+    'the part standing on Z7 for ever.',
     'X45 and X46 say a lane is full. Divert into a full lane and the paddle strokes against ' +
-      'a lane that cannot take the part, so put them in series with their own paddle.',
+    'a lane that cannot take the part, so put them in series with their own paddle.',
   ],
   devices: LINE_DEVICES,
   registers: [
@@ -148,6 +148,10 @@ export const factoryConveyor: PuzzleSpec = {
   pous: lineSections({ open: ['CONV'] }),
   tasks: LINE_TASKS,
   taskAssignment: 'fixed',
+  symbols: 'optional',
+  memoryPools: { bool: 'M200-M399', int: 'D100-D199', timer: 'T60-T99', counter: 'C0-C79' },
+  pouAuthoring: 'player',
+  maxPous: 8,
   scenarios: [
     {
       name: 'A part reaches the booth',

@@ -49,6 +49,16 @@ export function DeskIcon({ size }: { size?: number }) {
   );
 }
 
+/** Globals: a tag, because a variable is a name tied onto an address. */
+export function TagIcon({ size }: { size?: number }) {
+  return (
+    <Icon size={size}>
+      <path d="M8.4 1.8H12.7a1.5 1.5 0 0 1 1.5 1.5v4.3l-6.4 6.4a1.5 1.5 0 0 1-2.1 0L1.8 9.7a1.5 1.5 0 0 1 0-2.1Z" />
+      <circle cx="11" cy="5" r="1.1" />
+    </Icon>
+  );
+}
+
 /** Save: the floppy every editor still draws. */
 export function SaveIcon({ size }: { size?: number }) {
   return (

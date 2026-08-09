@@ -4,14 +4,17 @@ import {
   assembleProject,
   FACTORY_SECTIONS,
   initialProject,
+  missingDeclarations,
   type LadderProject,
   type LadderPuzzleSpec,
+  type MissingDeclaration,
   type PouSlot,
 } from '@automationsolver/shared';
 import { DeskIcon, PanelIcon, SaveIcon, SubmitIcon } from '../../components/icons';
 import { useCreateSlot, useUpdateSlot } from '../../api/queries';
 import { LadderEditor } from '../../features/ladder/LadderEditor';
-import { useEditor } from '../../features/ladder/editorStore';
+import { GLOBAL_SCOPE, useEditor, varsIn } from '../../features/ladder/editorStore';
+import { VariablesPanel } from '../../features/ladder/VariablesPanel';
 import { HmiPanel } from '../../features/sim/HmiPanel';
 import { MachineView } from '../../features/sim/MachineView';
 import { ReplayBar } from '../../features/sim/ReplayBar';
@@ -28,6 +31,10 @@ import type { PlayProps } from './LadderPlay';
 
 /** Window id for the operator panel, which floats like any section does. */
 const HMI_WINDOW = '__hmi';
+/** Window id for the project's globals table — the interface between sections. */
+const GLOBALS_WINDOW = '__globals';
+/** Windows that are not a POU, and so must not be handed a ladder editor. */
+const TOOL_WINDOWS = new Set<string>([HMI_WINDOW, GLOBALS_WINDOW]);
 
 /**
  * The plant workspace.
@@ -50,6 +57,33 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
   const slots: PouSlot[] = useMemo(() => spec.pous ?? [], [spec.pous]);
   const windows = useWindows();
   const [section, setSection] = useState<string | null>(null);
+  // Which sections have their locals table pulled out under the ladder. A
+  // declaration list is reference material, not a mode, so it opens as a drawer
+  // inside the window rather than replacing the program the player is reading.
+  const [localsOpen, setLocalsOpen] = useState<readonly string[]>([]);
+  const toggleLocals = (pouId: string) =>
+    setLocalsOpen((ids) => (ids.includes(pouId) ? ids.filter((id) => id !== pouId) : [...ids, pouId]));
+
+  // A puzzle written in raw addresses has nothing to declare: resolution never
+  // runs, so a name the player typed here would reach the engine as a name and
+  // match nothing. The whole affordance is hidden rather than shown broken.
+  const declares = (spec.symbols ?? 'off') !== 'off';
+
+  // Names the program already uses and nothing declares. Computed as the player
+  // types rather than waiting for a submission, because the answer is a
+  // declaration they were going to write anyway and the editor knows both the
+  // name and the kind.
+  const missing = useMemo(
+    () => (declares ? missingDeclarations(spec, project) : []),
+    [declares, spec, project],
+  );
+  // The globals table offers each name once, whichever section wanted it: a
+  // global is exactly the case where more than one does.
+  const missingGlobal = useMemo(() => {
+    const byName = new Map<string, MissingDeclaration>();
+    for (const miss of missing) if (!byName.has(miss.name)) byName.set(miss.name, miss);
+    return [...byName.values()];
+  }, [missing]);
 
   // Load the active slot once resolved, and again on a slot switch. A slot that
   // predates a section being added holds only the POUs it knew about, so the
@@ -99,6 +133,16 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
           focusedPou={windows.focused}
           openPous={windows.open}
           onOpen={openSection}
+          authoring={spec.pouAuthoring === 'player'}
+          maxPous={spec.maxPous}
+          globals={
+            declares
+              ? {
+                  open: windows.isOpen(GLOBALS_WINDOW),
+                  onOpen: () => windows.toggle(GLOBALS_WINDOW),
+                }
+              : undefined
+          }
         />
         {/* Three jobs, not five buttons: the tool that opens the plant's own
             controls, the quiet housekeeping one, and the pair that commits
@@ -202,19 +246,42 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
       </main>
 
       {windows.open
-        .filter((id) => id !== HMI_WINDOW)
+        .filter((id) => !TOOL_WINDOWS.has(id))
         .map((pouId) => {
           const slot = slots.find((s) => s.id === pouId);
           const index = slots.findIndex((s) => s.id === pouId);
+          const readOnly = slot?.editable === false;
+          const showLocals = declares && localsOpen.includes(pouId);
+          // A program the player made has no slot, so its title is the name they
+          // gave it — and follows them renaming it.
+          const name = project.pous.find((p) => p.id === pouId)?.name ?? slot?.name ?? pouId;
+          const undeclared = readOnly ? [] : missing.filter((m) => m.pouId === pouId);
           return (
             <FloatingWindow
               key={pouId}
               id={pouId}
               storageKey={`ws.win.${spec.slug}.${pouId}`}
-              title={slot?.name ?? pouId}
+              title={name}
               subtitle={slot?.title}
               badge={
-                slot && !slot.editable ? <span className="fw-badge">READ ONLY</span> : undefined
+                <>
+                  {readOnly && <span className="fw-badge">READ ONLY</span>}
+                  {declares && (
+                    <button
+                      className={`fw-badge fw-badge-btn${showLocals ? ' on' : ''}${undeclared.length > 0 ? ' warn' : ''}`}
+                      onClick={() => toggleLocals(pouId)}
+                      aria-pressed={showLocals}
+                      title={
+                        undeclared.length > 0
+                          ? `${undeclared.length} name${undeclared.length === 1 ? '' : 's'} used here and declared nowhere — open to fix`
+                          : `Names private to ${name} — no other section can see them`
+                      }
+                    >
+                      VAR {varsIn(project, pouId).length}
+                      {undeclared.length > 0 && <span className="fw-badge-alert">!</span>}
+                    </button>
+                  )}
+                </>
               }
               initial={cascadeBox(Math.max(0, index))}
               focused={windows.focused === pouId}
@@ -225,24 +292,41 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
               }}
               onClose={() => windows.close(pouId)}
             >
-              <LadderEditor
-                puzzleSlug={`${spec.slug}:${pouId}`}
-                pouId={pouId}
-                allowedInstructions={spec.allowedInstructions}
-                devices={spec.devices}
-                registers={spec.registers}
-                // Only this section's results, so editing one window does not
-                // re-render the other three on every scan.
-                evalResults={activeRunner.evalResults[pouId] ?? []}
-                running={activeRunner.running}
-                focused={windows.focused === pouId}
-                readOnly={slot?.editable === false}
-                windowed
-                // Resolution order is per-POU, so each window offers the names
-                // that section can actually see: its own locals first, then the
-                // globals, then the plant.
-                symbols={symbolChoicesFor(spec, project, pouId)}
-              />
+              <div className="pou-body">
+                <LadderEditor
+                  puzzleSlug={`${spec.slug}:${pouId}`}
+                  pouId={pouId}
+                  allowedInstructions={spec.allowedInstructions}
+                  devices={spec.devices}
+                  registers={spec.registers}
+                  // Only this section's results, so editing one window does not
+                  // re-render the other three on every scan.
+                  evalResults={activeRunner.evalResults[pouId] ?? []}
+                  running={activeRunner.running}
+                  focused={windows.focused === pouId}
+                  readOnly={readOnly}
+                  windowed
+                  // Resolution order is per-POU, so each window offers the names
+                  // that section can actually see: its own locals first, then the
+                  // globals, then the plant.
+                  symbols={symbolChoicesFor(spec, project, pouId)}
+                />
+                {/* The locals drawer sits under the program it belongs to, so a
+                    declaration and the rung that reads it are on screen at once.
+                    A pre-written section's table is shown and not edited: it is
+                    the handshake the player is coding against. */}
+                {showLocals && (
+                  <div className="pou-locals inset">
+                    <VariablesPanel
+                      spec={spec}
+                      scope={pouId}
+                      title={`${name} locals`}
+                      readOnly={readOnly}
+                      suggestions={undeclared}
+                    />
+                  </div>
+                )}
+              </div>
             </FloatingWindow>
           );
         })}
@@ -259,6 +343,27 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
           onClose={() => windows.close(HMI_WINDOW)}
         >
           <HmiPanel devices={spec.devices} runner={activeRunner} />
+        </FloatingWindow>
+      )}
+
+      {declares && windows.isOpen(GLOBALS_WINDOW) && (
+        <FloatingWindow
+          id={GLOBALS_WINDOW}
+          storageKey={`ws.win.${spec.slug}.globals`}
+          title="Globals"
+          subtitle="visible to every section"
+          initial={{ x: 180, y: 150, w: 520, h: 320 }}
+          focused={windows.focused === GLOBALS_WINDOW}
+          z={10 + windows.depth(GLOBALS_WINDOW)}
+          onFocus={() => windows.focus(GLOBALS_WINDOW)}
+          onClose={() => windows.close(GLOBALS_WINDOW)}
+        >
+          <VariablesPanel
+            spec={spec}
+            scope={GLOBAL_SCOPE}
+            title="Globals"
+            suggestions={missingGlobal}
+          />
         </FloatingWindow>
       )}
 

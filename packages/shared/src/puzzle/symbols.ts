@@ -273,6 +273,79 @@ export function runnableProject(spec: LadderPuzzleSpec, submitted: ProgramDoc): 
   return resolveProject(spec, assembled, playerPouIds(spec, assembled)).project;
 }
 
+// --- Declare-from-error -------------------------------------------------------
+
+/** A name a program uses that nothing declares, and the declaration that would fix it. */
+export interface MissingDeclaration {
+  pouId: string;
+  name: string;
+  /** Guessed from the element that used it — see `guessKind`. */
+  kind: VarKind;
+  /** 1-based, so it matches the rung header the player is looking at. */
+  rung: number;
+}
+
+/**
+ * What kind a name must be, read off the element that used it.
+ *
+ * The element already says this and says it unambiguously: a timer's device is a
+ * timer, a `MOV`'s destination is a word, an operand is a value, and everything
+ * else that takes a device takes a bit. Asking the player to pick a type they
+ * have already implied is a question with one right answer.
+ */
+function guessKind(el: LadderElement, name: string): VarKind {
+  const isDevice = el.device.trim().toLowerCase() === name.trim().toLowerCase();
+  if (!isDevice) return 'int'; // a word instruction's operand is a value
+  switch (el.type) {
+    case 'timer':
+      return 'timer';
+    case 'counter':
+      return 'counter';
+    case 'mov':
+    case 'math':
+    case 'pid':
+      return 'int';
+    default:
+      return 'bool';
+  }
+}
+
+/**
+ * Every name in the project that resolves to nothing, ready to be declared.
+ *
+ * The other half of `"OutfeedBusy is not declared"`: the message says what is
+ * wrong, this says what to do about it, and the editor can then offer the
+ * declaration rather than making the player retype the name into a table.
+ *
+ * Names that could not be declared at all — `has space`, or something that reads
+ * as an address — are left out. A quick fix that cannot be applied is worse than
+ * no quick fix, and the validation message is already saying the right thing.
+ */
+export function missingDeclarations(
+  spec: LadderPuzzleSpec,
+  project: LadderProject,
+): MissingDeclaration[] {
+  if ((spec.symbols ?? 'off') === 'off') return [];
+
+  const { issues } = resolveProject(spec, project);
+  const byId = new Map(project.pous.map((pou) => [pou.id, pou]));
+  const out: MissingDeclaration[] = [];
+  const seen = new Set<string>();
+
+  for (const issue of issues) {
+    if (issue.reason !== 'undeclared') continue;
+    const name = issue.name.trim();
+    if (!isValidVarName(name)) continue;
+    const dedupe = `${issue.pouId}|${key(name)}`;
+    if (seen.has(dedupe)) continue;
+    const el = byId.get(issue.pouId)?.rungs[issue.rungIndex]?.cells[issue.row]?.[issue.col];
+    if (!el) continue;
+    seen.add(dedupe);
+    out.push({ pouId: issue.pouId, name, kind: guessKind(el, name), rung: issue.rungIndex + 1 });
+  }
+  return out;
+}
+
 // --- Allocation ---------------------------------------------------------------
 
 const POOL_FIELD: Record<VarKind, keyof MemoryPools> = {

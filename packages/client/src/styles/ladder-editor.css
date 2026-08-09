@@ -625,3 +625,33 @@
   color: var(--stop);
   max-width: 46ch;
 }
+/* The other half of "X is not declared": the message says what is wrong, these
+   say what to do about it. Clicking one fills the draft below — it does not
+   declare, because which table it lands in is the choice being made. */
+.vars-missing {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+}
+.vars-missing-lead {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--warn, #c9772f);
+}
+.vars-miss {
+  padding: 2px 7px;
+  border: 1px dashed var(--warn, #c9772f);
+  border-radius: 999px;
+  background: none;
+  color: var(--ink-dim);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  cursor: pointer;
+}
+.vars-miss:hover {
+  border-style: solid;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--warn, #c9772f) 14%, transparent);
+}

@@ -90,11 +90,13 @@ export function assembleProject(spec: LadderPuzzleSpec, submitted: ProgramDoc): 
   // that collides with a declared slot is dropped rather than allowed to replace
   // it — the same rule, and for the same reason, as a non-editable section
   // always coming from the spec.
+  const added: string[] = [];
   if (spec.pouAuthoring === 'player') {
     const claimed = new Set(slots.map((slot) => slot.id));
     for (const pou of sent?.pous ?? []) {
       if (claimed.has(pou.id)) continue;
       claimed.add(pou.id);
+      added.push(pou.id);
       pous.push({
         id: pou.id,
         name: pou.name,
@@ -105,10 +107,20 @@ export function assembleProject(spec: LadderPuzzleSpec, submitted: ProgramDoc): 
     }
   }
 
-  const tasks: TaskDef[] =
-    spec.taskAssignment === 'player' && sent?.tasks?.length
-      ? sent.tasks.map((task) => ({ ...task }))
-      : (spec.tasks ?? []).map((task) => ({ ...task }));
+  const playerTasks =
+    spec.taskAssignment === 'player' && sent?.tasks?.length ? sent.tasks : null;
+  const tasks: TaskDef[] = (playerTasks ?? spec.tasks ?? []).map((task) => ({ ...task }));
+
+  // A program in no task never runs, and the spec's tasks cannot name a section
+  // the player invented after the puzzle was written. So under fixed scheduling
+  // an added POU joins the first task, in the order it was added — the answer
+  // the player would give if asked, which is why they are not asked. Where the
+  // schedule *is* the answer (`taskAssignment: 'player'`) nothing is appended:
+  // leaving a program out of every task is then a choice, and `checkTasks`
+  // already says so.
+  if (added.length > 0 && !playerTasks && tasks.length > 0) {
+    tasks[0] = { ...tasks[0], pous: [...tasks[0].pous, ...added] };
+  }
 
   // The puzzle's own globals are the fixtures' published interface, so they come
   // from the spec whatever the submission says; the player's are merged on top

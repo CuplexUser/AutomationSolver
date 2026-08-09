@@ -138,6 +138,104 @@
   flex-direction: column;
   gap: 2px;
 }
+/* Globals sit above the tasks: they belong to the project, not to any section
+   the schedule calls. Same row shape as a POU, no call-order badge, because
+   they are not called. */
+.pe-globals {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border: 1px solid var(--edge);
+  border-radius: 5px;
+  background: none;
+  color: var(--ink-dim);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.pe-globals:hover {
+  border-color: var(--live);
+  color: var(--live);
+}
+.pe-globals.open {
+  border-color: var(--live);
+  background: color-mix(in srgb, var(--live) 12%, transparent);
+  color: var(--live);
+}
+.pe-globals > .pe-name {
+  flex: 1 1 auto;
+  font-family: inherit;
+}
+
+/* The row is the open-button plus, for a program the player made, its own
+   controls beside it — siblings, because a button inside a button is not a
+   thing and the whole row has always been what opens the section. */
+.pe-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+.pe-row > .pe-pou {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pe-tools {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+.pe-tool {
+  width: 17px;
+  height: 19px;
+  display: grid;
+  place-items: center;
+  border: none;
+  border-radius: 3px;
+  background: none;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+.pe-tool:hover:not(:disabled) {
+  background: var(--panel-2, rgb(255 255 255 / 8%));
+  color: var(--ink);
+}
+.pe-tool.danger:hover:not(:disabled) {
+  color: var(--stop);
+}
+.pe-tool:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+.pe-rename {
+  width: 100%;
+}
+/* Making a program: a name, and nothing else to decide. */
+.pe-add {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 9px;
+  border-top: 1px solid var(--edge);
+}
+.pe-add > input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.pe-add-note {
+  flex: 1 0 100%;
+  margin: 0;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+.pe-add-note.bad {
+  color: var(--stop);
+}
+
 .pe-pou {
   width: 100%;
   display: flex;
@@ -403,6 +501,34 @@
   letter-spacing: 0.06em;
   color: var(--ink-dim);
 }
+/* A badge that is also a control: same chip, but it presses. Used by the locals
+   drawer's toggle, which belongs beside READ ONLY rather than in the body —
+   a declaration list is about the window, not about the rung being edited. */
+.fw-badge-btn {
+  font-family: var(--font-mono);
+  background: none;
+  cursor: pointer;
+}
+.fw-badge-btn:hover {
+  border-color: var(--live);
+  color: var(--live);
+}
+.fw-badge-btn.on {
+  border-color: var(--live);
+  background: color-mix(in srgb, var(--live) 14%, transparent);
+  color: var(--live);
+}
+/* This section uses a name nothing declares. Said on the badge, because the
+   drawer that fixes it is behind the badge and a validation message the player
+   only sees after submitting is a lap too late. */
+.fw-badge-btn.warn {
+  border-color: var(--warn, #c9772f);
+  color: var(--warn, #c9772f);
+}
+.fw-badge-alert {
+  margin-left: 4px;
+  font-weight: 700;
+}
 .fw-btn {
   flex: 0 0 auto;
   width: 22px;
@@ -439,6 +565,37 @@
    the window instead. */
 .fw-body .ladder-editor {
   height: 100%;
+}
+
+/* --- a section's window: the program, and optionally its declarations ---
+   The drawer takes the height its table needs, up to a cap, and the ladder
+   takes the rest: locals are read while writing a rung, so pushing the rung off
+   screen to show them defeats the point of putting them here — but a drawer
+   clipped half-way through its own Declare button is worse than either. */
+.pou-body {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+.pou-body > .ladder-editor {
+  /* `.fw-body .ladder-editor` pins it to 100% for the windows that hold nothing
+     else; here the drawer is the other thing, so it flexes instead. */
+  height: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+/* The 280px floor is a rule about the play *column*, where the ladder is the
+   page. In a window with a drawer under it the window is the floor, and the
+   floor was pushing the drawer's last row out through the bottom of the frame. */
+.pou-body > .ladder-editor .ladder-scroll {
+  min-height: 80px;
+}
+.pou-locals {
+  flex: 0 0 auto;
+  max-height: min(60%, 320px);
+  margin: 6px;
+  overflow: auto;
 }
 
 /* --- the ladder toolbar, in a window ---

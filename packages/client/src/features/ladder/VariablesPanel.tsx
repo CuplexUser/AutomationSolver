@@ -4,6 +4,7 @@ import {
   isValidVarName,
   VAR_KIND_DEVICE,
   type LadderPuzzleSpec,
+  type MissingDeclaration,
   type VarDecl,
   type VarKind,
 } from '@automationsolver/shared';
@@ -37,9 +38,24 @@ export interface VariablesPanelProps {
   title: string;
   /** A read-only section's table is shown but not edited. */
   readOnly?: boolean;
+  /**
+   * Names the program uses that nothing declares.
+   *
+   * Offered as one-click drafts rather than as a warning to act on: the name and
+   * the kind are both already known, so retyping them into this table is work
+   * the editor can do. Clicking fills the draft; declaring is still a decision,
+   * because *which* table it lands in is the part the player is choosing.
+   */
+  suggestions?: readonly MissingDeclaration[];
 }
 
-export function VariablesPanel({ spec, scope, title, readOnly = false }: VariablesPanelProps) {
+export function VariablesPanel({
+  spec,
+  scope,
+  title,
+  readOnly = false,
+  suggestions = [],
+}: VariablesPanelProps) {
   const project = useEditor((s) => s.project);
   const addVar = useEditor((s) => s.addVar);
   const removeVar = useEditor((s) => s.removeVar);
@@ -118,6 +134,25 @@ export function VariablesPanel({ spec, scope, title, readOnly = false }: Variabl
             ))}
           </tbody>
         </table>
+      )}
+
+      {!readOnly && suggestions.length > 0 && (
+        <div className="vars-missing">
+          <span className="vars-missing-lead">Used but not declared:</span>
+          {suggestions.map((miss) => (
+            <button
+              key={miss.name}
+              className="vars-miss"
+              onClick={() => {
+                setDraftName(miss.name);
+                setDraftKind(miss.kind);
+              }}
+              title={`Rung ${miss.rung} uses ${miss.name} as a ${KIND_LABEL[miss.kind].toLowerCase()}`}
+            >
+              {miss.name}
+            </button>
+          ))}
+        </div>
       )}
 
       {!readOnly && (

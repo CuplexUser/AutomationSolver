@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { LadderProject, Rung, VarDecl } from '../ladder/types.js';
+import type { LadderElement, LadderProject, Rung, VarDecl } from '../ladder/types.js';
 import { PUZZLES } from './content/index.js';
 import { assembleProject, initialProject, playerPouIds } from './project.js';
 import {
@@ -7,6 +7,7 @@ import {
   buildSymbolTable,
   deriveSymbol,
   isValidVarName,
+  missingDeclarations,
   plantSymbols,
   resolveName,
   resolveProject,
@@ -390,6 +391,92 @@ describe('symbols — the rules a submitted declaration is held to', () => {
   });
 });
 
+// --- Declare-from-error -------------------------------------------------------
+
+describe('symbols — what is used but not declared', () => {
+  /** One rung holding a single element, so the guess has something to read. */
+  const holding = (id: string, el: LadderElement): Rung => ({
+    id,
+    rows: 1,
+    cols: 1,
+    cells: [[el]],
+    vlinks: [],
+  });
+
+  const withRungs = (...rungs: Rung[]) =>
+    project([{ id: 'MINE', name: 'MINE', rungs }]);
+
+  it('reads the kind off the element that used the name', () => {
+    const out = missingDeclarations(
+      spec({ symbols: 'optional' }),
+      withRungs(
+        holding('r1', { type: 'coil-out', device: 'OutfeedBusy' }),
+        holding('r2', { type: 'timer', device: 'Dwell', preset: 30 }),
+        holding('r3', { type: 'counter', device: 'Made', preset: 5 }),
+        holding('r4', { type: 'mov', device: 'Target', operands: ['K10'] }),
+      ),
+    );
+    expect(out.map((m) => [m.name, m.kind])).toEqual([
+      ['OutfeedBusy', 'bool'],
+      ['Dwell', 'timer'],
+      ['Made', 'counter'],
+      ['Target', 'int'],
+    ]);
+  });
+
+  it('treats a word operand as a value whatever the block writes', () => {
+    const out = missingDeclarations(
+      spec({ symbols: 'optional' }),
+      withRungs(holding('r1', { type: 'mov', device: 'D30', operands: ['Measured'] })),
+    );
+    expect(out).toEqual([{ pouId: 'MINE', name: 'Measured', kind: 'int', rung: 1 }]);
+  });
+
+  it('offers a name once per program, at the rung that first wanted it', () => {
+    const out = missingDeclarations(
+      spec({ symbols: 'optional' }),
+      withRungs(
+        holding('r1', { type: 'contact-no', device: 'Ready' }),
+        holding('r2', { type: 'coil-out', device: 'Ready' }),
+      ),
+    );
+    expect(out).toEqual([{ pouId: 'MINE', name: 'Ready', kind: 'bool', rung: 1 }]);
+  });
+
+  it('leaves out anything a declaration could not fix', () => {
+    // A quick fix that cannot be applied is worse than none; the validation
+    // message already says the right thing about these.
+    const out = missingDeclarations(
+      spec({ symbols: 'optional' }),
+      withRungs(holding('r1', { type: 'coil-out', device: 'has space' })),
+    );
+    expect(out).toEqual([]);
+  });
+
+  it('says nothing about names that already resolve, or about a raw-address puzzle', () => {
+    const declared = project([
+      {
+        id: 'MINE',
+        name: 'MINE',
+        rungs: [holding('r1', { type: 'coil-out', device: 'OutfeedBusy' })],
+        vars: [{ name: 'OutfeedBusy', kind: 'bool', address: 'M5' }],
+      },
+    ]);
+    expect(missingDeclarations(spec({ symbols: 'optional' }), declared)).toEqual([]);
+    // Plant names and bare addresses both resolve too.
+    expect(
+      missingDeclarations(
+        spec({ symbols: 'optional' }),
+        withRungs(holding('r1', { type: 'coil-out', device: 'Torch' }), holding('r2', { type: 'coil-out', device: 'M9' })),
+      ),
+    ).toEqual([]);
+    // And `off` never walks a rung at all.
+    expect(
+      missingDeclarations(spec(), withRungs(holding('r1', { type: 'coil-out', device: 'Nope' }))),
+    ).toEqual([]);
+  });
+});
+
 // --- Assembly -----------------------------------------------------------------
 
 describe('symbols — assembling a player-authored project', () => {
@@ -415,6 +502,33 @@ describe('symbols — assembling a player-authored project', () => {
     });
     expect(out.pous.map((p) => p.id)).toEqual(['FIX', 'MINE', 'EXTRA']);
     expect(out.pous[2].name).toBe('PORTAL');
+  });
+
+  it('calls an added POU from the first task, in the order it was added', () => {
+    // The spec's tasks cannot name a section the player invented afterwards, so
+    // without this every program they make is one no task calls — added, shown
+    // in the tree, and never run.
+    const out = assembleProject(base, {
+      pous: [
+        { id: 'MINE', name: 'MINE', rungs: [] },
+        { id: 'SORT', name: 'SORT', rungs: [] },
+        { id: 'PORTAL', name: 'PORTAL', rungs: [] },
+      ],
+      tasks: [],
+    });
+    expect(out.tasks[0].pous).toEqual(['FIX', 'MINE', 'SORT', 'PORTAL']);
+  });
+
+  it('appends nothing when the schedule is the player’s to write', () => {
+    // Then a program in no task is a choice, and `checkTasks` already warns.
+    const out = assembleProject(
+      { ...base, taskAssignment: 'player' },
+      {
+        pous: [{ id: 'SORT', name: 'SORT', rungs: [] }],
+        tasks: [{ id: 'MAIN', name: 'MAIN', priority: 0, pous: ['FIX', 'MINE'] }],
+      },
+    );
+    expect(out.tasks[0].pous).toEqual(['FIX', 'MINE']);
   });
 
   it('will not let a player POU displace a shipped section', () => {

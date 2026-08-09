@@ -199,6 +199,30 @@ non-editable sections always coming from the spec.
 - every editable slot the spec named, taken from the submission if present
 - every POU the submission added, in its own order, provided the id is free
 
+### An added POU has to be scheduled, too
+
+The list above was not sufficient and the gap was invisible until the tree could
+actually make a program. **The spec's tasks cannot name a section the player invented after the
+puzzle was written**, and under `taskAssignment: 'fixed'` the tasks come from the spec — so every
+added POU arrived at the grader in no task at all, present in the project, shown in the tree, and
+never run. It surfaced only as `checkTasks`' warning, on a submission.
+
+So assembly appends the added POUs to the **first task**, in the order they were added. That is the
+answer a player would give if asked, which is why they are not asked, and it is the same rule the
+client's `addPou` had already been applying optimistically. Under `taskAssignment: 'player'` nothing
+is appended: the schedule is then the answer, so leaving a program out of every task is a choice
+and the existing warning is the right response to it.
+
+Two consequences worth knowing:
+
+- **Scan order for added POUs is `project.pous` order**, because that is the order assembly appends
+  them in. Reordering one in the tree therefore has to move it in *both* `project.pous` and the
+  task's list, or the tree would show an order the engine does not run. `movePou` does both.
+- **The player's POUs are a contiguous tail.** Slots come first, in spec order, and additions after
+  — in `initialProject`, in `assembleProject` and in the editor's own `addPou`. The tree relies on
+  it: a move is only offered between two of the player's own programs, since a slot's place in the
+  task comes from the spec and moving past one would be a reorder the grader does not perform.
+
 ## Tasks
 
 Puzzles 48 to 52 keep one fixed `MAIN` task and a fixed scan order, so the lesson stays the
@@ -292,10 +316,64 @@ Four pieces, in the order they are worth building:
 2. **Variables pane.** A table per POU for locals and one at project level for globals: name,
    kind, address (read-only), comment. Add and delete. `fixed` rows are shown greyed with their
    publisher named.
-3. **POU tree editing.** Add, rename, delete, drag to reorder. Pinned rows for fixture slots.
+
+   Mounted in `FactoryPlay`, in the two places the two scopes belong. **Globals hang off the
+   project**, so they are a row at the top of the program tree, above the tasks, opening their own
+   floating window. They were first put in the rail's action block beside the operator panel, and
+   that was wrong twice over: the actions block is `margin-top: auto`, so on a short viewport it
+   sits below the fold of a scrolling rail, and nothing about "save, submit, clear the desk"
+   suggests a declaration table lives there. The tree is where a player already looks to see how
+   the program is put together, and a global is exactly that.
+
+   **Locals hang off a POU**, so each section window carries a `VAR n` toggle in its title bar next
+   to `READ ONLY`, and the table opens as a drawer *under* that section's ladder rather than
+   replacing it: a declaration is read while a rung is being written, so a mode that hides the rung
+   defeats the point of putting the table there at all. The drawer takes the height its table needs
+   up to `min(60%, 320px)` and the ladder takes the rest — **and `.ladder-scroll`'s 280 px floor has
+   to be relaxed inside it**, because that floor is a rule about the play *column*, where the ladder
+   is the page. Left standing in a 420 px window it won the space and pushed the drawer's Declare
+   row out through the bottom of the frame. A pre-written section's drawer is read-only — it is the
+   handshake the player is coding against, not their storage.
+
+   The whole affordance is hidden when `symbols` is `'off'`, and that is not politeness. Under
+   `'off'` no resolution pass runs, so a name the player declared would reach the engine still
+   spelled as a name and match nothing. There is no safe way to offer the pane on a puzzle written
+   in raw addresses, so it is not offered. This is why mounting it changes nothing a player can see
+   until step 7 lands: no shipped puzzle sets `symbols` yet.
+3. **POU tree editing.** Add, rename, delete, reorder. Pinned rows for fixture slots.
+
+   In `PouExplorer`, and only under `pouAuthoring: 'player'`. A player row carries four small
+   controls beside the open-button — up, down, rename, delete — as siblings of it rather than
+   children, since a button inside a button is not a thing and the row itself has always been what
+   opens the section. Adding asks for a **name and nothing else**: the id is derived from it,
+   uniquified against everything taken, and never shown, because it exists so that a task and a
+   save slot have something stable to point at and a player made to invent one would be inventing
+   the wrong thing. A rename therefore never moves the id.
+
+   Reordering is the two arrow buttons, not a drag. That is what `RungView` already uses for the
+   same job one level down, it needs no keyboard fallback bolted on afterwards, and the list it
+   acts on is four or five rows long. The arrows are enabled only between two of the player's own
+   programs; see §"An added POU has to be scheduled, too" for why the pinned slots are not
+   merely a courtesy.
 4. **Declare-from-error.** The `"OutfeedBusy is not declared"` validation message carries a
    quick-fix that opens the variables pane with the name filled in and a kind guessed from where
    the element sits — a coil implies a bit, a `MOV` destination implies a word.
+
+   `missingDeclarations(spec, project)` in `symbols.ts` is the shared half: it re-runs resolution,
+   keeps the `undeclared` issues, and reads the kind off the element that used the name. The
+   element already says it unambiguously — a timer's device is a timer, a `MOV`'s destination is a
+   word, an operand of any word block is a value, everything else that takes a device takes a bit —
+   so asking the player to pick a type they have already implied is a question with one right
+   answer. Names no declaration could fix (`has space`, anything that reads as an address) are left
+   out: a quick fix that cannot be applied is worse than none, and the validation message is
+   already saying the right thing about those.
+
+   It runs **as the player types, not on submit.** The whole point is that the fix is a declaration
+   they were going to write anyway, and a message that arrives after a submission is a lap too
+   late. So the section window's `VAR` badge carries the count, and the drawer behind it lists each
+   name as a chip. Clicking one fills the draft — name and kind — and stops there, because *which*
+   table it lands in is the decision the player is actually making. The globals window offers the
+   same names deduplicated across sections, which is the case a global exists for.
 
 ## Build order
 
@@ -316,17 +394,17 @@ until a puzzle opts in.
      of them assembled or resolved differently, the client and the server would silently disagree
      about the program. They now all go through one function. The editor deliberately does *not*
      resolve: it keeps the player's names, because names are what they typed.
-5. Client. **Symbol picker wired; variables pane written but not mounted**; POU tree editing and
-   declare-from-error remain. See [`TODO.md`](../TODO.md) P1.
+5. **Done.** Client: symbol picker, variables pane, POU tree editing and declare-from-error.
+   Nothing a player can see changes until step 7, because no shipped puzzle sets `symbols` yet.
    - `SymbolField` is a combobox over the in-scope table, keyboard-navigable, showing each name
      with its address and where it came from. The address also echoes inside the box once a name
      resolves, so naming a device never means hiding where it lives. This one is reachable:
      `CellFields` renders it and `FactoryPlay` feeds it `symbolChoicesFor(spec, project, pouId)`.
    - `VariablesPanel` is the declaration table, and it shows the address the *next* declaration
      would take before it takes it. Allocation is not something the player finds out about
-     afterwards. **It is imported by nothing**, so there is currently no way to open it and
-     therefore no way to declare a variable at all — which makes every step above it dead code
-     from a player's point of view. Mounting it is the first box of P1.
+     afterwards. It is mounted in `FactoryPlay` — a rail tool and a window for the globals, a
+     title-bar toggle and a drawer per section for the locals. See §UI item 2 for why each scope
+     is attached where it is.
    - `symbolChoicesFor` and `filterChoices` live in `shared` rather than the client, because the
      client has no unit-test runner and these are pure functions that deserve one.
 6. Convert `factory-line-programs.ts` to symbols; the soak test in `factoryLine.test.ts` is the

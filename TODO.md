@@ -32,25 +32,23 @@ Reference docs, and what each is for:
 
 ## P1 — Finish variables and POUs
 
-The engine half is done and the feature is **unreachable**, which is the worst state for it to be
-in: the model, the allocator, the resolver, the validation rules and the client store actions all
-exist, and a player cannot declare a single variable. Reference:
+The engine and the UI are both built: declaring, scoping, resolving, player-authored POUs and the
+declare-from-error quick fix all work. **No shipped puzzle turns it on**, so none of it is reachable
+in the game yet, and the three boxes left are the one pass that does — they are a single change,
+not three, and P2's first box belongs in it too. Reference:
 [`docs/VARIABLES-AND-POUS.md`](docs/VARIABLES-AND-POUS.md), whose build order this section
-finishes (steps 1 to 4 are done, step 5 is half done).
+finishes (steps 1 to 5 are done).
 
-Roughly in dependency order. The first box is the one that turns everything already built from
-dead code into a feature.
-
-- [ ] **Mount `VariablesPanel`.** The component is finished (228 lines: add, delete, rename,
+- [x] **Mount `VariablesPanel`.** The component is finished (228 lines: add, delete, rename,
       comment, and it shows the address the next declaration *would* take) and is imported by
       nothing. Needs a locals table per POU window and one globals table at project level in
       `FactoryPlay`, plus somewhere to open them from. Until this ships, nothing else in this
       section is worth anything.
       → `packages/client/src/features/ladder/VariablesPanel.tsx`, `pages/play/FactoryPlay.tsx`
-- [ ] **POU tree editing** under `pouAuthoring: 'player'` — add, rename, delete, drag to reorder,
+- [x] **POU tree editing** under `pouAuthoring: 'player'` — add, rename, delete, drag to reorder,
       with fixture slots pinned and id collisions rejected at assembly. `assembleProject` already
       implements the merge rule; this is the UI for it. → VARIABLES-AND-POUS §"Player-authored POUs"
-- [ ] **Declare-from-error quick fix.** `"OutfeedBusy is not declared"` should offer to open the
+- [x] **Declare-from-error quick fix.** `"OutfeedBusy is not declared"` should offer to open the
       variables pane with the name filled in and the kind guessed from where the element sits: a
       coil implies a bit, a MOV destination implies a word. → VARIABLES-AND-POUS §UI item 4
 - [ ] **Convert `factory-line-programs.ts` to symbols.** 118 rungs of raw addresses become
@@ -66,7 +64,7 @@ dead code into a feature.
 - [ ] **Hand the capstone its task schedule.** Puzzle 53 sets `taskAssignment: 'player'`, which
       already exists and is already validated. A spine polled on a 200 ms task reacts up to 200 ms
       late at every one of twelve zone handshakes. → VARIABLES-AND-POUS §Tasks
-- [ ] **Document the whole feature in FEATURE-MAP.** It currently contains no mention of
+- [x] **Document the whole feature in FEATURE-MAP.** It currently contains no mention of
       variables, scopes, `VarDecl`, globals or symbol resolution, which is why the gap was
       invisible from the outside. → `docs/FEATURE-MAP.md` §3
 

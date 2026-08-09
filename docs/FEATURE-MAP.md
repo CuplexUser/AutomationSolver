@@ -117,7 +117,7 @@ units** and **tasks** over the existing model without touching it:
     `WiringDoc` (see §3b).
   - **`pous` / `tasks` / `taskAssignment`** — present means the puzzle is written in sections,
     and that is also what selects the workspace layout on the client (§9). A `PouSlot` is
-    `{ id, name, title, editable, program?, maxRungs?, owns?, brief? }`.
+    `{ id, name, title, editable, program?, maxRungs?, owns?, vars?, brief? }`.
     - `editable: false` ships the section pre-written and read-only, which is what makes a
       five-POU factory a fair first puzzle: puzzle 1 opens the supervisor and runs the four
       stations for you, and each later one takes another away. Same on-ramp shape as the ASRS
@@ -137,6 +137,55 @@ units** and **tasks** over the existing model without touching it:
     from the spec unless `taskAssignment: 'player'`. `initialProject(spec)` is the empty
     starting state; `editableSlots`, `parseDeviceRange`/`inDeviceRanges` back the ownership
     check.
+  - **Variables, scopes and symbols** (`symbols.ts`, `symbolChoices.ts`) — the layer that turns a
+    list of addresses into a symbol table. Design and rationale live in
+    [VARIABLES-AND-POUS.md](./VARIABLES-AND-POUS.md); what is where:
+    - A **`VarDecl`** is `{ name, kind: 'bool'|'int'|'timer'|'counter', address, comment?, fixed? }`
+      — a name over an address, **allocated once at declaration and stored, never recomputed**.
+      That is the determinism property: client and server both read an address already written
+      down, so there is no allocator whose output they could disagree about, and renaming or
+      reordering costs nothing. `Pou.vars` are locals, `LadderProject.globals` the interface
+      between sections. Both optional, so every program written before symbols is already valid.
+    - Three tiers resolve in this order, per POU: **local**, **global**, **plant** (the spec's
+      `devices`, named by `symbol` or by `deriveSymbol(label)` — `Frame Blank Ready` →
+      `FrameBlankReady`), then **the literal address itself**. That last step is the compatibility
+      hinge: an undeclared `M40` still *is* `M40`, which is why 47 puzzles, every saved slot and the
+      Pages demo resolve to exactly the bytes they always did.
+    - **`resolveProject(spec, project, strictPous?)`** is the one pass that rewrites names to
+      addresses, between assembly and the engine. **The engine never learns that variables exist**
+      — same arrangement `toProject` used to put POUs over `LadderProgram`. `spec.symbols`
+      (`'off'` default / `'optional'` / `'required'`) chooses how strict it is; `'off'` returns the
+      project untouched without walking a rung. Fixture POUs are always resolved leniently: they
+      are content, not an answer.
+    - **`runnableProject(spec, submitted)`** is assembly-then-resolution as one call, and the only
+      way anything builds a `SimEngine`. Three places do (the grader, the client's live scan, its
+      reset path); any two of them assembling differently is exactly how client and server stop
+      agreeing. The **editor deliberately does not resolve** — it keeps the player's names, because
+      names are what they typed.
+    - **Allocation**: `spec.memoryPools` declares the spans the player may draw from
+      (`{ bool: 'M0-M399', int: 'D20-D199', … }`); `allocateAddress` takes the lowest free index,
+      counting the plant's own addresses as taken.
+    - **`validateDeclarations`** enforces the three rules a hand-written payload is not obliged to
+      have followed: inside the declared pool; **no two declarations anywhere in the project share
+      an address**, locals in different POUs included (names are scoped, memory is not — the engine
+      holds one flat image); and no declaration points at an `X`, a `Y` or an analog device
+      address, or a submission could declare a local named `Torch` at `Y3`.
+    - **`symbolChoicesFor(spec, project, pouId)`** and **`filterChoices`** back the editor's symbol
+      picker. They live in `shared` rather than the client because the client has no unit-test
+      runner and these are pure functions that deserve one.
+    - **`missingDeclarations(spec, project)`** is the declare-from-error half: the `undeclared`
+      issues, each with the kind read off the element that used the name (a timer's device is a
+      timer, a `MOV` destination or any word operand is a word, everything else that takes a device
+      is a bit). Names no declaration could fix are left out.
+    - **`writableOutputs`** replaces per-section `owns` on player code. Once the player names their
+      own POUs a fence keyed on a section name has nothing to attach to, so the spec declares which
+      *plant actuators* the whole submission may drive and scoping covers the rest. Shipped fixture
+      slots keep `owns`.
+    - **`pouAuthoring: 'player'`** (with `maxPous`) lets the player add programs.
+      `assembleProject` takes every added POU whose id is free — an id colliding with a declared
+      slot is dropped rather than allowed to replace it — and, when the schedule is the spec's,
+      **appends them to the first task**, because the spec's tasks cannot name a section invented
+      after the puzzle was written and a program in no task never runs.
   - **`briefing`** is written as an instruction manual, not prose: a one-paragraph lead, then
     `## Section` blocks (`Equipment`, `Sequence of operation`, `Interlocks and safety`,
     `Field notes`, `Acceptance`; cabinet puzzles use `Power circuit` / `Control circuit` /
@@ -783,8 +832,33 @@ a plant does not, so here the machine **is** the page.
 - The section chips only offer bays the scene can frame. The supervisor POU's "bay" is the
   whole floor, so its chip did precisely what "Whole plant" does — two buttons for one view,
   which reads as one of them being broken.
-- `PouExplorer.tsx` — tasks in scan order, POUs numbered in call order underneath, rung counts,
-  read-only badges, and a warning on a POU no task calls.
+- `PouExplorer.tsx` — the project's globals at the top when it has any, then tasks in scan order,
+  POUs numbered in call order underneath, rung counts,
+  read-only badges, and a warning on a POU no task calls. Under `pouAuthoring: 'player'` it is
+  also where programs are made: add, rename, delete and reorder, as small controls *beside* the
+  open-button rather than inside it (a button in a button is not a thing). The puzzle's own slots
+  stay pinned, and the arrows are offered only between two of the player's own programs — a slot's
+  place in the task comes from the spec, so moving past one would be a reorder the grader does not
+  perform. Adding asks for a name and nothing else; the id is derived from it, uniquified, and
+  never shown, so a later rename cannot move it. Reordering swaps the pair in **both**
+  `project.pous` and the task's list, or the tree would show an order the engine does not run.
+- **Declaring variables** (`features/ladder/VariablesPanel.tsx`, mounted in `FactoryPlay`). The two
+  scopes hang where they belong: **globals** off the project, as a row at the top of the program
+  tree above the tasks, opening its own window; **locals** off a POU, as a `VAR n` toggle in each
+  section window's title bar opening a drawer under that section's ladder — under, not instead of,
+  because a declaration is read while a rung is being written. The drawer takes what its table
+  needs up to `min(60%, 320px)`, and `.ladder-scroll`'s 280 px floor is relaxed inside it: that
+  floor is a rule about the play *column*, where the ladder is the page, and left standing in a
+  420 px window it pushed the drawer's Declare row out through the bottom of the frame. A
+  pre-written section's drawer is read-only. The whole affordance is hidden when `spec.symbols` is
+  `'off'`: no resolution pass runs there, so a declared name would reach the engine still spelled
+  as a name and match nothing.
+- **Declare-from-error.** `missingDeclarations` runs against the live project as the player types,
+  not on submit — the fix is a declaration they were going to write anyway, and a validation
+  message that arrives after a submission is a lap too late. The count sits on the `VAR` badge and
+  each name is a chip in the drawer; clicking one fills the draft with the name and the guessed
+  kind and stops, because *which* table it lands in is the decision being made. The globals window
+  offers the same names deduplicated across sections.
 - `LadderEditor` gained `pouId`, `focused` and `readOnly`. The global keydown handler bails when
   `!focused`, which is what stops four open windows all reacting to one keypress, and each
   window is handed `evalResults[pouId]` alone so editing one does not re-render the other three

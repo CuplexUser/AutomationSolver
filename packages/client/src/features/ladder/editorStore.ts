@@ -331,8 +331,20 @@ export const useEditor = create<EditorState>((set, get) => ({
       const target = index + direction;
       if (index < 0 || target < 0 || target >= s.project.pous.length) return s;
       const pous = [...s.project.pous];
+      const otherId = pous[target].id;
       [pous[index], pous[target]] = [pous[target], pous[index]];
-      return { project: { ...s.project, pous }, dirty: true };
+      // Scan order is the *task's* list, not this one. Swapping only here would
+      // reorder the tree and change nothing the engine does, which is the worst
+      // of both — so the same swap is applied wherever the pair shares a task.
+      const tasks = s.project.tasks.map((task) => {
+        const a = task.pous.indexOf(id);
+        const b = task.pous.indexOf(otherId);
+        if (a < 0 || b < 0) return task;
+        const next = [...task.pous];
+        [next[a], next[b]] = [next[b], next[a]];
+        return { ...task, pous: next };
+      });
+      return { project: { ...s.project, pous, tasks }, dirty: true };
     }),
 }));
 
