@@ -94,6 +94,44 @@ open" and [`docs/FACTORY-LINE-DESIGN.md`](docs/FACTORY-LINE-DESIGN.md) §5a and 
 
 ---
 
+## Factory refinement
+
+The excavator line's scene, as against its programs. Raised from play rather than from a design
+doc: the section cameras were framing structure instead of machines. Reference:
+[`docs/FACTORY-LINE-DESIGN.md`](docs/FACTORY-LINE-DESIGN.md) §6, which now records what the
+measurement found.
+
+- [x] **Get the section cameras out of the roof.** All seven station presets stood 5.0 to 10.9 m
+      up against the design's own 1.4 to 3.4 m rule, four of them outside the building looking
+      through a backface-culled wall, and the paint preset put the lens 0.1 to 0.5 m from the
+      aisle service run and shot half a frame of pipe. Fixed by adding `maxEyeY` (there was a
+      floor and no ceiling, so rule 1 was a comment), pulling the standoffs in to 12 to 16 m, and
+      re-bearing every eye onto open floor. → FACTORY-LINE-DESIGN §6 "Rule 1 was stated and not
+      enforced"
+- [ ] **Pin the camera presets with a test.** The audit that found the above was a throwaway
+      script: it walks each preset at viewport aspects 1.1 to 2.6 and asserts the eye is inside
+      the building, out of every cell footprint, under 3.4 m, at least 2.6 m from a service drop,
+      and — for the booth — that the sight-line reaches the skid through the glazing rather than a
+      solid wall. As a unit test in `packages/client` it would stop the next footprint change
+      quietly re-breaking a shot. Note the packaging problem to solve first: the client has no
+      unit-test runner, which is why `symbolChoicesFor` lives in `shared`.
+      → FACTORY-LINE-DESIGN §6
+- [ ] **Give the booth a second opening.** Its camera is the one still boxed in: one glazed face
+      on the south and the skid 2 m behind it leaves a single usable bearing, so the shot cannot
+      obey rule 3 no matter how it is tuned. A roll-up door or a glazed return on the east face
+      is a cell-interior change and belongs with the re-model. → FACTORY-LINE-DESIGN §6 and §8
+      step 6
+- [ ] **Stop free orbit leaving the building.** `polarRange` and `panBounds` still let a player
+      orbit outside the north and west walls, which are single-sided planes — from behind, they
+      vanish and the plant floats. Either make the two walls double-sided or tighten the orbit
+      bounds to the slab. → FACTORY-LINE-DESIGN §6 "Overview stays orbitable"
+- [ ] **Re-tune the elevations once the cells are re-modelled.** At the current standoffs
+      `maxEyeY` binds at every viewport aspect, so the authored elevations do nothing but set the
+      bearing's sign. That is the right trade today and worth revisiting when there is interior
+      detail worth looking down at. → FACTORY-LINE-DESIGN §6
+
+---
+
 ## P3 — Engine and content growth
 
 The leftovers of the original Phase 3, plus the last item of the analog plan. Each is independent

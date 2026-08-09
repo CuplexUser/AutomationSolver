@@ -349,6 +349,8 @@ export interface Focus {
   maxDistance?: number;
   /** Floor of the eye height, so a low preset never sinks into the slab. */
   minEyeY?: number;
+  /** Ceiling of the eye height, so a narrow panel never lifts it into the roof. */
+  maxEyeY?: number;
   /** Roll-free framing: what the shot is *about*, for the caption strip. */
   label?: string;
 }
@@ -358,18 +360,21 @@ export interface Focus {
 resizable panel. `maxDistance` is what stops a wide viewport from silently turning a designed
 close-up back into the overview shot we already have.
 
+`maxEyeY` was **not** in the original design and is the field the presets actually needed; see
+"Rule 1 was stated and not enforced" below.
+
 ### The eight presets
 
-| Preset | Looks at | Azimuth | Elev | The shot |
-|---|---|---|---|---|
-| **Overview** | plant centre `(0, 3, -2)` | 210° | 34° | High three-quarter down the length of the line. The only high shot. |
-| **Weld** | fixture `(-21, 1.6, -12)` | 145° | 14° | Low, through the weld screens, arc toward camera. |
-| **Conveyor** | sort `(26, 1.2, 3)` | 250° | 20° | Down the spine foreshortened, so a queue reads as a queue. |
-| **Store** | rack wall `(-6, 2.4, -14)` | 100° | 18° | Square onto the lettered lane heads, C1..C4 legible. |
-| **Portal** | portal head `(1, 3.4, -8)` | 190° | 8° | Very low, under the gantry beam, head crossing the frame. |
-| **Paint** | booth mouth `(7.5, 1.8, -8)` | 300° | 16° | Past the drum bank into the booth, drums in the near field. |
-| **Assembly** | jig `(16, 1.6, 6)` | 20° | 12° | Low across the jig with the make-up bench beside it. |
-| **Dock** | apron `(-11, 1.5, 10)` | 340° | 22° | Over the yard toward the dock, truck bay centred. |
+| Preset | Looks at | Azimuth | Elev | halfWidth | maxDistance | The shot |
+|---|---|---|---|---|---|---|
+| **Overview** | plant centre `(0, 3, -2)` | 210° | 34° | 30 | — | High three-quarter down the length of the line. The only high shot. |
+| **Weld** | fixture `(-21, 1.7, -12)` | 350° | 10° | 6.5 | 15 | From open floor south-west of the bay, north-north-east up the shop, Z1-Z3 low in the near field. |
+| **Conveyor** | sort `(24, 1.4, 2)` | 260° | 14° | 7.0 | 16 | Down the spine foreshortened, so a queue reads as a queue. |
+| **Store** | rack `(-6, 2.0, -13)` | 310° | 12° | 6.5 | 14 | North-east *along* the four lanes rather than square at them, so the rack reads as depth. |
+| **Portal** | rail mid `(1.5, 2.6, -8)` | 290° | 8° | 6.5 | 14 | Square down the rail, gantry crossing the frame rather than coming at the lens. |
+| **Paint** | skid `(6.6, 1.8, -8)` | 35° | 8° | 7.0 | 12 | From the south-east *through the glazing*, gun and drum bank behind the skid. |
+| **Assembly** | jig `(15, 1.7, 7)` | 240° | 10° | 6.5 | 15 | South-west into the jig, the two painted lanes running away from the lens. |
+| **Dock** | apron `(-6, 1.6, 11)` | 140° | 12° | 6.5 | 15 | South-east down the outfeed run: test pad, dock and yard in one shot. |
 
 Three rules make these read the way the reference does:
 
@@ -380,6 +385,41 @@ Three rules make these read the way the reference does:
    looks like a product render.
 3. **No two adjacent presets share a facing.** The azimuths above are spread deliberately around
    the compass so that flying between sections feels like walking through a building.
+
+### Rule 1 was stated and not enforced, and every preset broke it
+
+The eye is not authored, it is derived: `dist` comes from the live viewport and the eye is
+`center + dist * dir`, so the elevation in a preset is a **bearing, not a height**. The first pass
+used `halfWidth` 7.6 to 9.5, which puts the standoff at 15 to 26 m, and 15 m at 16° is 4.5 m of
+lift. Measured across viewport aspects 1.1 to 2.6, all seven station presets stood **5.0 to 10.9 m
+up** — the diagram camera rule 1 exists to forbid — and four of them (Weld, Portal, Assembly, Dock)
+stood *outside the building*, seeing the plant through a backface-culled wall.
+
+That put every eye level with or above the overhead services, and it is what a player reported:
+the aisle service run sits at y 5.82 to 6.27, and the old Paint preset put the lens **0.1 to 0.5 m
+from it, looking along its length**, so more than half the frame was pipe.
+
+What fixed it, in order of importance:
+
+- **`maxEyeY`.** There was a floor and no ceiling, so rule 1 was a comment. Clamping the eye down
+  leaves the xz standoff alone, so framing width is untouched and only the elevation flattens —
+  the same trade `minEyeY` already makes at the other end.
+- **Shorter standoffs.** `halfWidth` 6.5 to 7.0 with a real `maxDistance` on every preset. The
+  building is 38 m deep with a 9 m aisle down the middle, so a 15 m standoff has nowhere to stand
+  that is not inside a cell; this is a floor-plan constraint, not a taste one.
+- **Bearings off the walls.** Every eye is on open floor, at least 2.6 m from a service drop, and
+  no sight-line rises above 3.4 m — below the booth roof (4.6), the portal beam (4.79) and the
+  services (5.82), so nothing overhead can cross a shot at any aspect.
+
+**The booth is the constrained one and will stay constrained until it is re-modelled.** It is a
+closed box whose only opening is the south glazing (x 3.5 to 11.5, y 1.2 to 4.2), and the skid sits
+2 m behind that face — so the bearing is fixed by having to reach the skid *through* the hole
+rather than through a solid corner. Sweeping the whole compass leaves a band around 35° and a
+narrow one to the west; everything else crosses a wall.
+
+A consequence worth knowing before re-tuning: at these standoffs `maxEyeY` binds at **every**
+aspect, so the authored elevations are currently decorative. They are kept because they still set
+the bearing's sign and become live again the moment a shot is pulled in closer.
 
 ### Overview stays orbitable
 
