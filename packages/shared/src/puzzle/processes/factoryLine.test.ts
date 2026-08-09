@@ -594,10 +594,10 @@ describe('factory-line — test bay and dock', () => {
   const atTest = (): MachineState => run({ ...fresh(), z11: 'm' }, 50, 50, {});
 
   it('pumps up, runs the cycle and drives the machine into the yard', () => {
-    let m = run(atTest(), 1300, 50, ON('Y24'));
-    m = run(m, 2700, 50, ON('Y24', 'Y25'));
+    let m = run(atTest(), 1700, 50, ON('Y24'));
+    m = run(m, 3700, 50, ON('Y24', 'Y25'));
     expect(sensors(m).X29).toBe(true);
-    m = run(m, 1500, 50, ON('Y26', 'Y39')); // pump dropped first, apron running
+    m = run(m, 2000, 50, ON('Y26', 'Y39')); // pump dropped first, apron running
     expect(m.yard).toBe(1);
     expect(m.shipped).toBe(1);
     expect(m.jam).toBe(false);
@@ -608,8 +608,8 @@ describe('factory-line — test bay and dock', () => {
   });
 
   it('jams if the machine is driven off with the rig still under pressure', () => {
-    let m = run(atTest(), 1300, 50, ON('Y24'));
-    m = run(m, 2700, 50, ON('Y24', 'Y25'));
+    let m = run(atTest(), 1700, 50, ON('Y24'));
+    m = run(m, 3700, 50, ON('Y24', 'Y25'));
     expect(run(m, 200, 50, ON('Y24', 'Y26', 'Y39')).jam).toBe(true);
   });
 

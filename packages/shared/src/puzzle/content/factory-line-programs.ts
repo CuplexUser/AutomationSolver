@@ -84,7 +84,11 @@ export const WELD_PLAIN: Rung[] = [
  */
 export const WELD_TUNED: Rung[] = [
   rung('w-select', [[no('M10'), out('Y6')]]),
-  rung('w-start', [[no('M0'), nc('X10'), nc('X9'), nc('M11'), set('M11')]]),
+  // No X10 here. The plain program will not clamp a blank until the last part
+  // has arrived at the store, three zones away — which is a second and a half of
+  // travel plus a loader stroke that the fixture spends standing empty. What the
+  // fixture actually needs is its own jaws free, and M11 already says that.
+  rung('w-start', [[no('M0'), nc('X9'), nc('M11'), set('M11')]]),
   rung('w-clamp', [[no('M11'), nc('M14'), out('Y2')]]),
   // One timer per part. M10 is the selector, and the fixture latched it when it
   // clamped, so it is stable for the whole cycle.
@@ -105,7 +109,15 @@ export const WELD_TUNED: Rung[] = [
   rung('w-torch', [[no('M20'), out('Y3')], [no('M21')]], [{ row: 0, col: 1 }]),
   rung('w-rotate', [[no('M0'), no('M13'), nc('M10'), nc('M14'), out('Y4')]]),
   rung('w-release', [[no('M0'), no('M14'), nc('M16'), out('Y5')]]),
-  rung('w-gone', [[no('M14'), no('X10'), set('M16')]]),
+  // The cycle is over when the weldment is on the spine, which the outfeed eye
+  // says the instant the roll-off lands it on Z1. The plain program waits for
+  // X10 instead — the same part, three zones and a loader stroke later.
+  //
+  // The *edge*, not the level. Z1 is the one zone the fixture can see, and when
+  // the spine is backed up there is already a part standing on it: a level
+  // contact would call the cycle finished with the weldment still in the jaws,
+  // and the next worn tip would then be changed on a loaded fixture.
+  rung('w-gone', [[no('M14'), re('X32'), set('M16')]]),
   rung('w-done', [
     [
       no('M16'),
@@ -128,7 +140,8 @@ export const WELD_TUNED: Rung[] = [
 // --- SEC2 STORE AND PORTAL ----------------------------------------------------
 
 /**
- * The portal robot's cycle, which is the same however the rack is run.
+ * The portal robot's cycle. One step differs between the two store programs and
+ * the rest of it is the same however the rack is run.
  *
  * Eight steps and two coils. Every rule on it is a rule a real portal has: it
  * cannot travel with the head down, because the head hangs below the rail and
@@ -147,7 +160,7 @@ export const WELD_TUNED: Rung[] = [
  * as working; it stalls for good the first time that flag goes false and stays
  * false, which on a rack is the moment the rack fills.
  */
-const PORTAL_CYCLE: Rung[] = [
+const portalCycle = (lowerEarly: boolean): Rung[] => [
   // Begin a pick: parked over the store, head up, something on the outfeed, and
   // nothing already in hand or in progress.
   rung('por-pick', [
@@ -165,8 +178,18 @@ const PORTAL_CYCLE: Rung[] = [
     ],
   ]),
   rung('por-got', [[no('M60'), no('X18'), set('M61'), rst('M60')]]),
-  rung('por-there', [[no('M61'), no('X15'), nc('X19'), set('M62'), rst('M61')]]),
-  rung('por-set-down', [[no('M62'), no('X16'), set('M63'), rst('M62')]]),
+  // Where the wait for the booth is spent. Held on the traverse step, the head
+  // stays two meters up until the skid is clear and only then starts down, so
+  // every changeover costs a full lower. Held on the set-down step instead, the
+  // head is already on the skid when the booth goes idle and the only thing left
+  // to do is break the vacuum — and it is safe, because the part is not placed
+  // until the cups let go, which is what the interlock was ever guarding.
+  lowerEarly
+    ? rung('por-there', [[no('M61'), no('X15'), set('M62'), rst('M61')]])
+    : rung('por-there', [[no('M61'), no('X15'), nc('X19'), set('M62'), rst('M61')]]),
+  lowerEarly
+    ? rung('por-set-down', [[no('M62'), no('X16'), nc('X19'), set('M63'), rst('M62')]])
+    : rung('por-set-down', [[no('M62'), no('X16'), set('M63'), rst('M62')]]),
   // Vacuum off, head still down: the part is on the skid before the cups let go.
   rung('por-let-go', [[no('M63'), nc('X18'), set('M64'), rst('M63')]]),
   rung('por-parked', [[no('M64'), no('X14'), rst('M64')]]),
@@ -208,7 +231,7 @@ export const STORE_PLAIN: Rung[] = [
   rung('s-lane', [[mov('K1', 'D13'), mov('K1', 'D14')]]),
   rung('s-load', [[no('M0'), no('X11'), cmp('<', 'D4', 'K2'), out('Y8')]]),
   rung('s-pick', [[no('M0'), nc('X13'), cmp('>', 'D4', 'K0'), out('Y9')]]),
-  ...PORTAL_CYCLE,
+  ...portalCycle(false),
 ];
 
 /**
@@ -289,7 +312,7 @@ export const STORE_TUNED: Rung[] = [
   rung('s-alt-arm', [[re('X13'), nc('M46'), set('M49')]]),
   rung('s-alt-clear', [[re('X13'), rst('M46')]]),
   rung('s-alt-apply', [[no('M49'), set('M46'), rst('M49')]]),
-  ...PORTAL_CYCLE,
+  ...portalCycle(true),
 ];
 
 // --- SEC3 PAINT ---------------------------------------------------------------
@@ -397,9 +420,17 @@ export const PAINT_TUNED: Rung[] = [
 export const ASSEMBLY_PLAIN: Rung[] = [
   rung('a-start', [[no('M0'), no('X23'), no('X24'), nc('M100'), set('M100')]]),
   // Both calls off one rung: an energized output passes power to its right, so
-  // the frame and the boom are claimed on the same scan and cannot separate.
-  rung('a-call', [[no('M100'), nc('T40'), out('Y17'), out('Y18')]]),
-  rung('a-loaded', [[no('M100'), tmr('T40', 1)]]),
+  // the frame and the boom are asked for together and the jig never sets out to
+  // build half a machine.
+  //
+  // The calls stand until both parts are actually in, which D16 and D17 report,
+  // rather than for a fixed window. A lane the sort is loading into is a lane
+  // that is *moving*, and the jig cannot lift off a moving lane — so a call that
+  // lasted one scan would silently miss, and the bench would later be run with
+  // nothing on it.
+  rung('a-call', [[no('M100'), nc('M102'), out('Y17'), out('Y18')]]),
+  rung('a-both', [[no('M100'), cmp('>', 'D16', 'K0'), cmp('>', 'D17', 'K0'), set('M102')]]),
+  rung('a-loaded', [[no('M102'), tmr('T40', 1)]]),
   rung('a-engine', [[no('M0'), no('T40'), nc('T41'), out('Y19')]]),
   rung('a-engine-t', [[no('M0'), no('T40'), tmr('T41', 25)]]),
   rung('a-cab', [[no('M0'), no('T41'), nc('T42'), out('Y20')]]),
@@ -411,7 +442,16 @@ export const ASSEMBLY_PLAIN: Rung[] = [
   rung('a-pin', [[no('M0'), no('T42'), no('X25'), nc('X26'), nc('M104'), out('Y22')]]),
   rung('a-release', [[no('M0'), no('X26'), no('X27'), out('Y23'), set('M104')]]),
   rung('a-reset', [
-    [no('M104'), nc('X26'), rst('T40'), rst('T41'), rst('T42'), rst('M100'), rst('M104')],
+    [
+      no('M104'),
+      nc('X26'),
+      rst('T40'),
+      rst('T41'),
+      rst('T42'),
+      rst('M100'),
+      rst('M102'),
+      rst('M104'),
+    ],
   ]),
 ];
 
@@ -427,8 +467,13 @@ export const ASSEMBLY_PLAIN: Rung[] = [
  */
 export const ASSEMBLY_TUNED: Rung[] = [
   rung('a-start', [[no('M0'), no('X23'), nc('M100'), set('M100')]]),
-  rung('a-call-f', [[no('M100'), nc('T40'), out('Y17')]]),
-  rung('a-loaded', [[no('M100'), tmr('T40', 1)]]),
+  // The call stands until the frame is in the jig, which D16 reports. The lane
+  // has to be stopped for the jig to lift off it, and the sort runs that same
+  // lane to take a part from the paddle, so a call that lasted one scan would
+  // sooner or later be raised against a moving belt and quietly miss.
+  rung('a-call-f', [[no('M100'), nc('M102'), out('Y17')]]),
+  rung('a-got-f', [[no('M100'), cmp('>', 'D16', 'K0'), set('M102')]]),
+  rung('a-loaded', [[no('M102'), tmr('T40', 1)]]),
   // The call for a boom stands for the whole build, and only for a boom that
   // belongs to the same machine as the frame already in the jig: D16 is what the
   // jig is holding, D11 what is at the head of the boom lane.
@@ -451,6 +496,7 @@ export const ASSEMBLY_TUNED: Rung[] = [
       rst('T42'),
       rst('M100'),
       rst('M101'),
+      rst('M102'),
       rst('M104'),
     ],
   ]),
@@ -475,7 +521,12 @@ export const TEST_PLAIN: Rung[] = [
   // NC on X29 so the timer clears the moment the test passes: the bay can pull
   // the next machine in on the same scan the last one drives off, and a pressure
   // timer still standing done would work the boom on a dead circuit.
-  rung('t-pressure', [[no('M0'), no('X28'), nc('X29'), tmr('T50', 15)]]),
+  //
+  // K=18 covers the 1.6 s the pack takes to come up with a tenth in hand. A
+  // preset sized exactly to the pump is a rung that jams the first time anything
+  // about the pack changes, which is a lesson the plant would rather teach in a
+  // briefing than in a stack trace.
+  rung('t-pressure', [[no('M0'), no('X28'), nc('X29'), tmr('T50', 18)]]),
   rung('t-cycle', [[no('M0'), no('T50'), nc('X29'), out('Y25')]]),
   rung('t-dispatch', [[no('M0'), no('X29'), no('X30'), out('Y26')]]),
   // Send for a lorry once there is nowhere left to put a machine …
@@ -495,7 +546,7 @@ export const TEST_PLAIN: Rung[] = [
  */
 export const TEST_TUNED: Rung[] = [
   rung('t-pump', [[no('M0'), no('X28'), nc('X29'), out('Y24')]]),
-  rung('t-pressure', [[no('M0'), no('X28'), nc('X29'), tmr('T50', 15)]]),
+  rung('t-pressure', [[no('M0'), no('X28'), nc('X29'), tmr('T50', 18)]]),
   rung('t-cycle', [[no('M0'), no('T50'), nc('X29'), out('Y25')]]),
   rung('t-dispatch', [[no('M0'), no('X29'), no('X30'), out('Y26')]]),
   rung('t-call', [[cmp('>=', 'D12', 'K3'), set('M130')]]),

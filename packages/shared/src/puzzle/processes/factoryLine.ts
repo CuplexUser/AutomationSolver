@@ -100,7 +100,7 @@ const MILLI = 100;
 
 // --- Weld ---------------------------------------------------------------------
 
-const WELD_CLAMP_MS = 500;
+const WELD_CLAMP_MS = 400;
 /**
  * Arc time per pass, per part.
  *
@@ -110,8 +110,8 @@ const WELD_CLAMP_MS = 500;
  * on half of everything it makes.
  */
 const WELD_PASS_MS = { f: [1100, 1100], b: [1200] } as const;
-const WELD_ROTATE_MS = 600;
-const WELD_RELEASE_MS = 400;
+const WELD_ROTATE_MS = 450;
+const WELD_RELEASE_MS = 300;
 /** Passes a contact tip is good for. A frame spends two of them. */
 const TIP_LIFE = 8;
 /** A tip change, on an empty fixture. Whenever you spend it, you spend it. */
@@ -122,15 +122,15 @@ const TIP_CHANGE_MS = 3000;
 /** Lanes in the rack, and how deep each one is. */
 const STORE_LANES = 4;
 const LANE_DEPTH = 2;
-const STORE_LOAD_MS = 800;
-const STORE_PICK_MS = 800;
+const STORE_LOAD_MS = 700;
+const STORE_PICK_MS = 700;
 
 // --- Portal robot -------------------------------------------------------------
 
-const PORTAL_TRAVEL_MS = 800;
-const PORTAL_LIFT_MS = 300;
+const PORTAL_TRAVEL_MS = 550;
+const PORTAL_LIFT_MS = 220;
 /** Vacuum make and break. A part is only held once the cups have pulled down. */
-const PORTAL_GRIP_MS = 200;
+const PORTAL_GRIP_MS = 150;
 
 // --- Paint --------------------------------------------------------------------
 
@@ -186,9 +186,9 @@ const ASSY_BOOM_MS = 2400;
 
 // --- Test and dispatch --------------------------------------------------------
 
-const TEST_PUMP_MS = 1200;
-const TEST_CYCLE_MS = 2600;
-const DISPATCH_MS = 1400;
+const TEST_PUMP_MS = 1600;
+const TEST_CYCLE_MS = 3600;
+const DISPATCH_MS = 1800;
 
 const TRUCK_ARRIVE_MS = 10_000;
 const TRUCK_LOAD_MS = 1000;
@@ -237,7 +237,7 @@ const STARVE_MS = 16_000;
  * until the weld bay itself cannot release, and a player watching that knows
  * where the problem is without reading a single number.
  */
-const ZONE_TRANSFER_MS = 600;
+const ZONE_TRANSFER_MS = 500;
 /** The paddle at the sort, swinging across between the two painted lanes. */
 const SORT_DIVERT_MS = 400;
 

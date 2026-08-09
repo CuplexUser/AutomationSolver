@@ -136,8 +136,15 @@ A queue also drains **one part at a time**: a part starts moving when the space 
 appears, not when the belt starts, so a queue of three costs three zone-times to clear. That is
 enforced by resolving transfers downstream-first, and it is pinned by a unit test.
 
-That is the largest single lever in the design, and it is the one that makes a backed-up line
-**visible**: when the booth stops, you watch the queue grow backwards down the spine toward the
+> **Measured, and still not true.** The conveyor's lever is **zero**: swapping `CONV_TUNED` for
+> `CONV_PLAIN` costs the shift nothing at all. The first diagnosis — that the spine never has a
+> queue on it — has since been fixed and was not the whole answer. The line now pipelines and the
+> spine carries three parts on average and eight at its peak, and the two programs *still* ship the
+> same 37 machines. The remaining reason is that a plain spine blocks the weld bay and the oven
+> discharge, and neither of those is what sets the plant's pace. See §5a.
+
+That is intended to be the largest single lever in the design, and it is the one that makes a
+backed-up line **visible**: when the booth stops, you watch the queue grow backwards down the spine toward the
 weld bay, one zone at a time, until the weld bay itself is blocked. No other mechanism in the
 game shows a player where the constraint is as directly as that.
 
@@ -223,16 +230,24 @@ is the reason the conveyor is a section rather than scenery.
 
 | Constant | Value | Note |
 |---|---|---|
-| `ZONE_TRANSFER_MS` | 600 | one zone advance, at line speed |
+| `ZONE_TRANSFER_MS` | 500 | one zone advance, at line speed |
 | `ZONE_ACCEPT_MS` | 250 | station handshake in or out of a zone |
 | `SORT_DIVERT_MS` | 400 | paddle across |
 | `SPINE_CAP` | 1 part per zone, 3 in each lane zone | |
 
-Well written, the spine costs **0.6 s per part** of throughput (one zone-time, pipelined) = 1.2 s
-per machine. Badly written it costs a part's whole transit: Z1 to Z3 is 1.8 s and Z4 to the jig
-is 3.0 s, so a non-accumulating spine costs about **7.2 s per machine** and is comfortably the
-bottleneck. That gap, ~6 s a machine, is the biggest lever in the plant and it belongs to a
-program that is about twenty rungs long.
+The arithmetic below is the design's original case for the spine being the plant's largest lever,
+and it is **the one claim in this document that measurement contradicts**. It is left here because
+§5a's argument is only readable against it.
+
+> Well written, the spine costs **0.6 s per part** of throughput (one zone-time, pipelined) = 1.2 s
+> per machine. Badly written it costs a part's whole transit: Z1 to Z3 is 1.8 s and Z4 to the jig
+> is 3.0 s, so a non-accumulating spine costs about **7.2 s per machine** and is comfortably the
+> bottleneck. That gap, ~6 s a machine, is the biggest lever in the plant and it belongs to a
+> program that is about twenty rungs long.
+
+What that misses is that a badly written spine does not *slow* anything down, it *blocks* the
+stations either side of it — and blocking only costs output when the station being blocked is the
+one setting the pace. On this plant it never is.
 
 ---
 
@@ -262,10 +277,11 @@ preserves the one property that made the flush free to overlap, which the tests 
 frame's 2100 counts take 700 ms and a boom's 1500 take 500. That is what turns the per-part film
 recipe from a rounding error into a real second per machine, which is the paint shop's lesson.
 
-**These are targets, not measurements.** The spine changes the arithmetic, so the sequence is:
-land the geometry and the spine, run the soak harness, then adjust against real numbers. The
-soak test in `factoryLine.test.ts` already reports shipped counts per configuration and is the
-instrument for it.
+**These are targets, not measurements, and they have been overtaken.** The spine changed the
+arithmetic and so did the overlap pass; §5a records what the constants actually became and what the
+plant actually does. Where this table and §5a disagree, §5a is right. `factoryLineTempo.test.ts` is
+the instrument — it soaks a 300 s shift per configuration and is the only place any of these numbers
+comes from.
 
 ---
 
@@ -406,15 +422,129 @@ is what `factory/` already is, so nothing has to be unwound to get here.
    ownership in `factory-line-plant.ts`, `CONV_PLAIN`/`CONV_TUNED` in `factory-line-programs.ts`,
    soak test extended to seven sections, and the scene draws every zone's eye and contents live.
    Twelve new unit tests cover accumulation, the pick-off-a-stopped-belt rule and the sort.
-5. **Retime**, measured against the soak harness rather than against the table in §4. The lever
-   matrix over 300 s with the spine in place is **weld 25→21, and zero for all five others** — the
-   line is entirely weld-paced, which is the same finding as before the spine and is what this step
-   exists to fix.
+5. ~~**Retime.**~~ Done, in two passes — see §5a. Station loads are within 0.5 s of each other, the
+   line pipelines, and four of the six sections have a lever. Store and conveyor still do not, for a
+   reason neither retiming nor rewriting can fix; §5a says what would.
 6. **Re-model the cells**, one at a time, inside their fixed footprints.
 7. **Blender**, later and per cell, replacing procedural geometry where a GLB earns its download.
    The fixed footprints and named anchors in §2 are what make that a swap rather than a redesign.
 
 Steps 1 to 3 change no simulation behaviour at all and can land before any of the process work.
+
+---
+
+## 5a. The retiming pass, and what it found
+
+Measured with `factoryLineTempo.test.ts`, which runs a 300 s shift and reports each station's
+working seconds per machine shipped. Every attempt to work these numbers out from the timing
+constants has been wrong in both directions, so the harness is now a test rather than a scratch
+script.
+
+### What retiming fixed
+
+The store was never the slowest-looking station, but its program drives the rack **and** the portal,
+so its real load is the union of the two: while the head is out over the aisle, the rack cannot
+stroke. That put it at 9.98 s per machine against 7.5 s for everything else, and made every other
+bay structurally slack. The portal was sped up (travel 800→550 ms, lift 300→220, grip 200→150), the
+rack's strokes trimmed (800→700 ms), and the test bay — which had 1.8 s of slack — slowed to match
+(pump 1200→1600, cycle 2600→3600, dispatch 1400→1800). The conveyor's zone transfer went 600→500 ms.
+
+| Station | Load before | Load after |
+|---|---|---|
+| WELD | 7.65 s | 7.49 s |
+| STORE + portal | **9.98 s** | 7.75 s |
+| PAINT | 7.49 s | 7.38 s |
+| ASSY | 8.03 s | 7.85 s |
+| TEST | 5.69 s | 7.25 s |
+
+Spread went from 4.3 s to 0.6 s, and the lever matrix from **weld 4, everything else 0** to
+**weld 5, paint 1, assembly 1, test 1, store 0, conveyor 0**. Slowing the test bay invalidated its
+pressure timer, which is the coupling this document warns about in its own opening: `T50` went from
+`K=15` to `K=18`.
+
+### What retiming could not fix, and the overlap pass that did
+
+**The line never pipelined.** At every instant of a 300 s shift, every buffer was empty: the rack
+held at most two parts, no painted lane ever held more than one, and no run of the spine ever
+carried more than one. The weld bay made a part, that part travelled alone the whole way to the jig,
+and only then did the next one start. Throughput was therefore the *sum* of the station times
+(11.1 s per machine) rather than the largest of them (7.9 s), and four sections had a lever of 1
+because there was nowhere for a station's saved seconds to go.
+
+The cause was the shipped programs, not the plant. Each `*_TUNED` section was written as a strict
+sequence that waited for its part to leave before starting the next — the same "release one, wait
+for it to arrive, release the next" pattern §3 names as the *plain* answer for the conveyor.
+
+Three changes fixed it, and one of them did nearly all the work.
+
+1. **The weld bay starts on its own jaws.** `WELD_TUNED` gated its cycle on `X10`, the store's
+   infeed, which is three zones and a loader stroke away — 2.2 s per part that the fixture spent
+   standing empty. It now starts on `M11` alone and calls the cycle finished on the **rising edge**
+   of `X32`, its own outfeed eye. Worth **ten machines a shift** by itself, 27 to 37.
+2. **The fixture's non-arc strokes came down.** Clamp 500→400 ms, rotate 600→450, release 400→300.
+   None of the three is timer-gated in the ladder, so no preset moved with them.
+3. **The portal waits with its head down.** The interlock against the booth moved off the traverse
+   step and onto the set-down step, so the head is already on the skid when the booth goes idle and
+   the only thing left is to break the vacuum. It is safe because a part is not *placed* until the
+   cups let go, which is what the interlock was ever guarding — and it is a good lesson, so
+   `portalCycle(false)` keeps the cautious version for `STORE_PLAIN`.
+
+| | Before | After |
+|---|---|---|
+| Machines per 300 s shift | 27 | **37** |
+| Parts standing on the spine, mean / peak | 0.76 / 2 | **3.25 / 8** |
+| Deepest either painted lane got | 1 | **2** |
+| Parts welded against parts consumed | 59 / 54 | **90 / 74** |
+| Station spread | 0.6 s | **0.47 s** |
+
+Loads per machine are now WELD 7.89, STORE 7.66, PAINT 7.55, ASSY 7.50, TEST 7.42 against a cycle
+of 8.11 s. Levers went from **weld 5, paint 1, assembly 1, test 1, store 0, conveyor 0** to
+**weld 14, assembly 6, paint 2, test 2, store 0, conveyor 0**.
+
+### Two jams the soak found
+
+Both were in shipped programs, both were correct on a line running one part at a time, and both
+failed on the first shift that had traffic. They are the argument for the soak being a test.
+
+- **Assembly called for its parts in a fixed 100 ms window.** A lane the sort is loading into is a
+  lane that is *moving*, and the jig cannot lift off a moving lane, so the call silently missed and
+  the bench was later run with no boom on it. Both programs now hold the call up until `D16`/`D17`
+  say the part is actually in the jig.
+- **The weld bay read `X32` as a level.** When the spine is backed up there is already a part
+  standing on Z1, so the fixture called its cycle finished with the weldment still in the jaws — and
+  the next worn tip was then changed on a loaded fixture. It reads the edge.
+
+### What is still not true: the store and the conveyor
+
+Neither plain program costs the plant a single machine, and the reason is now understood well enough
+to state as a rule: **a section's lever is zero unless its plain program blocks whatever is setting
+the pace.** The pacer is the spray booth, which is blocked 1.43 s per machine waiting for a cure
+rack and idle 0.79 s waiting for the portal. Nothing else on the line is within a second of full.
+
+- **`CONV_PLAIN` blocks the weld bay and the oven discharge.** The weld bay has spare capacity and
+  simply fills the spine instead; the oven discharge has enough slack to absorb a 400 ms divert.
+  Neither touches the booth. This was tested against the obvious suspicion that the belts are too
+  quick: doubling `ZONE_TRANSFER_MS` to 1000 ms moved the conveyor's lever by exactly zero and only
+  made `WELD_PLAIN` worse, so it is not a matter of speed and the constant stays at 500.
+- **`STORE_PLAIN`'s one lane never overflows**, because the buffer the line actually uses is the
+  spine, not the rack. The rack peaks at one part in the tuned configuration and only fills when
+  something downstream is already broken.
+
+Those two facts are the same fact from opposite ends, and the fix is a design decision rather than a
+tuning pass:
+
+1. **Put the booth's infeed on a zone.** Today the portal sets parts straight onto the skid, so no
+   conveyor stands between the plant's pacer and anything else. A zone there would let a plain spine
+   starve the booth, which is the only way the conveyor's lever can be non-zero on a balanced line.
+2. **Or accept that the conveyor's lever lives in the capstone**, not in the balanced soak, and
+   write puzzle 49's scenarios to stress the spine directly. From the all-plain seed only the weld
+   bay has a lever at all (23 → 30 machines); every other section is worth +0 until weld is fixed,
+   which is the capstone's real shape and is worth knowing before its briefing is written.
+
+Option 1 is the honest one and it costs one zone, two addresses and a change to `stepPortal`'s
+place rule. It should be settled before puzzle 49 is written, because §3's claim that the spine is
+"the biggest lever in the plant" is currently the one thing in this document that measurement
+contradicts outright.
 
 ---
 
