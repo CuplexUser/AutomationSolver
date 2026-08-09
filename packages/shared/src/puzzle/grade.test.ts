@@ -7,7 +7,7 @@ import type {
   VLink,
 } from '../ladder/types.js';
 import { getPuzzle, PUZZLES } from './content/index.js';
-import { WELD_TUNED } from './content/factory-line-programs.js';
+import { CONV_TUNED, WELD_TUNED } from './content/factory-line-programs.js';
 import {
   CORRECTNESS_WEIGHT,
   PAR_SLACK,
@@ -1427,6 +1427,10 @@ const projectSolutions: Record<string, LadderProject> = {
     pous: [{ id: 'WELD', name: 'SEC1_WELD', rungs: WELD_TUNED }],
     tasks: [],
   },
+  'factory-conveyor': {
+    pous: [{ id: 'CONV', name: 'SEC6_CONVEYOR', rungs: CONV_TUNED }],
+    tasks: [],
+  },
 };
 
 describe('gradeProgram — canonical solutions solve every sectioned puzzle', () => {
@@ -2348,6 +2352,68 @@ describe('gradeProgram — warehouse puzzles reject the plausible wrong answer',
       ),
     );
     const result = gradeProgram(spec, ordersOnly);
+    expect(result.solved).toBe(false);
+  });
+});
+
+describe('gradeProgram — the plausible wrong spine is rejected', () => {
+  const spec = () => getLadderPuzzle('factory-conveyor')!;
+
+  /** A submission carrying only the conveyor, which is all the player owns. */
+  function conveyor(rungs: Rung[]): LadderProject {
+    return { pous: [{ id: 'CONV', name: 'SEC6_CONVEYOR', rungs }], tasks: [] };
+  }
+
+  const DRIVES = [
+    'Y28', 'Y29', 'Y30', 'Y31', 'Y32', 'Y33',
+    'Y34', 'Y35', 'Y36', 'Y37', 'Y38', 'Y39',
+  ];
+  /** The sort, done right, so these tests fail for the reason they claim to. */
+  const SORT = [
+    R('sortf', 1, 5, {
+      '0,0': no('M0'), '0,1': no('X38'), '0,2': nc('X44'), '0,3': nc('X45'), '0,4': out('Y40'),
+    }),
+    R('sortb', 1, 5, {
+      '0,0': no('M0'), '0,1': no('X38'), '0,2': no('X44'), '0,3': nc('X46'), '0,4': out('Y41'),
+    }),
+    R('lanef', 1, 2, { '0,0': no('Y40'), '0,1': out('Y35') }),
+    R('laneb', 1, 2, { '0,0': no('Y41'), '0,1': out('Y36') }),
+  ];
+
+  it('every belt turning all the time: nothing can ever be lifted off one', () => {
+    // The trap this puzzle is built around. It looks like it is working - parts
+    // move, no fault, no crash - and the store's loader, the jig and the test
+    // bay can never take a part off a belt that is moving, so nothing arrives.
+    const result = gradeProgram(
+      spec(),
+      conveyor([
+        ...DRIVES.map((y, i) => R(`run${i}`, 1, 2, { '0,0': no('M0'), '0,1': out(y) })),
+        ...SORT.slice(0, 2),
+      ]),
+    );
+    expect(result.solved).toBe(false);
+  });
+
+  it('a paddle raised against a lane that is not running leaves the part on the sort', () => {
+    // A divert is two coils, not one. The paddle pushes and the lane has to be
+    // turning to take what it is pushed.
+    const result = gradeProgram(
+      spec(),
+      conveyor([
+        ...DRIVES.slice(0, 7).map((y, i) =>
+          R(`z${i}`, 1, 3, { '0,0': no('M0'), '0,1': nc(`X${32 + i}`), '0,2': out(y) }),
+        ),
+        ...DRIVES.slice(9).map((y, i) =>
+          R(`o${i}`, 1, 3, { '0,0': no('M0'), '0,1': nc(`X${41 + i}`), '0,2': out(y) }),
+        ),
+        ...SORT.slice(0, 2),
+      ]),
+    );
+    expect(result.solved).toBe(false);
+  });
+
+  it('a spine that never turns: the weld bay has nowhere to put a weldment', () => {
+    const result = gradeProgram(spec(), conveyor(SORT));
     expect(result.solved).toBe(false);
   });
 });

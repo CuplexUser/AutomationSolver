@@ -297,7 +297,7 @@ which puzzle they have reached.
 | # | Slug | Opens | The lesson | The lever |
 |---|---|---|---|---|
 | 48 | ~~`factory-weld`~~ **shipped** | WELD | sequence a fixture with a positioner; alternate the mix; live with a consumable | one seam schedule per part, not one for both |
-| 49 | `factory-conveyor` | **CONV** | zero-pressure accumulation; divert by type; read a line that is backing up | accumulate instead of releasing one at a time (~6 s/machine) |
+| 49 | ~~`factory-conveyor`~~ **shipped** | **CONV** | zero-pressure accumulation; divert by type; read a line that is backing up | none, measured. Graded on correctness; see the note below |
 | 50 | `factory-handling` | STORE | sort a rack by type; drive a portal robot; decouple two neighbours | four lanes instead of one, and a picker that chooses |
 | 51 | `factory-paint` | PAINT | hold an analog band; spray to a spec; batch a changeover | a film recipe per part, and a purge hidden inside a blast |
 | 52 | `factory-assembly` | ASSY + TEST | interlock a build; take a calculated risk on supply; run a dock | the bench beside the jig, and a lorry sent for early |
@@ -547,6 +547,12 @@ rack and idle 0.79 s waiting for the portal. Nothing else on the line is within 
   Neither touches the booth. This was tested against the obvious suspicion that the belts are too
   quick: doubling `ZONE_TRANSFER_MS` to 1000 ms moved the conveyor's lever by exactly zero and only
   made `WELD_PLAIN` worse, so it is not a matter of speed and the constant stays at 500.
+  - **And it is not a matter of load either**, which writing puzzle 49 established. Under a full
+    yard, a full rack, both painted lanes loaded and two machines standing on the outfeed run, the
+    two programs ship the same ten machines in ninety seconds, and reach all three of puzzle 49's
+    milestones **on the same scan**. A plain spine keeps its queue back at the stations rather than
+    out on the belts, which shows on `D19` and costs nothing. So the lever is zero everywhere, not
+    merely in the balanced case, and no scenario can recover it.
 - **`STORE_PLAIN`'s one lane never overflows**, because the buffer the line actually uses is the
   spine, not the rack. The rack peaks at one part in the tuned configuration and only fills when
   something downstream is already broken.
@@ -557,15 +563,21 @@ tuning pass:
 1. **Put the booth's infeed on a zone.** Today the portal sets parts straight onto the skid, so no
    conveyor stands between the plant's pacer and anything else. A zone there would let a plain spine
    starve the booth, which is the only way the conveyor's lever can be non-zero on a balanced line.
-2. **Or accept that the conveyor's lever lives in the capstone**, not in the balanced soak, and
-   write puzzle 49's scenarios to stress the spine directly. From the all-plain seed only the weld
-   bay has a lever at all (23 → 30 machines); every other section is worth +0 until weld is fixed,
-   which is the capstone's real shape and is worth knowing before its briefing is written.
+2. ~~**Or accept that the conveyor's lever lives in the capstone**, not in the balanced soak, and
+   write puzzle 49's scenarios to stress the spine directly.~~ **Tried, and it does not work** — see
+   the sub-bullet above. Puzzle 49 shipped grading correctness instead, which turns out to be
+   plenty: twelve zones, the pick-off-a-stopped-belt rule that a "run everything" answer breaks
+   silently, and a diverter that crashes if it reads the part wrong. Three negative tests in
+   `grade.test.ts` pin those. Its `parMs` targets are calibrated to catch a sluggish spine and do
+   not separate the two shipped programs, and the spec says so in as many words.
 
-Option 1 is the honest one and it costs one zone, two addresses and a change to `stepPortal`'s
-place rule. It should be settled before puzzle 49 is written, because §3's claim that the spine is
-"the biggest lever in the plant" is currently the one thing in this document that measurement
-contradicts outright.
+Option 1 is therefore the only one left. It costs one zone, two addresses and a change to
+`stepPortal`'s place rule, and until it is done §3's claim that the spine is "the biggest lever in
+the plant" stays the one thing in this document that measurement contradicts outright.
+
+Worth noting for the capstone: from the all-plain seed only the weld bay has a lever at all
+(23 → 30 machines); every other section is worth +0 until weld is fixed. That is puzzle 53's real
+shape and is worth knowing before its briefing is written.
 
 ---
 

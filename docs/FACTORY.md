@@ -275,9 +275,15 @@ All additive; nothing existing changed behavior.
 > puzzle 48 settled about how these are graded. The five-puzzle table that stood here is gone
 > rather than corrected, because two tables is how the numbering drifted in the first place.
 
-Status: **48 `factory-weld` is shipped.** The seven section slots, their briefs and the scan
-order live in `content/factory-line-sections.ts`, so the five that follow declare which section
-they open and inherit the rest.
+Status: **48 `factory-weld` and 49 `factory-conveyor` are shipped.** The seven section slots,
+their briefs and the scan order live in `content/factory-line-sections.ts`, so the four that
+follow declare which section they open and inherit the rest.
+
+One result from 49 belongs here rather than only in the design doc, because it revises job 3 of
+the vision above: **not every section has a lever, and the conveyor has none at all.** Its two
+programs reach every milestone on the same scan under every load that could be constructed for
+them. The puzzle grades correctness instead, which is ample, and says so in its own spec rather
+than setting a `parMs` that pretends to measure something.
 
 **Grading.** Correctness is the pass and unlocks what follows, as everywhere else. Throughput
 takes the same 15 marks and the same `PAR_SLACK` taper the rest of the game uses. Station
