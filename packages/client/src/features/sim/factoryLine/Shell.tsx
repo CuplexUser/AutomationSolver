@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import * as THREE from 'three';
 import { AISLE, FLOOR, GLASS, SERVICE_Y, WALL_H } from './plant';
 import { FloorMark, type LineTextures } from './textures';
 import { ServiceRun } from './props';
@@ -15,6 +16,10 @@ import { ServiceRun } from './props';
  * striped the entire floor with hard shadows — the plant was read through a set
  * of bars. Overhead structure is exactly the thing a top-down camera cannot
  * afford, so the only thing up there is the service run, and it casts nothing.
+ *
+ * Both walls are `DoubleSide`. Two walls and free orbit means the camera spends
+ * real time *outside* them, and a one-sided plane is not a wall from out there,
+ * it is a hole — see the north wall's comment for what that looked like.
  */
 export const Shell = memo(function Shell({ tex }: { tex: LineTextures }) {
   const w = FLOOR.x1 - FLOOR.x0;
@@ -43,10 +48,23 @@ export const Shell = memo(function Shell({ tex }: { tex: LineTextures }) {
         repeat={[Math.round((w - 2) / 3.2), 1]}
       />
 
-      {/* North wall, behind row A */}
+      {/* North wall, behind row A.
+
+          Both walls are double-sided, and that is not a detail. A `planeGeometry`
+          faces one way, so from outside the shed the wall simply is not drawn —
+          and orbit allows outside: the wall vanished while its stanchions, its
+          eaves beam and the props standing against it did not, leaving a row of
+          8.4 m poles apparently floating in the dark beyond the building. Every
+          "that is outside the plant" sighting on the north and west edges was
+          this, and nothing was ever actually out there. */}
       <mesh position={[mx, WALL_H / 2, FLOOR.z0]} receiveShadow>
         <planeGeometry args={[w, WALL_H]} />
-        <meshStandardMaterial color="#2c343f" roughness={0.9} metalness={0.05} />
+        <meshStandardMaterial
+          color="#2c343f"
+          roughness={0.9}
+          metalness={0.05}
+          side={THREE.DoubleSide}
+        />
       </mesh>
       {/* West wall, behind the yard */}
       <mesh
@@ -55,7 +73,12 @@ export const Shell = memo(function Shell({ tex }: { tex: LineTextures }) {
         receiveShadow
       >
         <planeGeometry args={[d, WALL_H]} />
-        <meshStandardMaterial color="#262d37" roughness={0.9} metalness={0.05} />
+        <meshStandardMaterial
+          color="#262d37"
+          roughness={0.9}
+          metalness={0.05}
+          side={THREE.DoubleSide}
+        />
       </mesh>
 
       {/* Clerestory glazing and the eaves beam under it. The two together are
@@ -63,7 +86,12 @@ export const Shell = memo(function Shell({ tex }: { tex: LineTextures }) {
           edge of the world. */}
       <mesh position={[mx, WALL_H - 1.2, FLOOR.z0 + 0.05]}>
         <planeGeometry args={[w - 1.5, 1.7]} />
-        <meshStandardMaterial {...GLASS} emissive="#7ba0bd" emissiveIntensity={0.6} />
+        <meshStandardMaterial
+          {...GLASS}
+          emissive="#7ba0bd"
+          emissiveIntensity={0.6}
+          side={THREE.DoubleSide}
+        />
       </mesh>
       <mesh position={[mx, WALL_H - 2.3, FLOOR.z0 + 0.12]} castShadow={false}>
         <boxGeometry args={[w, 0.36, 0.26]} />

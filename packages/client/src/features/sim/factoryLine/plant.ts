@@ -78,9 +78,29 @@ export const ANCHOR = {
 /** Roller bed geometry: the top of the rollers is what a part rides on. */
 export const CONV = { width: 1.5, deckY: 0.62, railY: 0.74 };
 
-/** The rack store's four gravity lanes, and the portal rail that spans them. */
+/**
+ * The rack store's four gravity lanes, and the portal rail that spans them.
+ *
+ * The run is sized to what a lane actually holds. `LANE_DEPTH` is 2, and a part
+ * lies with its long axis *across* the lane, so it is only about 0.95 m of run:
+ * two of them nose to tail is 2.5 m, and 4.5 m is that plus runout at each end.
+ * It was 7.5 m, which left a lane two thirds empty when it was *full* and made
+ * four of them read as empty benches rather than as a buffer.
+ */
 export const STORE_LANE_X = [-11, -8, -5, -2] as const;
-export const STORE_LANE_Z = { back: -17, front: -9.5 };
+export const STORE_LANE_Z = { back: -14, front: -9.5 };
+
+/**
+ * The rack store's guard, which is deliberately *not* its footprint.
+ *
+ * A guard fences the machine, not the cell. Fencing the whole `STORE` box put
+ * the back run at z -18, a metre off the building wall, with four metres of
+ * empty floor between it and the lanes — so from the aisle the rack sat inside a
+ * mesh box far bigger than anything in it. This hugs the four lanes and the
+ * portal's pick stand, and stays inside `STORE`, so the cell still owns
+ * everything it draws.
+ */
+export const STORE_GUARD: Box = { x0: -12.6, x1: -0.4, z0: -15, z1: -6 };
 export const PORTAL = { z: -8, x0: -4, x1: 7, beamY: 5.0 };
 
 /** Painted lanes into the jig: frames on one rail, booms on the other. */

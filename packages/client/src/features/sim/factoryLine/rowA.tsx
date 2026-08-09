@@ -1,4 +1,4 @@
-import { memo } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import type { MachineState } from '@automationsolver/shared';
 import {
@@ -16,6 +16,7 @@ import {
   PORTAL,
   STEEL,
   STORE,
+  STORE_GUARD,
   STORE_LANE_X,
   STORE_LANE_Z,
   STRUCTURE,
@@ -206,6 +207,88 @@ const BlankRack = memo(function BlankRack({ x, z }: { x: number; z: number }) {
  * puzzle: a store holding three booms and one frame is a store that is about to
  * starve the jig, and that has to be one glance rather than one subtraction.
  */
+/**
+ * A gravity lane's geometry, which is the same for all four.
+ *
+ * The deck falls `LANE_DROP` over its length, front lower than back, because
+ * that is the entire mechanism: nothing drives a gravity lane, the parts run
+ * down it. Everything that stands on a lane has to read its height off the same
+ * two numbers, so they live here rather than in the mesh.
+ */
+const LANE_HIGH = 1.95;
+const LANE_LOW = 1.55;
+const LANE_DROP = LANE_HIGH - LANE_LOW;
+const LANE_RUN = STORE_LANE_Z.front - STORE_LANE_Z.back;
+const LANE_WIDTH = 2.2;
+/** Deck surface above the lane's centreline, in the tilted frame. */
+const LANE_DECK = 0.05;
+/** Where the deck surface sits, in world y, at a point along the lane. */
+const laneDeckY = (z: number): number =>
+  LANE_LOW + LANE_DECK + ((STORE_LANE_Z.front - z) / LANE_RUN) * LANE_DROP;
+
+/**
+ * One inclined roller lane between two uprights.
+ *
+ * Drawn with the spine's own roller texture and a kerb down each side, because
+ * a bare tilted slab reads as a bench somebody has knocked askew rather than as
+ * the one mechanism on this floor that moves parts without a motor. The tilt is
+ * the point; it has to look deliberate.
+ */
+const GravityLane = memo(function GravityLane({ tex, x }: { tex: LineTextures; x: number }) {
+  const len = Math.hypot(LANE_RUN, LANE_DROP);
+  const deck = useMemo(() => {
+    const t = tex.roller.clone();
+    t.needsUpdate = true;
+    t.rotation = Math.PI / 2;
+    t.center.set(0.5, 0.5);
+    t.repeat.set(1, Math.max(1, Math.round(len / 0.9)));
+    return t;
+  }, [tex.roller, len]);
+  useEffect(() => () => deck.dispose(), [deck]);
+
+  const tilt = Math.atan2(LANE_DROP, LANE_RUN);
+  const midZ = (STORE_LANE_Z.back + STORE_LANE_Z.front) / 2;
+
+  return (
+    <group>
+      {/* The two uprights the bed is slung between: tall at the back, short at
+          the front, which is what the fall is measured against. */}
+      {[
+        [STORE_LANE_Z.back, LANE_HIGH],
+        [STORE_LANE_Z.front, LANE_LOW],
+      ].map(([lz, h]) => (
+        <mesh key={lz} position={[x, h / 2, lz]} castShadow>
+          <boxGeometry args={[0.14, h, 0.14]} />
+          <meshStandardMaterial {...STRUCTURE} />
+        </mesh>
+      ))}
+      <group position={[x, (LANE_HIGH + LANE_LOW) / 2, midZ]} rotation={[tilt, 0, 0]}>
+        {/* Roller deck. Everything below it is set *clear* of it rather than
+            level with it: two surfaces at one height z-fight, which is the rule
+            `PartStand`'s height and the spine's corner decks already follow, and
+            which the first cut of this lane broke by putting the frame's top
+            face on exactly the deck plane. */}
+        <mesh position={[0, LANE_DECK, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[LANE_WIDTH, len]} />
+          <meshStandardMaterial map={deck} roughness={0.5} metalness={0.55} />
+        </mesh>
+        <mesh position={[0, LANE_DECK - 0.16, 0]} castShadow>
+          <boxGeometry args={[LANE_WIDTH - 0.04, 0.16, len]} />
+          <meshStandardMaterial {...DARK_STEEL} />
+        </mesh>
+        {/* Kerbs, so a part reads as running *in* the lane rather than on it.
+            Their base sits above the deck for the same reason. */}
+        {[-1, 1].map((s) => (
+          <mesh key={s} position={[(s * LANE_WIDTH) / 2, LANE_DECK + 0.13, 0]} castShadow>
+            <boxGeometry args={[0.09, 0.2, len]} />
+            <meshStandardMaterial {...STRUCTURE} />
+          </mesh>
+        ))}
+      </group>
+    </group>
+  );
+});
+
 export const StoreCell = memo(function StoreCell({
   tex,
   machine: m,
@@ -215,44 +298,28 @@ export const StoreCell = memo(function StoreCell({
 }) {
   const lanes = STORE_LANE_X.map((_, i) => strOf(m[`lane${i}`]));
   const outPart = strOf(m.storeOut);
-  const depth = STORE_LANE_Z.front - STORE_LANE_Z.back;
 
   return (
     <group>
-      <CellGuard tex={tex.mesh} box={STORE} open="south" />
+      <CellGuard tex={tex.mesh} box={STORE_GUARD} open="south" />
       <BaySign tex={tex.signs['RACK STORE']} x={cx(STORE)} z={STORE.z0 + 0.6} y={4.8} />
       <FloorText tex={tex.tags.STORE} x={STORE.x0 + 2.6} z={STORE.z1 + 0.9} w={4.2} />
 
       {STORE_LANE_X.map((lx, i) => (
         <group key={lx}>
-          {/* The lane: an inclined roller bed between two uprights. */}
-          {[STORE_LANE_Z.back, STORE_LANE_Z.front].map((lz, k) => (
-            <mesh key={lz} position={[lx, (k === 0 ? 2.3 : 1.5) / 2, lz]} castShadow>
-              <boxGeometry args={[0.14, k === 0 ? 2.3 : 1.5, 0.14]} />
-              <meshStandardMaterial {...STRUCTURE} />
-            </mesh>
-          ))}
-          <mesh
-            position={[lx, 1.9, (STORE_LANE_Z.back + STORE_LANE_Z.front) / 2]}
-            rotation={[Math.atan2(0.8, depth), 0, 0]}
-            castShadow
-            receiveShadow
-          >
-            <boxGeometry args={[2.2, 0.1, Math.hypot(depth, 0.8)]} />
-            <meshStandardMaterial {...DARK_STEEL} />
-          </mesh>
-          {/* Contents, front of the lane first — which is the order they leave. */}
+          <GravityLane tex={tex} x={lx} />
+          {/* Contents, front of the lane first — which is the order they leave,
+              and each one standing *on* the deck at its own point down the
+              slope. Working the height from an independent 0..1 term instead of
+              from the part's own z is what had them floating a third of a metre
+              over the rollers, by a different amount at each depth.
+              The pitch is a part's depth, not its length: a part lies across the
+              lane, so nose to tail is 1.0 m and not the 1.9 m of its long axis.
+              Parts on a gravity lane rest against each other. */}
           {[...lanes[i]].map((code, k) => {
-            const t = k / 2.2;
+            const lz = STORE_LANE_Z.front - 0.8 - k * 1.0;
             return (
-              <group
-                key={k}
-                position={[
-                  lx,
-                  1.98 + t * 0.8,
-                  STORE_LANE_Z.front - 0.9 - t * (depth - 1.8),
-                ]}
-              >
+              <group key={k} position={[lx, laneDeckY(lz), lz]}>
                 <LoosePart code={code} color={0} />
               </group>
             );
@@ -459,10 +526,11 @@ export const BoothCell = memo(function BoothCell({
         </group>
       )}
 
-      {/* Gun on a reciprocator arm, and the fan when it is open. */}
+      {/* Gun on a reciprocator arm, and the fan when it is open. The mast stands
+          on the floor: it used to start 0.8 m up with nothing under it. */}
       <group position={[sx - 1.9, 0, sz]}>
-        <mesh position={[0, 2.4, 0]} castShadow>
-          <boxGeometry args={[0.22, 3.2, 0.22]} />
+        <mesh position={[0, 2.0, 0]} castShadow>
+          <boxGeometry args={[0.22, 4.0, 0.22]} />
           <meshStandardMaterial {...STRUCTURE} />
         </mesh>
         <mesh position={[0.45, 2.1, 0]} castShadow>
@@ -484,12 +552,18 @@ export const BoothCell = memo(function BoothCell({
         )}
       </group>
 
-      {/* The drum bank on the north wall, one per order color, numbered. */}
+      {/* The drum bank against the booth's north wall, one per order color,
+          numbered. `z0 + 1.4` and not `z0 - 1.4`: the box's z0 is its *north*
+          edge, so subtracting put the whole bank 1.4 m behind the booth's back
+          wall and 0.4 m through the building's, where the paint camera was
+          supposed to be looking straight at it. */}
       {DRUM_COLORS.map((c, i) => (
-        <Drum key={c} x={BOOTH.x0 + 1.1 + i * 0.85} z={BOOTH.z0 - 1.4} color={c} />
+        <Drum key={c} x={BOOTH.x0 + 1.1 + i * 0.85} z={BOOTH.z0 + 1.4} color={c} />
       ))}
-      {/* Purge catch pot, which fills while the gun is being cleared. */}
-      <mesh position={[BOOTH.x1 + 1.0, 0.3 + purge * 0.02, BOOTH.z0 - 1.4]} castShadow>
+      {/* Purge catch pot, which fills while the gun is being cleared. It stands
+          in the alley between the booth and the oven, which is a real place to
+          put a waste pot, so only its z was wrong. */}
+      <mesh position={[BOOTH.x1 + 1.0, 0.3 + purge * 0.02, BOOTH.z0 + 1.4]} castShadow>
         <cylinderGeometry args={[0.32, 0.32, 0.6, 14]} />
         <meshStandardMaterial color={purge > 0 ? '#7c8590' : '#3a4149'} roughness={0.8} />
       </mesh>

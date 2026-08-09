@@ -50,11 +50,29 @@ import { ANCHOR, PORTAL } from './plant';
  *   is below the booth roof at 4.6, the portal beam at 4.79 and the services at
  *   5.82, so nothing overhead can cross a shot at any viewport aspect.
  *
+ * ## A cell is a box with one opening, and the shot has to come in through it
+ *
+ * The second thing the presets got wrong, and the one that reads as *colliding*
+ * geometry rather than as a beam: `CellGuard` fences three sides of the weld
+ * bay, the rack store and final assembly, the booth has three walls and a glazed
+ * face, and the oven is a tunnel. A bearing that ignores that frames its subject
+ * through 2.2 m of woven mesh — and where two guards overlap, through two.
+ *
+ * So a preset is checked against every opaque panel in the plant, and the
+ * sight-line has to reach the subject through the cell's actual opening:
+ *
+ * - **Weld, store** — fenced north/east/west, open to the aisle on the south.
+ * - **Assembly** — fenced south/east/west, open to the aisle on the north.
+ * - **Booth** — walled on three sides with a doorway punched through each side
+ *   wall for the transfer that passes that way; the only way to *see* in is the
+ *   south glazing (x 3.5 to 11.5, y 1.2 to 4.2), with the skid 2 m behind it.
+ *   That is why its bearing is 35 degrees and not a matter of taste.
+ * - **Portal** — the rail's mid-point is 0.5 m inside the store's east guard, so
+ *   the preset aims at x = 2.5 instead and comes at it from the aisle. Aiming at
+ *   the middle of the rail from the west is a shot through that fence.
+ *
  * The numbers below were solved against the plant's own footprints rather than
- * eyeballed, and checked at aspect ratios from 1.1 to 2.6. The booth is the
- * fussy one: it is a closed box whose only opening is the south glazing
- * (x 3.5 to 11.5, y 1.2 to 4.2), so its bearing is constrained by having to
- * reach the skid *through* that hole and not through a solid corner.
+ * eyeballed, and every one is checked at aspect ratios from 1.1 to 2.6.
  */
 
 export interface Focus {
@@ -141,26 +159,30 @@ export const SECTION_FOCUS: Record<string, Focus> = {
     maxEyeY: 3.4,
     label: 'The spine, from the sort',
   },
-  // From the aisle's west end, looking north-east along the four lanes rather
-  // than square at them, so the rack reads as depth instead of as a wall.
+  // North-east along the four lanes rather than square at them, so the rack
+  // reads as depth instead of as a wall — but from far enough south to come in
+  // through the cell's *open* side. A bearing that looks at the rack across its
+  // own west guard sees the whole shot through 2.2 m of woven mesh.
   STORE: {
     center: [-6, 2.0, -13],
-    halfWidth: 6.5,
+    halfWidth: 7.5,
     halfHeight: 4.2,
-    dir: dirFrom(310, 12),
-    maxDistance: 14,
+    dir: dirFrom(320, 6),
+    maxDistance: 15,
     minEyeY: 1.6,
     maxEyeY: 3.4,
     label: 'Rack store',
   },
-  // Square down the rail from the store end, so the gantry travels across the
-  // frame rather than toward the lens.
+  // From the aisle looking north, so the gantry travels across the frame. Aimed
+  // at 2.5 rather than at the rail's mid-point, because the mid-point is 0.5 m
+  // *inside* the store's east guard and any shot of it from the west is a shot
+  // through that fence.
   PORTAL: {
-    center: [(PORTAL.x0 + PORTAL.x1) / 2, 2.6, PORTAL.z],
-    halfWidth: 6.5,
+    center: [2.5, 2.6, PORTAL.z],
+    halfWidth: 7.5,
     halfHeight: 3.8,
-    dir: dirFrom(290, 8),
-    maxDistance: 14,
+    dir: dirFrom(10, 6),
+    maxDistance: 15,
     minEyeY: 1.6,
     maxEyeY: 3.4,
     label: 'Portal robot',

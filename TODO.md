@@ -108,14 +108,40 @@ measurement found.
       floor and no ceiling, so rule 1 was a comment), pulling the standoffs in to 12 to 16 m, and
       re-bearing every eye onto open floor. → FACTORY-LINE-DESIGN §6 "Rule 1 was stated and not
       enforced"
-- [ ] **Pin the camera presets with a test.** The audit that found the above was a throwaway
-      script: it walks each preset at viewport aspects 1.1 to 2.6 and asserts the eye is inside
-      the building, out of every cell footprint, under 3.4 m, at least 2.6 m from a service drop,
-      and — for the booth — that the sight-line reaches the skid through the glazing rather than a
-      solid wall. As a unit test in `packages/client` it would stop the next footprint change
-      quietly re-breaking a shot. Note the packaging problem to solve first: the client has no
-      unit-test runner, which is why `symbolChoicesFor` lives in `shared`.
-      → FACTORY-LINE-DESIGN §6
+- [x] **Stop the presets framing their subject through a fence.** Every cell is enclosed —
+      `CellGuard` fences three sides of weld, store and assembly, the booth has three walls and a
+      glazed face, the oven is a tunnel — so a bearing that ignores the opening shoots the whole
+      shot through 2.2 m of woven mesh. Store crossed its own west guard, and the portal preset
+      crossed the store's east guard because the rail's mid-point is 0.5 m *inside* it. Both
+      re-beared to come in through the open side. → FACTORY-LINE-DESIGN §6 "A cell is a box with
+      one opening"
+- [x] **Put the drum bank back inside the shed, and the rack parts back on the deck.** Same
+      mistake twice: a box's `z0` is its *north* edge, so `BOOTH.z0 - 1.4` put the four paint
+      drums and the purge pot 0.4 m through the building's north wall. Separately, parts in the
+      gravity lanes floated 0.33 to 0.47 m over the rollers because their height came from an
+      independent term rather than from the lane's own fall. → FACTORY-LINE-DESIGN §6 "Two
+      placement bugs"
+- [x] **Turn every guard fence the right way round.** `FenceRun` builds along local x but took its
+      bearing from the `atan2(dx, dz)` its z-built neighbours use, so every fence in the plant was
+      rotated 90 degrees about its own centre — the weld bay's west guard ran through the
+      positioner, its north guard reached five metres past the building wall, the store's ran
+      lengthwise through the rack. One line. → FACTORY-LINE-DESIGN §6 "Every guard fence was
+      rotated 90 degrees"
+- [x] **Stand the floating beams on the floor.** Seven service risers hung from the tray and
+      stopped 2.4 m up over the walkway; the booth's gun mast started 0.8 m up. Both now reach the
+      slab, and the risers end in a disconnect. → FACTORY-LINE-DESIGN §6
+- [ ] **Turn the scene audit into a test.** Everything above was found by dumping the live scene
+      through the dev-only `SceneProbe` and checking arithmetic — outside-the-building AABBs,
+      floating geometry, coplanar faces, and the camera sight-lines. That is currently a throwaway
+      script, run by hand. As a test it would stop the next footprint change quietly re-breaking a
+      shot or burying a prop in a wall. Two packaging problems to solve first: the client has no
+      unit-test runner (which is why `symbolChoicesFor` lives in `shared`), and the geometry checks
+      need a real scene, so this is either a Playwright fixture or a move of the footprint data
+      into `shared` where a pure check can reach it. → FACTORY-LINE-DESIGN §6 "How this was found"
+- [ ] **Sweep `rowB.tsx` with the same three checks.** Row A has now been through outside-the-box,
+      floating and coplanar; the south row has only been through them incidentally, as part of the
+      whole-plant dump. Nothing has looked at whether its props sit inside their own footprints.
+      → FACTORY-LINE-DESIGN §6 "Two placement bugs"
 - [ ] **Give the booth a second opening.** Its camera is the one still boxed in: one glazed face
       on the south and the skid 2 m behind it leaves a single usable bearing, so the shot cannot
       obey rule 3 no matter how it is tuned. A roll-up door or a glazed return on the east face

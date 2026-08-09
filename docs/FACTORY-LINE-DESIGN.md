@@ -370,8 +370,8 @@ close-up back into the overview shot we already have.
 | **Overview** | plant centre `(0, 3, -2)` | 210° | 34° | 30 | — | High three-quarter down the length of the line. The only high shot. |
 | **Weld** | fixture `(-21, 1.7, -12)` | 350° | 10° | 6.5 | 15 | From open floor south-west of the bay, north-north-east up the shop, Z1-Z3 low in the near field. |
 | **Conveyor** | sort `(24, 1.4, 2)` | 260° | 14° | 7.0 | 16 | Down the spine foreshortened, so a queue reads as a queue. |
-| **Store** | rack `(-6, 2.0, -13)` | 310° | 12° | 6.5 | 14 | North-east *along* the four lanes rather than square at them, so the rack reads as depth. |
-| **Portal** | rail mid `(1.5, 2.6, -8)` | 290° | 8° | 6.5 | 14 | Square down the rail, gantry crossing the frame rather than coming at the lens. |
+| **Store** | rack `(-6, 2.0, -13)` | 320° | 6° | 7.5 | 15 | North-east *along* the four lanes rather than square at them, from far enough south to come in through the open face. |
+| **Portal** | rail at `(2.5, 2.6, -8)` | 10° | 6° | 7.5 | 15 | From the aisle, gantry crossing the frame rather than coming at the lens. |
 | **Paint** | skid `(6.6, 1.8, -8)` | 35° | 8° | 7.0 | 12 | From the south-east *through the glazing*, gun and drum bank behind the skid. |
 | **Assembly** | jig `(15, 1.7, 7)` | 240° | 10° | 6.5 | 15 | South-west into the jig, the two painted lanes running away from the lens. |
 | **Dock** | apron `(-6, 1.6, 11)` | 140° | 12° | 6.5 | 15 | South-east down the outfeed run: test pad, dock and yard in one shot. |
@@ -411,15 +411,96 @@ What fixed it, in order of importance:
   no sight-line rises above 3.4 m — below the booth roof (4.6), the portal beam (4.79) and the
   services (5.82), so nothing overhead can cross a shot at any aspect.
 
-**The booth is the constrained one and will stay constrained until it is re-modelled.** It is a
-closed box whose only opening is the south glazing (x 3.5 to 11.5, y 1.2 to 4.2), and the skid sits
-2 m behind that face — so the bearing is fixed by having to reach the skid *through* the hole
-rather than through a solid corner. Sweeping the whole compass leaves a band around 35° and a
+### A cell is a box with one opening, and the shot has to come in through it
+
+The second finding, and the one that reads as *colliding geometry* rather than as a beam. Every
+cell on this floor is enclosed: `CellGuard` fences three sides of the weld bay, the rack store and
+final assembly; the booth has three walls and a glazed face; the oven is a tunnel. A bearing that
+ignores that frames its subject through 2.2 m of woven mesh, and where two guards overlap, through
+two — which is exactly what a player reported on the rack store.
+
+| Cell | Enclosure | The only way in |
+|---|---|---|
+| Weld, Store | fenced north/east/west | open to the aisle on the **south** |
+| Assembly | fenced south/east/west | open to the aisle on the **north** |
+| Booth | three walls, a doorway punched through each side wall for the transfer that passes that way | the **south glazing**, x 3.5 to 11.5, y 1.2 to 4.2 |
+| Oven | tunnel walls at z -8.3 and -11.7 | open at both ends in **x** |
+
+Measured against that, two presets were framing their subject through a fence: **Store** crossed
+its own west guard at z -7.13, and **Portal** crossed the store's east guard at z -7.82. The portal
+one is structural rather than a bad bearing — the rail's mid-point (x 1.5) is 0.5 m *inside* the
+store's east guard, so any shot of the rail's middle from the west is a shot through that fence.
+The preset now aims at x 2.5 and comes at it from the aisle.
+
+**The booth is the constrained one and will stay constrained until it is re-modelled.** The skid
+sits 2 m behind its one glazed face, so the bearing is fixed by having to reach it *through* the
+hole rather than through a solid corner. Sweeping the whole compass leaves a band around 35° and a
 narrow one to the west; everything else crosses a wall.
 
 A consequence worth knowing before re-tuning: at these standoffs `maxEyeY` binds at **every**
 aspect, so the authored elevations are currently decorative. They are kept because they still set
 the bearing's sign and become live again the moment a shot is pulled in closer.
+
+### Every guard fence was rotated 90 degrees, and that was most of it
+
+The single largest finding, and it had been shipping since the fences went in. `FenceRun` builds
+its panel along local **x** — `planeGeometry(len, height)`, with the posts and the top rail spaced
+along x — but took its bearing from `atan2(dx, dz)`, which is the convention its neighbours
+`Conveyor` and `ServiceRun` use *because those build along local z*. A rotation about Y maps local
++x to `(cos, 0, -sin)`, so the correct bearing for an x-built run is `atan2(-dz, dx)`. Borrowing the
+neighbours' formula turned every fence in the plant a quarter turn about its own centre:
+
+| Guard run | Should be | Was drawn |
+|---|---|---|
+| Weld north | z -18, x -27..-15 | x -21, z -24..-12 |
+| Weld west | x -27, z -18..-6 | z -12, x -33..-21 |
+| Store north | z -15, x -12.6..-0.4 | x -6.5, z -21.1..-8.9 |
+| Assembly south | z 15, x 7..24 | x 15.5, z 6.5..23.5 |
+
+Which accounts for almost every "these meshes collide" and "this is outside the plant" report at
+once: the weld bay's west guard ran across z -12, straight through the positioner at (-21, -12);
+its north guard reached z -24, five metres past the building wall; the store's ran lengthwise
+through the rack. **The lesson is the rule, not the bug:** a prop that builds along local x cannot
+share a bearing formula with one that builds along local z, and nothing in the types says which is
+which.
+
+### How this was found, and how to find the next one
+
+Not by reading, and not from screenshots — several rounds of matching a circled region to a line of
+source were wrong as often as right. What worked was making the scene *queryable*: `FactoryLine3D`
+mounts a dev-only `SceneProbe` on `/dev/line` that hands the live `THREE.Scene` to the page, and a
+throwaway Playwright script then walks it and dumps every mesh's world AABB, geometry parameters
+and material color. 433 meshes, and the answers fall out as arithmetic:
+
+- **Outside the building** — any AABB beyond the `FLOOR` box. Found all nineteen misplaced fence
+  meshes at once.
+- **Floating geometry** — a tall thin mesh whose foot is off the slab with nothing beneath it in
+  plan. Found the seven service risers stopping 2.4 m up and the booth's gun mast starting 0.8 m
+  up, and correctly left alone the two things that are *meant* to hang, the torch head under its
+  gantry and the engine hoist's cable.
+- **Coplanar faces** — two surfaces sharing a y value, which is what z-fights.
+
+The same page also carries click-to-identify: clicking any mesh reports its world position,
+geometry and arguments in the caption strip, which turns "what is that thing" into a lookup.
+Reach for both before reasoning about a scene bug from a picture.
+
+### Two placement bugs the same pass found
+
+Both are the same mistake and worth stating as a rule: **a box's `z0` is its north edge, so
+`z0 - k` is outside the cell, not inside it.**
+
+- **The paint drum bank and the purge catch pot** were at `BOOTH.z0 - 1.4` = -19.4, which is 1.4 m
+  behind the booth's own north wall and 0.4 m through the *building's* north wall at -19. The
+  entire drum bank stood outside the shed — while the Paint preset's stated shot is "past the drum
+  bank into the booth, drums in the near field". Now `z0 + 1.4`.
+- **Parts in the rack lanes floated 0.33 to 0.47 m above the deck**, by a different amount at each
+  depth, because the height came from an independent 0..1 term rather than from the part's own z.
+  A gravity lane falls 0.8 m over its 7.5 m run, so anything standing on one has to read its height
+  off that fall: `laneDeckY(z)` in `rowA.tsx` is now the single place that knows it.
+
+The lanes also now draw with the spine's roller texture and a kerb down each side. The 6° tilt is
+correct and is the whole mechanism — nothing drives a gravity lane — but a bare tilted slab reads
+as a bench knocked askew, which is what it was reported as.
 
 ### Overview stays orbitable
 

@@ -1,4 +1,6 @@
 import { useEffect, useMemo } from 'react';
+import { useThree } from '@react-three/fiber';
+import * as THREE from 'three';
 import { LINE_LIMITS, LINE_ZONES, type MachineState } from '@automationsolver/shared';
 import { MachineCanvas } from '../MachineCanvas';
 import {
@@ -45,17 +47,69 @@ import { buildLineTextures, disposeLineTextures } from './textures';
  * the cells whose state actually changed are reconciled.
  */
 
+/**
+ * What one mesh in the plant *is*, in the terms `plant.ts` describes it in.
+ *
+ * There is no other way to answer "what is that thing crossing the rack?" from
+ * a screenshot. The scene is thousands of anonymous boxes generated from a
+ * hundred constants, and matching one to a line of source by eye is guesswork
+ * that has been wrong more often than right. A click gives its world position,
+ * its geometry and the arguments it was built with, which names it uniquely.
+ */
+export function describeMesh(o: THREE.Object3D): string {
+  const p = new THREE.Vector3();
+  o.getWorldPosition(p);
+  const at = `[${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}]`;
+  const mesh = o as THREE.Mesh;
+  const g = mesh.geometry as THREE.BufferGeometry & { parameters?: Record<string, unknown> };
+  const kind = g?.type ?? o.type;
+  const args = g?.parameters
+    ? Object.entries(g.parameters)
+        .filter(([, v]) => typeof v === 'number')
+        .map(([k, v]) => `${k} ${(v as number).toFixed(2)}`)
+        .join(', ')
+    : '';
+  const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
+  const color = mat?.color ? ` color #${mat.color.getHexString()}` : '';
+  return `${kind} at ${at}${args ? ` (${args})` : ''}${color}`;
+}
+
+/**
+ * Dev only: hand the live scene to the page, for tooling that has to inspect it.
+ *
+ * Mounted only on `/dev/line`, and only because the alternative is worse. The
+ * plant is thousands of boxes generated from a hundred constants in `plant.ts`,
+ * and every "these meshes collide" report so far has been answered by matching a
+ * screenshot to a line of source by eye — which has been wrong as often as
+ * right. With the scene reachable, a script can walk it and compute the world
+ * bounds of every mesh, so "what is that" and "do these two actually intersect"
+ * become arithmetic instead of opinion.
+ */
+function SceneProbe() {
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    (window as unknown as { __plantScene?: THREE.Scene }).__plantScene = scene;
+    return () => {
+      delete (window as unknown as { __plantScene?: THREE.Scene }).__plantScene;
+    };
+  }, [scene]);
+  return null;
+}
+
 /** The bare plant, with no canvas around it. */
 export function FactoryLineRig({
   machine,
   outputs,
   section,
+  onIdentify,
 }: {
   machine: MachineState;
   /** The live coil image, for what a state snapshot cannot tell apart — a torch
       that is *striking* rather than a seam that merely stopped. */
   outputs: Record<string, boolean>;
   section?: string;
+  /** Dev only: report whatever mesh was clicked. See `describeMesh`. */
+  onIdentify?: (what: string) => void;
 }) {
   const tex = useMemo(() => buildLineTextures(), []);
   useEffect(() => () => disposeLineTextures(tex), [tex]);
@@ -63,8 +117,23 @@ export function FactoryLineRig({
   const focus = (section && SECTION_FOCUS[section]) || PLANT_FOCUS;
 
   return (
-    <group>
+    <group
+      onClick={
+        onIdentify
+          ? (e) => {
+              // `onClick` rather than `onPointerDown`, or every orbit-drag would
+              // report whatever the drag happened to start on. `stopPropagation`
+              // keeps it to the nearest hit: a click through a plant otherwise
+              // returns everything behind it too, and the front one is what was
+              // actually pointed at.
+              e.stopPropagation();
+              onIdentify(describeMesh(e.object));
+            }
+          : undefined
+      }
+    >
       <SectionCamera focus={focus} />
+      {onIdentify && <SceneProbe />}
       {/* A plant floor is lit from a hundred fittings, not from one sun. Without
           the lift the shop reads as a night scene and the bare parts on the rack
           disappear into the slab. */}
@@ -214,11 +283,14 @@ export function FactoryLine3D({
   outputs,
   section,
   height = 300,
+  onIdentify,
 }: {
   machine: MachineState;
   outputs: Record<string, boolean>;
   section?: string;
   height?: number | string;
+  /** Dev only: report whatever mesh was clicked. See `describeMesh`. */
+  onIdentify?: (what: string) => void;
 }) {
   return (
     <MachineCanvas
@@ -235,7 +307,12 @@ export function FactoryLine3D({
       shadowExtent={38}
       interactive
     >
-      <FactoryLineRig machine={machine} outputs={outputs} section={section} />
+      <FactoryLineRig
+        machine={machine}
+        outputs={outputs}
+        section={section}
+        onIdentify={onIdentify}
+      />
     </MachineCanvas>
   );
 }

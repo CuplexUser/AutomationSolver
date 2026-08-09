@@ -86,6 +86,11 @@ export function LinePreviewPage() {
   const [section, setSection] = useState<string>('');
   const [running, setRunning] = useState(true);
   const [generation, setGeneration] = useState(0);
+  // What was last clicked in the scene. Every "that mesh is wrong" report so far
+  // has had to be matched to a line of source by eye, from a screenshot, which
+  // is guesswork. Clicking the thing and reading its world position off the
+  // screen turns that into a lookup.
+  const [picked, setPicked] = useState('');
 
   // The engine and its carried images live in a ref because they are an
   // external system stepped fifty times a second; the *snapshot* the scene
@@ -169,7 +174,9 @@ export function LinePreviewPage() {
           ))}
         </span>
         <span className="lp-note">
-          Dev preview. Seven tuned sections, no puzzle. Sections: {Object.values(LINE_SECTIONS).join(' ')}
+          {picked
+            ? `Picked: ${picked}`
+            : `Dev preview. Click any mesh to identify it. Sections: ${Object.values(LINE_SECTIONS).join(' ')}`}
         </span>
       </div>
       <div className="lp-scene">
@@ -180,6 +187,7 @@ export function LinePreviewPage() {
           outputs={snap.bits}
           section={section || undefined}
           height="100%"
+          onIdentify={setPicked}
         />
       </div>
     </div>

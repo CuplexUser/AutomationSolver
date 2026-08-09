@@ -47,7 +47,17 @@ export const FenceRun = memo(function FenceRun({
   const dx = to[0] - from[0];
   const dz = to[1] - from[1];
   const len = Math.hypot(dx, dz);
-  const angle = Math.atan2(dx, dz);
+  // `atan2(-dz, dx)` and *not* the `atan2(dx, dz)` its neighbours use, because
+  // this run is built along local **x** — the panel is `planeGeometry(len,
+  // height)`, and the posts and the top rail are both spaced along x — while
+  // `Conveyor` and `ServiceRun` build along local z. A rotation about Y maps
+  // local +x to `(cos, 0, -sin)`, so aligning it with `(dx, dz)` is this, and
+  // borrowing the neighbours' formula turns every fence 90 degrees about its own
+  // centre. It did: the weld bay's west guard was drawn across z = -12 straight
+  // through the positioner, its north guard reached 5 m past the building wall,
+  // and the store's ran lengthwise through the rack. Everything reported as
+  // colliding or as sticking outside the plant was this one line.
+  const angle = Math.atan2(-dz, dx);
   const posts = Math.max(2, Math.round(len / 2.5) + 1);
 
   const own = useMemo(() => {
@@ -448,11 +458,22 @@ export const ServiceRun = memo(function ServiceRun({
           <meshStandardMaterial color="#c2560f" metalness={0.4} roughness={0.5} />
         </mesh>
       </group>
+      {/* Risers, which go all the way to the slab. They used to stop 2.4 m up —
+          seven orange posts hanging in the air over the walkway with nothing
+          under them, which is the single most visible way to say "this is a
+          model" rather than "this is a building". A drop lands on something, so
+          each one now runs to the floor and ends in a disconnect. */}
       {drops.map(([dxp, dzp], i) => (
-        <mesh key={i} position={[dxp, y / 2 + 1.2, dzp]} castShadow={false}>
-          <boxGeometry args={[0.18, y - 2.4, 0.18]} />
-          <meshStandardMaterial {...POWER} />
-        </mesh>
+        <group key={i} position={[dxp, 0, dzp]}>
+          <mesh position={[0, y / 2, 0]} castShadow={false}>
+            <boxGeometry args={[0.18, y, 0.18]} />
+            <meshStandardMaterial {...POWER} />
+          </mesh>
+          <mesh position={[0, 1.35, 0.12]} castShadow>
+            <boxGeometry args={[0.34, 0.46, 0.2]} />
+            <meshStandardMaterial {...DARK_STEEL} />
+          </mesh>
+        </group>
       ))}
     </group>
   );
