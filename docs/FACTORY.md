@@ -1,8 +1,12 @@
 # The Excavator Plant
 
-Everything about the `factory` category in one place: what it is for, what exists today, what
-is half built, and what is left. [FEATURE-MAP.md](./FEATURE-MAP.md) is the whole codebase's
-"what exists"; this is the one category deep enough to need its own.
+Everything about the `factory` category in one place: what it is for, what exists today, and what
+each puzzle settled. [FEATURE-MAP.md](./FEATURE-MAP.md) is the whole codebase's "what exists";
+this is the one category deep enough to need its own.
+
+> **Reference, not a queue.** [`TODO.md`](../TODO.md) is the only work list; this category's
+> remaining items are its **P2**. The *Known open* and *Not started* sections below explain those
+> items, they do not schedule them.
 
 > **The plant has been rebuilt, and the category is complete.**
 > [FACTORY-LINE-DESIGN.md](./FACTORY-LINE-DESIGN.md) is the specification the new floor was

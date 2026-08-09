@@ -1,7 +1,10 @@
 # Feature Map
 
-Where every capability lives today, and how the pieces fit. This is the "what exists"
-document; [ROADMAP.md](./ROADMAP.md) is the "what's next" document.
+Where every capability lives today, and how the pieces fit. This is the "what exists" document.
+
+> **Reference, not a queue.** [`TODO.md`](../TODO.md) at the repo root is the only work list.
+> Nothing here is scheduled work, and anything this document describes as missing or partial is
+> only real if there is a box for it there.
 
 ## The one architectural idea
 

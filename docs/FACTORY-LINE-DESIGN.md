@@ -6,6 +6,9 @@ implementation follows, and it exists so the plant is settled **before** a singl
 is written against it. Anything here that changes after puzzle 48 ships is a change that
 invalidates rungs somebody already wrote.
 
+> **Reference, not a queue.** [`TODO.md`](../TODO.md) is the only work list. §8's build order and
+> §5a's open option are explained here and *scheduled* there, as **P2**.
+
 Three decisions were taken deliberately and everything below follows from them:
 
 1. **The conveyor is fully zoned and the player programs it.** Not scenery, not a few stoppers.

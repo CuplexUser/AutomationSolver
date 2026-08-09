@@ -7,6 +7,12 @@ player creates rather than fills in.
 Companion to [FACTORY-LINE-DESIGN.md](./FACTORY-LINE-DESIGN.md), which is the plant this exists to
 serve. This one is engine and model work and outlives the factory.
 
+> **Reference, not a queue.** This is the design; the work left to do on it is
+> [`TODO.md`](../TODO.md) **P1**, which is the project's current top priority. The build order at
+> the end of this document records what each step *was* and whether it landed. Do not treat it as
+> the checklist — the boxes are in `TODO.md`, and the engine half being done while the feature
+> stays unreachable from the UI is exactly the gap two queues produced.
+
 ## Why
 
 The immediate ask is the zoned conveyor. `CONV` is one section that six others have to coordinate
@@ -310,14 +316,17 @@ until a puzzle opts in.
      of them assembled or resolved differently, the client and the server would silently disagree
      about the program. They now all go through one function. The editor deliberately does *not*
      resolve: it keeps the player's names, because names are what they typed.
-5. Client. **Symbol picker and variables pane done**; POU tree editing and declare-from-error
-   remain.
+5. Client. **Symbol picker wired; variables pane written but not mounted**; POU tree editing and
+   declare-from-error remain. See [`TODO.md`](../TODO.md) P1.
    - `SymbolField` is a combobox over the in-scope table, keyboard-navigable, showing each name
      with its address and where it came from. The address also echoes inside the box once a name
-     resolves, so naming a device never means hiding where it lives.
+     resolves, so naming a device never means hiding where it lives. This one is reachable:
+     `CellFields` renders it and `FactoryPlay` feeds it `symbolChoicesFor(spec, project, pouId)`.
    - `VariablesPanel` is the declaration table, and it shows the address the *next* declaration
      would take before it takes it. Allocation is not something the player finds out about
-     afterwards.
+     afterwards. **It is imported by nothing**, so there is currently no way to open it and
+     therefore no way to declare a variable at all — which makes every step above it dead code
+     from a player's point of view. Mounting it is the first box of P1.
    - `symbolChoicesFor` and `filterChoices` live in `shared` rather than the client, because the
      client has no unit-test runner and these are pure functions that deserve one.
 6. Convert `factory-line-programs.ts` to symbols; the soak test in `factoryLine.test.ts` is the

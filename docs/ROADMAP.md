@@ -1,8 +1,14 @@
-# Development Plan
+# Development Plan — the historical record
 
-A gradual feature-set plan. Each phase is independently shippable, ends in a playable state,
-and leaves the codebase healthy — no phase depends on a later one to make sense. Phases are
-ordered so that the risky, load-bearing work (the engine) stays ahead of the work that depends
+> **This is no longer a plan and no longer a queue.** [`TODO.md`](../TODO.md) at the repo root is
+> the only work list. What follows is the account of how each phase actually landed, kept because
+> the *reasoning* is worth having and because several phases record findings that cut against
+> their own original intent. Where a section below ends with "still to come", check `TODO.md`:
+> some of it shipped, some of it is a box there, and some of it was dropped on purpose.
+
+A gradual feature-set plan. Each phase was independently shippable, ended in a playable state,
+and left the codebase healthy — no phase depended on a later one to make sense. Phases were
+ordered so that the risky, load-bearing work (the engine) stayed ahead of the work that depends
 on it (content, then UI, then new puzzle families).
 
 See [FEATURE-MAP.md](./FEATURE-MAP.md) for what already exists, and [FACTORY.md](./FACTORY.md) for the excavator plant, which is deep enough to have its own document.

@@ -1,10 +1,10 @@
 # ⚡ AutomationSolver
 
-**A puzzle game where the puzzle piece is ladder logic.** Program a Mitsubishi-style PLC on a grid editor, hit Run, and watch power flood the rung while a real machine moves in 3D beside it. Forty-six work orders across eleven categories take you from a single contact driving a single coil to a PID loop holding a tank on setpoint, and on to a stacker crane that has to keep two production lines fed out of one aisle of racking.
+**A puzzle game where the puzzle piece is ladder logic.** Program a Mitsubishi-style PLC on a grid editor, hit Run, and watch power flood the rung while a real machine moves in 3D beside it. Fifty-three work orders across twelve categories take you from a single contact driving a single coil to a PID loop holding a tank on setpoint, and on to a whole excavator plant written in seven program sections, where the job is no longer to make a machine work but to find out which of six stations is holding the line up.
 
 [![TypeScript](https://badgen.net/badge/TypeScript/React%20%2B%20Express/3178c6)]()
 [![No native deps](https://badgen.net/badge/npm%20install/no%20C%2B%2B%20toolchain/2ea44f)]()
-[![Puzzles](https://badgen.net/badge/work%20orders/46%20across%2011%20categories/ffb020)]()
+[![Puzzles](https://badgen.net/badge/work%20orders/53%20across%2012%20categories/ffb020)]()
 
 [**Play the demo rung →**](https://cuplexuser.github.io/AutomationSolver/) · a real solver and grader running in the page, no install
 
@@ -82,7 +82,8 @@ Submitting runs every scenario the puzzle declares: a scripted input timeline wi
 | **Drill Station** (4) | Clamp, spin up, drill and sort mixed stock through one automatic station. |
 | **Process Control** (5) | Scale a transmitter, build a P regulator by hand out of SUB/MUL/ADD, then let a PID block kill the offset. |
 | **Motion Control** (4) | Speed references, drive ramp parameters, and the stopping distance a loaded carriage implies. |
-| **Automated Warehouse** (5) | Drive a stacker crane by position sensor, search a WMS table for the nearest slot holding what was asked for, and keep two lines fed from one aisle. |
+| **Automated Warehouse** (6) | Drive a stacker crane by position sensor, search a WMS table for the nearest slot holding what was asked for, and keep two lines fed from one aisle. |
+| **Excavator Plant** (7) | Not a machine but a **line**, written in seven program sections across one 55 x 38 m floor: a weld fixture, a rack store, a portal robot, a spray booth and cure oven, a jig, a test bay and dock, and twelve zones of accumulating conveyor the player programs. Ends in a capstone that hands over every section already working and asks you to make it earn more. |
 
 Categories unlock sequentially — each one's first puzzle is always open, and the rest gate on the previous solve. Enforced on the API, not just hidden in the UI.
 
@@ -148,7 +149,9 @@ packages/
             process models, validator, grader  (no runtime deps)
   server/   Express + Passport, node:sqlite data layer, submit + grading API
   client/   Vite React SPA: ladder editor, cabinet editor, live sim, 3D machines
-docs/       FEATURE-MAP.md (what exists), ROADMAP.md (what's next), FACTORY.md (the plant)
+docs/       reference only: FEATURE-MAP.md (what exists and why), VARIABLES-AND-POUS.md,
+            FACTORY.md + FACTORY-LINE-DESIGN.md (the plant), ROADMAP.md (the history)
+TODO.md     the one work list, prioritized
 site/       the GitHub Pages landing page: a small Vite app whose playable
             rung imports the shared engine, built by `npm run build:pages`
 ```
@@ -175,11 +178,17 @@ Process models are small deterministic state machines that react to `Y` outputs 
 
 Write the briefing as an instruction manual rather than prose: a short lead paragraph, then `## Section` blocks (`Equipment`, `Sequence of operation`, `Interlocks and safety`, `Field notes`, `Acceptance`).
 
-## Docs
+## What's next, and where it's written down
+
+[**`TODO.md`**](TODO.md) is the only work list — a prioritized checklist, and the single point of interest for developing anything new. Top of it right now is finishing **variables and POUs**: the symbol table, the allocator, the resolver and the validation rules are all built and tested, and the declaration pane that would let a player actually create a local or a global is a finished component that nothing mounts yet.
+
+Everything under `docs/` is *reference* rather than a queue. If a piece of work is not a checkbox in `TODO.md`, it is not scheduled, whatever a design document's closing paragraph might imply.
 
 - [`docs/FEATURE-MAP.md`](docs/FEATURE-MAP.md) — where every capability lives and why it is built that way
-- [`docs/ROADMAP.md`](docs/ROADMAP.md) — the phased plan for what comes next
-- [`docs/FACTORY.md`](docs/FACTORY.md) — the excavator plant: its vision, its two process models, and where the category stands
+- [`docs/VARIABLES-AND-POUS.md`](docs/VARIABLES-AND-POUS.md) — the symbol table, scopes, and player-authored POUs
+- [`docs/FACTORY.md`](docs/FACTORY.md) — the excavator plant: its vision, its two process models, and what each puzzle settled
+- [`docs/FACTORY-LINE-DESIGN.md`](docs/FACTORY-LINE-DESIGN.md) — the line's floor plan, its zoned spine, and every timing measured rather than estimated
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — the historical record of how the phases landed. Not a queue.
 
 ## License
 
