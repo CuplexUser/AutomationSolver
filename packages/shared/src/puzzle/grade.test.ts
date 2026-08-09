@@ -7,6 +7,7 @@ import type {
   VLink,
 } from '../ladder/types.js';
 import { getPuzzle, PUZZLES } from './content/index.js';
+import { WELD_TUNED } from './content/factory-line-programs.js';
 import {
   CORRECTNESS_WEIGHT,
   PAR_SLACK,
@@ -1415,6 +1416,15 @@ const projectSolutions: Record<string, LadderProject> = {
         ],
       },
     ],
+    tasks: [],
+  },
+  // The weld bay's answer is the tuned program the plant's own soak test
+  // measures, imported rather than copied out: two drifting copies of the same
+  // twenty rungs is how a puzzle quietly stops being the one that was measured.
+  // Only the section the player owns is submitted, so `assembleProject` still
+  // has to supply the other six.
+  'factory-weld': {
+    pous: [{ id: 'WELD', name: 'SEC1_WELD', rungs: WELD_TUNED }],
     tasks: [],
   },
 };

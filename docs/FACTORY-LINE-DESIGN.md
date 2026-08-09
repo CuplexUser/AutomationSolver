@@ -289,9 +289,14 @@ comes from.
 
 Seven sections, and the puzzle plan grows by one.
 
+The seven section slots, their briefs and the scan order live in
+`content/factory-line-sections.ts`, and a puzzle says which one it is opening. Six copies of seven
+section briefs is how the player ends up commissioning a slightly different factory depending on
+which puzzle they have reached.
+
 | # | Slug | Opens | The lesson | The lever |
 |---|---|---|---|---|
-| 48 | `factory-weld` | WELD | sequence a fixture with a positioner; alternate the mix; live with a consumable | one seam schedule per part, not one for both |
+| 48 | ~~`factory-weld`~~ **shipped** | WELD | sequence a fixture with a positioner; alternate the mix; live with a consumable | one seam schedule per part, not one for both |
 | 49 | `factory-conveyor` | **CONV** | zero-pressure accumulation; divert by type; read a line that is backing up | accumulate instead of releasing one at a time (~6 s/machine) |
 | 50 | `factory-handling` | STORE | sort a rack by type; drive a portal robot; decouple two neighbours | four lanes instead of one, and a picker that chooses |
 | 51 | `factory-paint` | PAINT | hold an analog band; spray to a spec; batch a changeover | a film recipe per part, and a purge hidden inside a blast |
@@ -301,6 +306,23 @@ Seven sections, and the puzzle plan grows by one.
 `CONV` comes second on purpose. It is the section every later puzzle depends on being able to
 read: once a player has watched a queue grow backwards down the spine, "which station is holding
 the line up" stops being a phrase in a briefing and becomes something they can see.
+
+### What puzzle 48 settled about how these are graded
+
+Worth recording, because the next five will each want to make the same mistake:
+
+- **The lever is scored, not graded.** `WELD_PLAIN` solves puzzle 48 and scores 88 against the
+  canonical 100, which is the category's stated bargain in FACTORY.md and is what the three
+  calibrated `parMs` targets are for. Two of the three sit past `PAR_SLACK` for the plain program,
+  so the gap is felt without any scenario having to call a slow bay a fault.
+- **Ask the plant what it actually charges for.** The first draft graded a boom's second pass as a
+  tip-life defect and the assertion passed for both programs: `stepWeld` only advances `tipPasses`
+  for a pass that *lays metal*, and a boom is `done` after its first, so the extra arc costs time
+  and nothing else. The briefing had to be corrected, not the assertion. Measure the two programs
+  against the scenario before writing a word of the Acceptance block.
+- **Milestones, and one exact number.** Every step waits on `until` rather than a deadline, and the
+  one hard equality in the puzzle is `tipPasses` after two parts (2 for the frame, 3 including the
+  boom). That is what pins the *mix*, which is the thing a wrong weld bay actually breaks.
 
 ---
 
@@ -415,9 +437,8 @@ is what `factory/` already is, so nothing has to be unwound to get here.
    moving a cell is free.
 3. ~~**Scene vocabulary.**~~ Done — `factoryLine/textures.tsx` and `factoryLine/props.tsx`, applied
    across all eight cells in `rowA.tsx` and `rowB.tsx` and assembled by `FactoryLine3D.tsx`.
-   `MachineView` dispatches `processId: 'factory-line'` to it. **Nothing declares that process id
-   yet, so the scene is built but not reachable** — the first puzzle to declare it (step 7) is also
-   the first chance to look at it.
+   `MachineView` dispatches `processId: 'factory-line'` to it. Puzzle 48 is the first thing to
+   declare that process id, so the scene became reachable with it.
 4. ~~**The spine.**~~ Done — zone model in `processes/factoryLine.ts`, `CONV` device map and
    ownership in `factory-line-plant.ts`, `CONV_PLAIN`/`CONV_TUNED` in `factory-line-programs.ts`,
    soak test extended to seven sections, and the scene draws every zone's eye and contents live.

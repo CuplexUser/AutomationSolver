@@ -554,7 +554,7 @@ export const TEST_TUNED: Rung[] = [
   rung('t-release', [[no('X31'), cmp('<=', 'D12', 'K0'), rst('M130')]]),
 ];
 
-// --- SEC7 CONV ----------------------------------------------------------------
+// --- SEC6 CONV ----------------------------------------------------------------
 
 /**
  * The spine, plainly: each run treated as one long belt.

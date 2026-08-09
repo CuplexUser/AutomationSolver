@@ -269,15 +269,15 @@ All additive; nothing existing changed behavior.
 
 ## The plan
 
-Five puzzles, one per *area* rather than per section, since there are six sections now.
+> **Superseded.** The spine became a seventh section, so the plan is **six** puzzles and the
+> numbering shifted: `factory-conveyor` is 49 and everything after it moves down one.
+> [FACTORY-LINE-DESIGN.md §5](./FACTORY-LINE-DESIGN.md) carries the live table, including what
+> puzzle 48 settled about how these are graded. The five-puzzle table that stood here is gone
+> rather than corrected, because two tables is how the numbering drifted in the first place.
 
-| # | Slug | Opens | The lesson | The lever |
-|---|---|---|---|---|
-| 48 | `factory-weld` | WELD | sequence a fixture with a positioner; alternate the mix; live with a consumable | one seam schedule per part, not one for both |
-| 49 | `factory-handling` | STORE | sort a rack by type; drive a portal robot; de-couple two neighbors | four lanes instead of one, and a picker that chooses |
-| 50 | `factory-paint` | PAINT | hold an analog band; spray to a spec; batch a changeover | purge during the blast, and bake no longer than the part needs |
-| 51 | `factory-assembly` | ASSY + TEST | interlock a build; take a calculated risk on supply; run a dock | the bench beside the jig, and a lorry sent for early |
-| 52 | `factory-line` | all six, seeded plain | the plant is the puzzle | all of the above, at once, against the clock |
+Status: **48 `factory-weld` is shipped.** The seven section slots, their briefs and the scan
+order live in `content/factory-line-sections.ts`, so the five that follow declare which section
+they open and inherit the rest.
 
 **Grading.** Correctness is the pass and unlocks what follows, as everywhere else. Throughput
 takes the same 15 marks and the same `PAR_SLACK` taper the rest of the game uses. Station
@@ -286,6 +286,11 @@ set by a neighbor; the capstone grades time to ship a fixed number of machines, 
 same question as output in a fixed window and reuses `parMs` rather than inventing an axis.
 
 ## Balance
+
+> **Superseded by [FACTORY-LINE-DESIGN.md §5a](./FACTORY-LINE-DESIGN.md), which measured all of
+> this instead of estimating it.** The numbers below are the pre-spine arithmetic and every one
+> of them turned out wrong in one direction or the other. `factoryLineTempo.test.ts` is the
+> instrument now; the retiming and overlap passes it drove took the shift from 27 machines to 37.
 
 The station timings need a pass before any of the five specs are written, because three of the
 five levers in the table above currently measure nothing. Per machine, each station's own cycle
