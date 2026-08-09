@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { factoryLine, LINE_LIMITS } from './factoryLine.js';
 import type { MachineState } from './index.js';
 import { SimEngine } from '../../sim/scanCycle.js';
-import type { LadderProject, Rung } from '../../ladder/types.js';
+import type { Rung } from '../../ladder/types.js';
 import { isAnalog } from '../types.js';
-import { LINE_DEVICES, SUP_PROGRAM } from '../content/factory-line-plant.js';
+import { LINE_DEVICES } from '../content/factory-line-plant.js';
+import { lineProject } from '../content/factory-line-sections.js';
 import {
   ASSEMBLY_PLAIN,
   ASSEMBLY_TUNED,
@@ -664,26 +665,11 @@ interface LineResult {
  * apiece before they stopped the line for good.
  */
 function runLine(sections: Record<string, Rung[]>, ms: number): LineResult {
-  const project: LadderProject = {
-    pous: [
-      { id: 'SUP', name: 'SUP', rungs: SUP_PROGRAM },
-      { id: 'WELD', name: 'WELD', rungs: sections.WELD },
-      { id: 'STORE', name: 'STORE', rungs: sections.STORE },
-      { id: 'PAINT', name: 'PAINT', rungs: sections.PAINT },
-      { id: 'ASSY', name: 'ASSY', rungs: sections.ASSY },
-      { id: 'TEST', name: 'TEST', rungs: sections.TEST },
-      { id: 'CONV', name: 'CONV', rungs: sections.CONV },
-    ],
-    tasks: [
-      {
-        id: 'MAIN',
-        name: 'MAIN',
-        priority: 0,
-        pous: ['SUP', 'WELD', 'STORE', 'PAINT', 'ASSY', 'TEST', 'CONV'],
-      },
-    ],
-  };
-  const engine = new SimEngine(project);
+  // Through `lineProject`, which resolves: the programs are written in names
+  // now, and an engine handed `PlantRun` where it wants `M0` runs a plant with
+  // nothing wired to it. Sharing the one builder with the tempo harness and the
+  // dev preview is also what stops the three drifting apart.
+  const engine = new SimEngine(lineProject(sections));
   engine.reset();
   let machine = factoryLine.init(LINE_DEVICES);
   const inputs: Record<string, boolean> = { X0: true, X1: true, X2: true, X3: true };

@@ -3,6 +3,7 @@ import type {
   LadderElement,
   LadderProgram,
   LadderProject,
+  Pou,
   Rung,
   VLink,
 } from '../ladder/types.js';
@@ -10,6 +11,7 @@ import { getPuzzle, PUZZLES } from './content/index.js';
 import {
   ASSEMBLY_TUNED,
   CONV_TUNED,
+  LINE_VARS,
   PAINT_TUNED,
   STORE_PLAIN,
   STORE_TUNED,
@@ -1379,6 +1381,11 @@ const solutions: Record<string, LadderProgram> = {
  * station programs — if `assembleProject` ever stopped supplying them, every
  * one of these would fail rather than quietly grading the player's copy.
  */
+/** One section of the excavator line, submitted the way the client posts it. */
+function lineSolution(id: string, name: string, rungs: Rung[]): Pou {
+  return { id, name, rungs, vars: LINE_VARS[id].map((v) => ({ ...v })) };
+}
+
 const projectSolutions: Record<string, LadderProject> = {
   'factory-supervisor': {
     pous: [
@@ -1431,28 +1438,32 @@ const projectSolutions: Record<string, LadderProject> = {
   // twenty rungs is how a puzzle quietly stops being the one that was measured.
   // Only the section the player owns is submitted, so `assembleProject` still
   // has to supply the other six.
+  //
+  // A section's declarations travel with its rungs, exactly as the client posts
+  // them: the programs are written in names, and rungs submitted without the
+  // table that defines them would resolve to nothing.
   'factory-weld': {
-    pous: [{ id: 'WELD', name: 'SEC1_WELD', rungs: WELD_TUNED }],
+    pous: [lineSolution('WELD', 'SEC1_WELD', WELD_TUNED)],
     tasks: [],
   },
   'factory-conveyor': {
-    pous: [{ id: 'CONV', name: 'SEC6_CONVEYOR', rungs: CONV_TUNED }],
+    pous: [lineSolution('CONV', 'SEC6_CONVEYOR', CONV_TUNED)],
     tasks: [],
   },
   'factory-handling': {
-    pous: [{ id: 'STORE', name: 'SEC2_STORE', rungs: STORE_TUNED }],
+    pous: [lineSolution('STORE', 'SEC2_STORE', STORE_TUNED)],
     tasks: [],
   },
   'factory-paint': {
-    pous: [{ id: 'PAINT', name: 'SEC3_PAINT', rungs: PAINT_TUNED }],
+    pous: [lineSolution('PAINT', 'SEC3_PAINT', PAINT_TUNED)],
     tasks: [],
   },
   // The first puzzle in this category that opens two sections at once, so its
   // answer is two POUs. Everything else about the shape is the same.
   'factory-assembly': {
     pous: [
-      { id: 'ASSY', name: 'SEC4_ASSEMBLY', rungs: ASSEMBLY_TUNED },
-      { id: 'TEST', name: 'SEC5_TEST', rungs: TEST_TUNED },
+      lineSolution('ASSY', 'SEC4_ASSEMBLY', ASSEMBLY_TUNED),
+      lineSolution('TEST', 'SEC5_TEST', TEST_TUNED),
     ],
     tasks: [],
   },
@@ -1462,12 +1473,12 @@ const projectSolutions: Record<string, LadderProject> = {
   // a partial submission is merged the way the client posts one.
   'factory-line': {
     pous: [
-      { id: 'WELD', name: 'SEC1_WELD', rungs: WELD_TUNED },
-      { id: 'STORE', name: 'SEC2_STORE', rungs: STORE_TUNED },
-      { id: 'PAINT', name: 'SEC3_PAINT', rungs: PAINT_TUNED },
-      { id: 'ASSY', name: 'SEC4_ASSEMBLY', rungs: ASSEMBLY_TUNED },
-      { id: 'TEST', name: 'SEC5_TEST', rungs: TEST_TUNED },
-      { id: 'CONV', name: 'SEC6_CONVEYOR', rungs: CONV_TUNED },
+      lineSolution('WELD', 'SEC1_WELD', WELD_TUNED),
+      lineSolution('STORE', 'SEC2_STORE', STORE_TUNED),
+      lineSolution('PAINT', 'SEC3_PAINT', PAINT_TUNED),
+      lineSolution('ASSY', 'SEC4_ASSEMBLY', ASSEMBLY_TUNED),
+      lineSolution('TEST', 'SEC5_TEST', TEST_TUNED),
+      lineSolution('CONV', 'SEC6_CONVEYOR', CONV_TUNED),
     ],
     tasks: [],
   },
@@ -2476,8 +2487,12 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
     });
   }
 
+  // The section's own declarations come along, because the rungs being patched
+  // are written in the names they define. A patch is free to reach past them and
+  // use a bare address — resolution's last step is the address itself — which is
+  // what several of the variants below do.
   const section = (id: string, name: string, rungs: Rung[]): LadderProject => ({
-    pous: [{ id, name, rungs }],
+    pous: [lineSolution(id, name, rungs)],
     tasks: [],
   });
 
@@ -2635,8 +2650,8 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
 
   const build = (assy: Rung[], test: Rung[]): LadderProject => ({
     pous: [
-      { id: 'ASSY', name: 'SEC4_ASSEMBLY', rungs: assy },
-      { id: 'TEST', name: 'SEC5_TEST', rungs: test },
+      lineSolution('ASSY', 'SEC4_ASSEMBLY', assy),
+      lineSolution('TEST', 'SEC5_TEST', test),
     ],
     tasks: [],
   });
@@ -2744,15 +2759,15 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
     const spec = getLadderPuzzle('factory-line')!;
     const result = gradeProgram(spec, {
       pous: [
-        {
-          id: 'WELD',
-          name: 'SEC1_WELD',
-          rungs: patch(WELD_TUNED, {
+        lineSolution(
+          'WELD',
+          'SEC1_WELD',
+          patch(WELD_TUNED, {
             'w-start': R('w-start', 1, 3, {
               '0,0': no('M0'), '0,1': nc('M11'), '0,2': set('M11'),
             }),
           }),
-        },
+        ),
       ],
       tasks: [],
     });

@@ -138,9 +138,9 @@ symbols?: 'off' | 'optional' | 'required';   // default 'off'
 ```
 
 - `'off'` — no resolution pass runs at all. Puzzles 01 to 47.
-- `'optional'` — names resolve if declared, addresses always work.
+- `'optional'` — names resolve if declared, addresses always work. Puzzles 48 to 53 today.
 - `'required'` — an undeclared name that is a bare address is an error in player-written code.
-  Puzzles 48 to 53.
+  Where puzzles 48 to 53 are going; see the build order's step 7.
 
 Fixture POUs shipped by the puzzle are always resolved leniently, whatever the setting: they are
 content, not an answer, and holding them to the player's rule would only ever break a puzzle.
@@ -238,6 +238,12 @@ of `GRADE_DT`.**
 This is the thing the whole change is for. `CONV` publishes a handful of globals; every other
 section reads them and writes none of them.
 
+> **Not built yet, and deliberately.** The conversion (step 6) shipped exactly one global,
+> `PlantRun` at `M0`, because that one already existed as a convention six sections were following.
+> Everything in the table below is *new behaviour* — rungs that do not exist in `CONV_TUNED` today
+> — so it belongs to step 7, where the puzzles that ask for it are authored, and not to a rename
+> that had to ship the same machine counts it started with.
+
 | Global | Kind | Published by | Read by |
 |---|---|---|---|
 | `SpineReady` | bool | CONV | WELD, ASSY |
@@ -302,9 +308,10 @@ Additive throughout, and deliberately so.
   name in it is a bare address, and step 4 of resolution returns it untouched.
 - The Pages demo is untouched: puzzle 02 stays `symbols: 'off'`.
 
-The one conversion is `content/factory-line-programs.ts`, whose 118 rungs become symbolic. Those
-programs have never shipped inside a puzzle, so there are no saved slots pointing at them and the
-conversion costs nothing but the edit. Puzzle 47 keeps its raw-address sections.
+The one conversion is `content/factory-line-programs.ts`, whose 118 rungs are now symbolic. Puzzle
+47 keeps its raw-address sections. Puzzles 48 to 53 are `symbols: 'optional'`, which is additive in
+both directions: their shipped sections resolve by name, and a slot saved against any of them
+before the conversion is a program of bare addresses that step 4 hands straight back.
 
 ## UI
 
@@ -407,10 +414,54 @@ until a puzzle opts in.
      is attached where it is.
    - `symbolChoicesFor` and `filterChoices` live in `shared` rather than the client, because the
      client has no unit-test runner and these are pure functions that deserve one.
-6. Convert `factory-line-programs.ts` to symbols; the soak test in `factoryLine.test.ts` is the
-   proof the conversion changed no behaviour, since it must ship the same machine counts.
+6. **Done.** `factory-line-programs.ts` is written in names, and puzzles 48 to 53 set
+   `symbols: 'optional'` so the sections they ship resolve. See §"The conversion" below.
 7. Author puzzles 48 to 53 against `symbols: 'required'`.
 
-Step 6 is worth calling out: the soak harness already reports shipped counts for all seven
-configurations, so a symbolic rewrite that is genuinely a rename produces byte-identical numbers.
-That is the regression test for the conversion, and it exists already.
+## The conversion
+
+118 rungs of addresses became 118 rungs of names, and puzzles 48 to 53 turned `symbols` on at
+`'optional'` so that the sections they ship can resolve. `'optional'` and not `'required'` because
+those are two different changes: this one had to leave every saved slot and every canonical
+solution running exactly the bytes it ran before, and the literal-address fallback is what makes
+that free.
+
+**Proving it was a rename.** The soak's machine counts were the plan and turned out to be the
+weaker test. What was actually done: `git show HEAD:…/factory-line-programs.ts` into a scratch
+module, then a temporary test that resolved each new program and asserted deep equality against its
+pre-conversion self, cell for cell. That catches a rename the soak cannot — a bit swapped for
+another bit that happens not to matter over a 300 s shift — and it is the technique to reach for
+the next time a content file is rewritten in place. Both scratch files were deleted once green.
+
+Four things the conversion settled that were not in the design:
+
+- **One declaration list per section, serving both its programs.** `LINE_VARS` is keyed by section
+  id, not by program, because a slot ships either PLAIN or TUNED and never both. Where the two
+  genuinely disagreed the fix was to make them agree rather than to blur a name: `M102` meant "both
+  parts are in" in `ASSEMBLY_PLAIN` and "the frame is in" in `ASSEMBLY_TUNED`, so plain was given
+  the tuned program's `FrameIn` *and* `BoomIn`. That costs it a `SET BoomIn` and an `RST BoomIn`
+  that nothing reads — the only two cells in the whole file that are not a rename, and worth it,
+  because a name that means two things is worse than the address it replaced.
+- **A name has to come from a tier, so `D16` and `D17` became plant devices.** Both sections had
+  read them since the line was built and no puzzle declared them; there is no tier for "a register
+  the plant writes and the spec never mentions", and a `VarDecl` pointing at one would be exactly
+  what rule 3 forbids. They are `Frame In Jig` and `Boom In Jig` in `LINE_DEVICES` now.
+- **The zone devices carry an explicit `symbol`.** Derived from the label, `Z1 Weld Outfeed` gives
+  `Z1WeldOutfeed`, which names the place. The eye reports *occupied*, so it is `Z1Occupied`, and
+  `NOT Z3Occupied` is a rung that says what it does. Derivation is a default, not a policy.
+- **`resolveProject` takes a `SymbolSpec`, not a `LadderPuzzleSpec`.** Three callers are not a
+  submission — the soak, the tempo harness and the client's dev preview all run the shipped
+  programs with no puzzle behind them — and they would otherwise have had to invent a `PuzzleSpec`
+  that does not exist. Resolution only ever needed `symbols` and `devices`. Those three now share
+  one builder, `lineProject()` in `factory-line-sections.ts`, which is also the thing that stops
+  them drifting: each had assembled the plant by hand, and the day the programs stopped being
+  addresses, each was one silent step from running a plant with nothing wired to it.
+
+**What step 7 has to clear up, and why it could not be done here.** A `memoryPool` has to sit
+inside the open section's `owns` block while `owns` is still in force, or the allocator hands the
+player an address their own section may not write and the error lands on a rung rather than on the
+declaration that caused it. Puzzle 49 is the only one with pools for that reason, and they are
+exactly `CONV`'s block. **Puzzle 52 is the proof `owns` has to go**: it opens `ASSY` and `TEST`
+together, and no single pool can be inside both blocks at once. That is not a wart in the pool
+design, it is `owns` being a fence keyed on a section name in a game where storage belongs to the
+player.

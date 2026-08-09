@@ -156,7 +156,9 @@ units** and **tasks** over the existing model without touching it:
       — same arrangement `toProject` used to put POUs over `LadderProgram`. `spec.symbols`
       (`'off'` default / `'optional'` / `'required'`) chooses how strict it is; `'off'` returns the
       project untouched without walking a rung. Fixture POUs are always resolved leniently: they
-      are content, not an answer.
+      are content, not an answer. Its first parameter is a **`SymbolSpec`** (`symbols` and
+      `devices`, nothing else), so a caller that is not a submission — the line's soak tests, the
+      client's dev preview — can resolve without inventing a `PuzzleSpec` that does not exist.
     - **`runnableProject(spec, submitted)`** is assembly-then-resolution as one call, and the only
       way anything builds a `SimEngine`. Three places do (the grader, the client's live scan, its
       reset path); any two of them assembling differently is exactly how client and server stop
@@ -398,6 +400,14 @@ units** and **tasks** over the existing model without touching it:
     and the briefings both quote. **[FACTORY.md](./FACTORY.md)** and
     **[FACTORY-LINE-DESIGN.md](./FACTORY-LINE-DESIGN.md)** carry this one in full; it is the
     only process model deep enough to need its own documents.
+    - **It is the one plant written in symbols.** `factory-line-programs.ts` refers to every
+      device by name; each section's working storage is `LINE_VARS[id]`, shipped `fixed` on the
+      slot, and `PlantRun` (`M0`) is the single global. Puzzles 48 to 53 set
+      `symbols: 'optional'`, which is what makes those names resolve. **`lineProject(sections)`**
+      in `factory-line-sections.ts` is the only way to build the plant outside a submission — the
+      two soak harnesses and the client's `LinePreviewPage` all go through it, because it supplies
+      the supervisor, the task, the declarations *and* the resolution pass, and three hand-rolled
+      copies of that were three chances to run a plant with nothing wired to it.
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
   - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
     buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by

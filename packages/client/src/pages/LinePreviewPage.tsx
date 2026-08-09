@@ -6,13 +6,12 @@ import {
   isAnalog,
   LINE_DEVICES,
   LINE_SECTIONS,
+  lineProject,
   PAINT_TUNED,
   SimEngine,
   STORE_TUNED,
-  SUP_PROGRAM,
   TEST_TUNED,
   WELD_TUNED,
-  type LadderProject,
   type MachineState,
 } from '@automationsolver/shared';
 import { FactoryLine3D } from '../features/sim/factoryLine/FactoryLine3D';
@@ -37,22 +36,20 @@ const DT = 50;
 /** Wall-clock between ticks. Faster than DT would mean simulating time twice. */
 const TICK_MS = 50;
 
-const SECTIONS = [
-  ['SUP', SUP_PROGRAM],
-  ['WELD', WELD_TUNED],
-  ['STORE', STORE_TUNED],
-  ['PAINT', PAINT_TUNED],
-  ['ASSY', ASSEMBLY_TUNED],
-  ['TEST', TEST_TUNED],
-  ['CONV', CONV_TUNED],
-] as const;
-
-function lineProject(): LadderProject {
-  return {
-    pous: SECTIONS.map(([id, rungs]) => ({ id, name: id, rungs })),
-    tasks: [{ id: 'MAIN', name: 'MAIN', priority: 0, pous: SECTIONS.map(([id]) => id) }],
-  };
-}
+/**
+ * The six tuned programs, handed to the shared builder rather than assembled
+ * here. It supplies the supervisor, the task and every section's declarations,
+ * and resolves the names to addresses — which the engine needs, since these
+ * programs are written in symbols.
+ */
+const TUNED = {
+  WELD: WELD_TUNED,
+  STORE: STORE_TUNED,
+  PAINT: PAINT_TUNED,
+  ASSY: ASSEMBLY_TUNED,
+  TEST: TEST_TUNED,
+  CONV: CONV_TUNED,
+};
 
 const OUT_DEVICES = LINE_DEVICES.filter((d) => d.io === 'output' && !isAnalog(d));
 const ANALOG_DEVICES = LINE_DEVICES.filter(isAnalog);
@@ -68,7 +65,7 @@ interface SimCarry {
 }
 
 function startLine(): SimCarry {
-  const engine = new SimEngine(lineProject());
+  const engine = new SimEngine(lineProject(TUNED));
   engine.reset();
   return {
     engine,

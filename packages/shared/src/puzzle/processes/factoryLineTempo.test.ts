@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { factoryLine } from './factoryLine.js';
 import type { MachineState } from './index.js';
 import { SimEngine } from '../../sim/scanCycle.js';
-import type { LadderProject, Rung } from '../../ladder/types.js';
+import type { Rung } from '../../ladder/types.js';
 import { isAnalog } from '../types.js';
-import { LINE_DEVICES, SUP_PROGRAM } from '../content/factory-line-plant.js';
+import { LINE_DEVICES } from '../content/factory-line-plant.js';
+import { lineProject } from '../content/factory-line-sections.js';
 import {
   ASSEMBLY_PLAIN,
   ASSEMBLY_TUNED,
@@ -97,14 +98,9 @@ interface Tempo {
 }
 
 function runLine(sections: Record<Section, Rung[]>, ms: number): Tempo {
-  const project: LadderProject = {
-    pous: [
-      { id: 'SUP', name: 'SUP', rungs: SUP_PROGRAM },
-      ...SECTIONS.map((id) => ({ id, name: id, rungs: sections[id] })),
-    ],
-    tasks: [{ id: 'MAIN', name: 'MAIN', priority: 0, pous: ['SUP', ...SECTIONS] }],
-  };
-  const engine = new SimEngine(project);
+  // The same builder the soak and the dev preview use, so all three run the
+  // programs the way the grader does: assembled, then resolved.
+  const engine = new SimEngine(lineProject(sections));
   engine.reset();
   let machine = factoryLine.init(LINE_DEVICES);
   const inputs: Record<string, boolean> = { X0: true, X1: true, X2: true, X3: true };

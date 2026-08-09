@@ -66,6 +66,7 @@ import { factoryLineCapstone } from './53-factory-line.js';
  */
 export {
   LINE_DEVICES,
+  LINE_GLOBALS,
   LINE_INSTRUCTIONS,
   LINE_OWNS,
   SUP_PROGRAM,
@@ -75,6 +76,7 @@ export {
   ASSEMBLY_TUNED,
   CONV_PLAIN,
   CONV_TUNED,
+  LINE_VARS,
   PAINT_PLAIN,
   PAINT_TUNED,
   STORE_PLAIN,
@@ -84,6 +86,7 @@ export {
   WELD_PLAIN,
   WELD_TUNED,
 } from './factory-line-programs.js';
+export { lineProject } from './factory-line-sections.js';
 
 export const PUZZLES: PuzzleSpec[] = [
   directControl,

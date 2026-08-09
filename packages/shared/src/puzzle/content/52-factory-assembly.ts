@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -146,6 +146,8 @@ export const factoryAssembly: PuzzleSpec = {
   pous: lineSections({ open: ['ASSY', 'TEST'] }),
   tasks: LINE_TASKS,
   taskAssignment: 'fixed',
+  symbols: 'optional',
+  globals: LINE_GLOBALS,
   scenarios: [
     {
       name: 'The first machine is built and driven off',

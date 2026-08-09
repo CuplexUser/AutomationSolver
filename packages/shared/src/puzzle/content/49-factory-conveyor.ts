@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -149,9 +149,20 @@ export const factoryConveyor: PuzzleSpec = {
   tasks: LINE_TASKS,
   taskAssignment: 'fixed',
   symbols: 'optional',
-  memoryPools: { bool: 'M200-M399', int: 'D100-D199', timer: 'T60-T99', counter: 'C0-C79' },
+  globals: LINE_GLOBALS,
+  // The pools are exactly the block SEC6_CONVEYOR owns. They have to be: `owns`
+  // is still in force here, so a variable allocated outside it would be a
+  // declaration the player is not allowed to write to, and the error would
+  // arrive on a rung rather than on the declaration that caused it.
+  memoryPools: { bool: 'M160-M199', int: 'D80-D99', timer: 'T60-T69', counter: 'C60-C69' },
+  // The spine is the one section big enough to be worth splitting up, so this is
+  // where programs of the player's own first make sense. `owns` cannot fence a
+  // section the puzzle has never heard of, so the actuators are fenced at the
+  // program boundary instead: the whole submission may drive the twelve zone
+  // drives and the two paddles, and nothing else on the plant.
   pouAuthoring: 'player',
   maxPous: 8,
+  writableOutputs: ['Y28-Y41'],
   scenarios: [
     {
       name: 'A part reaches the booth',

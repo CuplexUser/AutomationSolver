@@ -1,11 +1,13 @@
-import type { Rung, TaskDef } from '../../ladder/types.js';
+import type { LadderProject, Pou, Rung, TaskDef } from '../../ladder/types.js';
 import type { PouSlot } from '../types.js';
-import { LINE_OWNS, SUP_PROGRAM } from './factory-line-plant.js';
+import { resolveProject } from '../symbols.js';
+import { LINE_DEVICES, LINE_GLOBALS, LINE_OWNS, SUP_PROGRAM } from './factory-line-plant.js';
 import {
   ASSEMBLY_PLAIN,
   ASSEMBLY_TUNED,
   CONV_PLAIN,
   CONV_TUNED,
+  LINE_VARS,
   PAINT_PLAIN,
   PAINT_TUNED,
   STORE_PLAIN,
@@ -66,17 +68,18 @@ const SECTIONS: Record<LineSectionId, SectionDef> = {
     maxRungs: 8,
     brief: [
       'The program above the plant. A run latch, a running lamp, and an amber that says the',
-      'line is backing up. Every section below reads M0 and none of them write it.',
+      'line is backing up. PlantRun is a global: every section below reads it and none of them',
+      'write it.',
       '',
       '## Sequence of operation',
-      '1. M0 PLANT RUN latches from X0 START, sealed in around itself, broken by X1 STOP or',
+      '1. PlantRun latches from X0 START, sealed in around itself, broken by X1 STOP or',
       '   X2 EMERGENCY STOP, and held only while X3 AUTO is selected.',
-      '2. Y0 PLANT RUNNING follows M0.',
+      '2. Y0 PLANT RUNNING follows PlantRun.',
       '3. Y1 LINE HELD lights on X10 WELD OUTFEED OCCUPIED, X22 PAINTED LANE FULL, or the',
       '   absence of X30 YARD SPACE.',
       '',
       '## Field notes',
-      '- With M0 off the plant does nothing at all, with one exception: the weld clamp holds',
+      '- With PlantRun off the plant does nothing at all, with one exception: the weld clamp holds',
       '  on regardless, because a fixture that opened on an emergency stop would drop a half',
       '  welded frame on the floor.',
     ].join('\n'),
@@ -93,8 +96,8 @@ const SECTIONS: Record<LineSectionId, SectionDef> = {
       'roll the weldment off onto Z1.',
       '',
       '## Sequence of operation',
-      '1. M10 says which blank is next. Y6 SELECT BOOM follows it, and the fixture latches',
-      '   the choice when it clamps.',
+      '1. A selector bit says which blank is next. Y6 SELECT BOOM follows it, and the fixture',
+      '   latches the choice when it clamps.',
       '2. Y2 CLAMP holds for the whole cycle. X6 FIXTURE CLAMPED makes at 0.4 s.',
       '3. Y3 TORCH lays the first pass with the positioner at A, X7.',
       '4. A frame is rolled over on Y4 ROTATE POSITIONER and takes a second pass at B, X8. A',
@@ -174,8 +177,8 @@ const SECTIONS: Record<LineSectionId, SectionDef> = {
       'they have to be the same color, because they are two halves of one order line.',
       '',
       '## Sequence of operation',
-      '1. A build starts on a frame off the frame lane. Y17 CALL FRAME stands until D16 says',
-      '   the frame is in the jig.',
+      '1. A build starts on a frame off the frame lane. Y17 CALL FRAME stands until D16 FRAME',
+      '   IN JIG says the frame is in the jig.',
       '2. Y18 CALL BOOM claims a boom whose color matches, and the bench runs it up on Y21',
       '   MAKE UP BOOM while the engine goes in.',
       '3. Y19 LOWER ENGINE, then Y20 FIT CAB, then Y22 PIN BOOM.',
@@ -202,8 +205,8 @@ const SECTIONS: Record<LineSectionId, SectionDef> = {
       'before the yard fills, because a full yard stops the line from the far end.',
       '',
       '## Sequence of operation',
-      '1. Y24 HYDRAULIC PUMP runs while X28 MACHINE AT TEST is on. T50, K=18, gives the pack',
-      '   time to come up.',
+      '1. Y24 HYDRAULIC PUMP runs while X28 MACHINE AT TEST is on. A timer at K=18 gives the',
+      '   pack time to come up.',
       '2. Y25 FUNCTION TEST runs until X29 TEST PASSED.',
       '3. Y26 DISPATCH drives it onto Z12, with the pump dropped first.',
       '4. Y27 CALL TRUCK sends for a lorry and holds it on the dock while it loads.',
@@ -275,15 +278,52 @@ export function lineSections(opts: SectionOptions): PouSlot[] {
     // A shipped section is always the tuned one. Seeding plain is for a section
     // the player is being handed, where the point is to read it and do better.
     const program = editable ? (opts.seedPlain ? def.plain : undefined) : def.tuned;
+    // Declarations travel with the program that uses them, and only with it. A
+    // section handed over blank ships none: its storage is the player's to name,
+    // and a table of latches for a program they have not written yet would be
+    // the answer rather than the puzzle.
+    const vars = program ? LINE_VARS[id] : undefined;
     return {
       id,
       name: def.name,
       title: def.title,
       editable,
       ...(program ? { program } : {}),
+      ...(vars && vars.length > 0 ? { vars: vars.map((v) => ({ ...v })) } : {}),
       ...(editable ? { maxRungs: def.maxRungs } : {}),
       owns: [...LINE_OWNS[id]],
       brief: def.brief,
     };
   });
+}
+
+/**
+ * The whole plant as one runnable project: seven sections, one task, resolved.
+ *
+ * Not a puzzle and not graded — this is how the line is driven by the things
+ * that are *not* a submission: the soak tests, the tempo harness and the
+ * client's dev preview. All three built a `SimEngine` out of raw rungs by hand
+ * until the programs were written in names, at which point the missing
+ * resolution pass stopped being a duplication and started being a bug. So there
+ * is one function, and it resolves against the plant's own symbol table.
+ *
+ * A section left out falls back to the tuned program, since the interesting
+ * runs are "everything tuned but this one".
+ */
+export function lineProject(sections: Partial<Record<LineSectionId, Rung[]>>): LadderProject {
+  const pous: Pou[] = LINE_SECTION_IDS.map((id): Pou => {
+    const vars = LINE_VARS[id];
+    return {
+      id,
+      name: SECTIONS[id].name,
+      rungs: id === 'SUP' ? SUP_PROGRAM : (sections[id] ?? SECTIONS[id].tuned),
+      ...(vars && vars.length > 0 ? { vars: vars.map((v) => ({ ...v })) } : {}),
+    };
+  });
+  const project: LadderProject = {
+    pous,
+    tasks: LINE_TASKS.map((task) => ({ ...task })),
+    globals: LINE_GLOBALS.map((v) => ({ ...v })),
+  };
+  return resolveProject({ symbols: 'optional', devices: LINE_DEVICES }, project).project;
 }

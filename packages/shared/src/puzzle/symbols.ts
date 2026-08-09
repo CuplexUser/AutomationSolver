@@ -42,6 +42,17 @@ import type { LadderPuzzleSpec, MemoryPools, PuzzleDevice } from './types.js';
 /** Where a resolved name came from, for error messages that can explain themselves. */
 export type SymbolOrigin = 'local' | 'global' | 'plant' | 'literal';
 
+/**
+ * All resolution actually needs from a puzzle: how strict to be, and the plant's
+ * own names.
+ *
+ * Narrowed to those two so a thing that is not a submission can still resolve a
+ * project — the excavator line's soak tests and the client's dev preview run the
+ * shipped programs with no puzzle behind them, and inventing a whole `PuzzleSpec`
+ * for them would be inventing a puzzle that does not exist.
+ */
+export type SymbolSpec = Pick<LadderPuzzleSpec, 'symbols' | 'devices'>;
+
 export interface Resolution {
   address: string;
   origin: SymbolOrigin;
@@ -79,7 +90,7 @@ export function deviceSymbol(device: PuzzleDevice): string {
 }
 
 /** Plant symbols: the puzzle's actual sensors and actuators, and nothing else. */
-export function plantSymbols(spec: LadderPuzzleSpec): Map<string, PuzzleDevice> {
+export function plantSymbols(spec: SymbolSpec): Map<string, PuzzleDevice> {
   const table = new Map<string, PuzzleDevice>();
   for (const device of spec.devices) {
     const symbol = deviceSymbol(device);
@@ -97,7 +108,7 @@ export interface SymbolTable {
   plant: Map<string, PuzzleDevice>;
 }
 
-export function buildSymbolTable(spec: LadderPuzzleSpec, project: LadderProject): SymbolTable {
+export function buildSymbolTable(spec: SymbolSpec, project: LadderProject): SymbolTable {
   const globals = new Map<string, VarDecl>();
   for (const decl of project.globals ?? []) globals.set(key(decl.name), decl);
 
@@ -172,7 +183,7 @@ const isConstant = (operand: string): boolean => CONSTANT_RE.test(operand.trim()
  * content rather than an answer.
  */
 export function resolveProject(
-  spec: LadderPuzzleSpec,
+  spec: SymbolSpec,
   project: LadderProject,
   strictPous?: ReadonlySet<string>,
 ): ResolveResult {

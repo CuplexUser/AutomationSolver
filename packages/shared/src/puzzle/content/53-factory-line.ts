@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_SECTION_IDS, LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -157,6 +157,11 @@ export const factoryLineCapstone: PuzzleSpec = {
   pous: lineSections({ open: [...LINE_SECTION_IDS], seedPlain: true }),
   tasks: LINE_TASKS,
   taskAssignment: 'fixed',
+  // Every section is seeded, so every section arrives with its declarations
+  // already made: the whole plant is handed over written in names, which is the
+  // form the capstone is meant to be read in before it is improved.
+  symbols: 'optional',
+  globals: LINE_GLOBALS,
   scenarios: [
     {
       name: 'A cold start',

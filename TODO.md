@@ -32,12 +32,14 @@ Reference docs, and what each is for:
 
 ## P1 — Finish variables and POUs
 
-The engine and the UI are both built: declaring, scoping, resolving, player-authored POUs and the
-declare-from-error quick fix all work. **No shipped puzzle turns it on**, so none of it is reachable
-in the game yet, and the three boxes left are the one pass that does — they are a single change,
-not three, and P2's first box belongs in it too. Reference:
+The engine and the UI are both built, and the excavator line is now written in names: puzzles 48 to
+53 set `symbols: 'optional'`, so the symbol picker, the variables pane and the declarations the
+sections ship are all reachable in the game. What is left is handing the player storage of their
+own, and that is one change rather than two — `owns` is a fence keyed on a section name, and
+puzzle 52 opens two sections at once, so no memory pool can be inside both blocks until
+`writableOutputs` replaces it. P2's first box belongs in the same pass. Reference:
 [`docs/VARIABLES-AND-POUS.md`](docs/VARIABLES-AND-POUS.md), whose build order this section
-finishes (steps 1 to 5 are done).
+finishes (steps 1 to 6 are done).
 
 - [x] **Mount `VariablesPanel`.** The component is finished (228 lines: add, delete, rename,
       comment, and it shows the address the next declaration *would* take) and is imported by
@@ -51,15 +53,16 @@ finishes (steps 1 to 5 are done).
 - [x] **Declare-from-error quick fix.** `"OutfeedBusy is not declared"` should offer to open the
       variables pane with the name filled in and the kind guessed from where the element sits: a
       coil implies a bit, a MOV destination implies a word. → VARIABLES-AND-POUS §UI item 4
-- [ ] **Convert `factory-line-programs.ts` to symbols.** 118 rungs of raw addresses become
-      declared names. The soak in `factoryLine.test.ts` and `factoryLineTempo.test.ts` are the
-      regression test: a rename that is genuinely a rename ships byte-identical machine counts.
-      → VARIABLES-AND-POUS build order step 6
+- [x] **Convert `factory-line-programs.ts` to symbols.** 118 rungs of raw addresses became
+      declared names, and puzzles 48 to 53 turned `symbols` on at `'optional'` so they resolve.
+      → VARIABLES-AND-POUS §"The conversion"
 - [ ] **Reauthor puzzles 48 to 53 against `symbols: 'required'`.** Swap `owns` for
-      `writableOutputs` on player code (fixture slots keep `owns`), publish the spine's interface
-      as globals (`SpineReady`, `WeldReleaseOk`, `FrameAtJig`, `BoomAtJig`, `SpineBlockedAt`), and
-      drop the `registers: [{ address: 'M0', ... }]` working-address lists from the specs, since
-      working storage becomes the player's to name. → VARIABLES-AND-POUS §"The three tiers" and
+      `writableOutputs` on player code (fixture slots keep `owns`), give every puzzle a
+      `memoryPools` block — which is blocked on that swap, since 52 opens two sections and no pool
+      fits inside both `owns` blocks — publish the spine's interface as globals (`SpineReady`,
+      `WeldReleaseOk`, `FrameAtJig`, `BoomAtJig`, `SpineBlockedAt`), and drop the
+      `registers: [{ address: 'M0', ... }]` working-address lists from the specs, since working
+      storage becomes the player's to name. → VARIABLES-AND-POUS §"The three tiers" and
       §"What replaces `owns`"; the worked example is the spine's interface table
 - [ ] **Hand the capstone its task schedule.** Puzzle 53 sets `taskAssignment: 'player'`, which
       already exists and is already validated. A spine polled on a 200 ms task reacts up to 200 ms

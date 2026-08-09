@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -150,6 +150,12 @@ export const factoryWeld: PuzzleSpec = {
   pous: lineSections({ open: ['WELD'] }),
   tasks: LINE_TASKS,
   taskAssignment: 'fixed',
+  // The six sections you are not writing are written in names, so the symbol
+  // picker on any device field offers the plant's own vocabulary. `optional`
+  // rather than `required`: an address still resolves to itself, so nothing
+  // saved against this puzzle before symbols existed has to be rewritten.
+  symbols: 'optional',
+  globals: LINE_GLOBALS,
   scenarios: [
     {
       name: 'A frame, then a boom',

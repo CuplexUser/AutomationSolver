@@ -1,4 +1,4 @@
-import type { CompareOp, LadderElement, Rung, VLink } from '../../ladder/types.js';
+import type { CompareOp, LadderElement, Rung, VarDecl, VLink } from '../../ladder/types.js';
 import type { AnalogRange, PuzzleDevice } from '../types.js';
 
 /**
@@ -238,6 +238,29 @@ export const LINE_DEVICES: PuzzleDevice[] = [
     range: DRUM_RANGE,
     color: '#a78bfa',
   },
+  // What the jig is actually holding, as against what is standing at the head of
+  // a lane. Both sections' programs have read these since the line was built;
+  // they are declared here because a value a program refers to by name has to be
+  // a device the puzzle names, and D16 and D17 are as much field values as the
+  // lane colors above them.
+  {
+    address: 'D16',
+    label: 'Frame In Jig',
+    io: 'input',
+    widget: 'bar',
+    signal: 'analog',
+    range: DRUM_RANGE,
+    color: '#a78bfa',
+  },
+  {
+    address: 'D17',
+    label: 'Boom In Jig',
+    io: 'input',
+    widget: 'bar',
+    signal: 'analog',
+    range: DRUM_RANGE,
+    color: '#a78bfa',
+  },
   { address: 'Y17', label: 'Call Frame', io: 'output', widget: 'motor', color: '#38bdf8' },
   { address: 'Y18', label: 'Call Boom', io: 'output', widget: 'motor', color: '#e879f9' },
   { address: 'Y19', label: 'Lower Engine', io: 'output', widget: 'motor', color: '#34d399' },
@@ -317,8 +340,25 @@ export const LINE_DEVICES: PuzzleDevice[] = [
  */
 function zonePair(n: number, eye: string, drive: string, name: string): PuzzleDevice[] {
   return [
-    { address: eye, label: `Z${n} ${name}`, io: 'input', widget: 'lamp', color: '#a3e635' },
-    { address: drive, label: `Z${n} Drive`, io: 'output', widget: 'motor', color: '#e8621a' },
+    {
+      address: eye,
+      label: `Z${n} ${name}`,
+      // The derived symbol would be `Z1WeldOutfeed`, which names the place rather
+      // than the signal. An eye reads *occupied*, and a program that says
+      // `NOT Z3Occupied` is saying the thing the rung actually means.
+      symbol: `Z${n}Occupied`,
+      io: 'input',
+      widget: 'lamp',
+      color: '#a3e635',
+    },
+    {
+      address: drive,
+      label: `Z${n} Drive`,
+      symbol: `Z${n}Drive`,
+      io: 'output',
+      widget: 'motor',
+      color: '#e8621a',
+    },
   ];
 }
 
@@ -394,6 +434,32 @@ function rung(id: string, rows: (LadderElement | null)[][], vlinks: VLink[] = []
 
 export const build = { no, nc, re, out, set, rst, tmr, mov, cmp, rung };
 
+// --- The line's globals -------------------------------------------------------
+
+/**
+ * The one name every section on this plant shares.
+ *
+ * A local would not do: `PlantRun` is written in the supervisor and read in all
+ * six stations, and a name private to one POU is invisible in the others by
+ * design. So it is a global, shipped by the puzzle rather than declared by the
+ * player, and `fixed` because a submission that renamed or moved it would be
+ * rewriting the supervisor's half of a handshake from the far end of it.
+ *
+ * It is deliberately the *only* one so far. The spine's published interface —
+ * `SpineReady`, `WeldReleaseOk` and the rest — is new behaviour rather than a
+ * rename, so it belongs with the puzzles that ask for it, not with a conversion
+ * that has to ship the same machine counts it started with.
+ */
+export const LINE_GLOBALS: VarDecl[] = [
+  {
+    name: 'PlantRun',
+    kind: 'bool',
+    address: 'M0',
+    fixed: true,
+    comment: 'Published by the supervisor. Every section reads it and none of them write it.',
+  },
+];
+
 // --- SUPERVISOR ---------------------------------------------------------------
 
 /**
@@ -407,17 +473,17 @@ export const SUP_PROGRAM: Rung[] = [
   rung(
     'sup-run',
     [
-      [no('X0'), no('X1'), no('X2'), no('X3'), out('M0')],
-      [no('M0')],
+      [no('Start'), no('Stop'), no('EmergencyStop'), no('Auto'), out('PlantRun')],
+      [no('PlantRun')],
     ],
     [{ row: 0, col: 1 }],
   ),
-  rung('sup-lamp', [[no('M0'), out('Y0')]]),
-  // Three ways the line backs up, ORed into one amber lamp. X30 is on while
-  // there IS yard space, so it is the one that inverts.
+  rung('sup-lamp', [[no('PlantRun'), out('PlantRunning')]]),
+  // Three ways the line backs up, ORed into one amber lamp. YardSpace is on
+  // while there IS room, so it is the one that inverts.
   rung(
     'sup-held',
-    [[no('X10'), out('Y1')], [no('X22')], [nc('X30')]],
+    [[no('WeldOutfeedOccupied'), out('LineHeld')], [no('PaintedLaneFull')], [nc('YardSpace')]],
     [
       { row: 0, col: 1 },
       { row: 1, col: 1 },

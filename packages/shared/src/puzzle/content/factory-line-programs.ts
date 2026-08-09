@@ -1,4 +1,4 @@
-import type { Rung } from '../../ladder/types.js';
+import type { Rung, VarDecl, VarKind } from '../../ladder/types.js';
 import { build } from './factory-line-plant.js';
 
 /**
@@ -14,9 +14,117 @@ import { build } from './factory-line-plant.js';
  * The station puzzles ship TUNED neighbors, so the bay under test really is the
  * one holding the line up. The capstone seeds all six with PLAIN, because there
  * the plant is the puzzle.
+ *
+ * ## Written in names, not addresses
+ *
+ * Every device here is a symbol. `X6` is `FixtureClamped` because the plant
+ * declares it that way; `M11` is `InCycle` because `LINE_VARS.WELD` declares it
+ * that way. Resolution happens once, between assembly and the engine, and the
+ * engine still sees nothing but addresses — so this file reads as a description
+ * of a factory while running exactly the bytes it ran when it was a memory map.
+ *
+ * Three rules the conversion follows and the next author should too:
+ *
+ * - **Working storage is declared where it is used.** A section's latches, step
+ *   relays and timers are its `LINE_VARS` entry and nothing else can see them.
+ *   The one exception is `PlantRun`, which is a global because six sections read
+ *   what the supervisor writes.
+ * - **One declaration list per section serves both its programs.** PLAIN and
+ *   TUNED are never loaded together, and a name that meant one thing in each
+ *   would be worse than the address it replaced. Where the two genuinely wanted
+ *   different bits — assembly's frame and boom claims — PLAIN was given the same
+ *   two names rather than the names being blurred to cover one bit.
+ * - **`fixed: true` on all of them.** These ship with the puzzle. A player may
+ *   read them and code against them; renaming or moving one would rewrite half
+ *   of a handshake from the wrong end.
  */
 
 const { no, nc, re, out, set, rst, tmr, mov, cmp, rung } = build;
+
+// --- Declarations -------------------------------------------------------------
+
+const decl =
+  (kind: VarKind) =>
+  (name: string, address: string, comment: string): VarDecl => ({
+    name,
+    kind,
+    address,
+    comment,
+    fixed: true,
+  });
+
+const bit = decl('bool');
+const word = decl('int');
+const clock = decl('timer');
+
+/**
+ * Every section's private working storage, by section id.
+ *
+ * The addresses are the ones each section already owned (`LINE_OWNS`), which is
+ * why nothing here needs a memory pool: these are placed by the plant, not
+ * allocated out of the player's block. Two sections' locals can never collide,
+ * because the blocks do not overlap and the allocator is never asked.
+ */
+export const LINE_VARS: Record<string, VarDecl[]> = {
+  // The supervisor's only storage is the run latch, and that is a global.
+  SUP: [],
+
+  WELD: [
+    bit('BoomNext', 'M10', 'The next blank off the rack is a boom. Flips once per cycle.'),
+    bit('InCycle', 'M11', 'The fixture is loaded and working. Latched at the clamp.'),
+    bit('PassOneDone', 'M13', 'The first seam is laid.'),
+    bit('WeldDone', 'M14', 'Every seam this part needs is laid. A boom reaches it one pass early.'),
+    bit('PartGone', 'M16', 'The weldment is off the fixture and away.'),
+    bit('CycleDone', 'M17', 'One scan wide, at the end of a cycle.'),
+    bit('FlipArm', 'M18', 'Middle step of the alternating relay that flips BoomNext.'),
+    bit('ArcAtA', 'M20', 'Strike the torch for the pass taken at position A.'),
+    bit('ArcAtB', 'M21', 'Strike the torch for the pass taken at position B.'),
+    clock('PassA', 'T10', 'How long the A-side pass runs.'),
+    clock('PassB', 'T11', 'How long the B-side pass runs.'),
+    clock('BoomPass', 'T12', "A boom's single pass, which is longer than a frame's. Tuned only."),
+  ],
+
+  STORE: [
+    bit('RoomForFrame', 'M40', 'One of the two frame lanes has space in it.'),
+    bit('RoomForBoom', 'M41', 'One of the two boom lanes has space in it.'),
+    bit('BoomDue', 'M46', 'The booth is owed a boom next rather than a frame.'),
+    bit('HaveFrame', 'M47', 'There is a frame standing in one of the frame lanes.'),
+    bit('HaveBoom', 'M48', 'There is a boom standing in one of the boom lanes.'),
+    bit('TurnArm', 'M49', 'Middle step of the alternating relay that flips BoomDue.'),
+    // The portal's step chain. Up at the far end of the block on purpose: a
+    // level coil written above these rungs would overwrite whatever the chain
+    // latched last scan, and the portal would stop being a sequence.
+    bit('StepPick', 'M60', 'Down on the outfeed, making vacuum.'),
+    bit('StepCarry', 'M61', 'Part in hand, travelling to the booth.'),
+    bit('StepLower', 'M62', 'Over the booth skid, coming down.'),
+    bit('StepRelease', 'M63', 'Down on the skid, breaking vacuum.'),
+    bit('StepHome', 'M64', 'Empty, travelling back to the store.'),
+  ],
+
+  PAINT: [
+    word('FilmTarget', 'D40', 'Microns of paint this part is specified for. Tuned only.'),
+  ],
+
+  ASSY: [
+    bit('Building', 'M100', 'A machine is being built on the jig.'),
+    bit('BoomIn', 'M101', 'The boom this machine is made of is on the jig. Drops the boom call.'),
+    bit('FrameIn', 'M102', 'The frame this machine is made of is on the jig. Drops the frame call.'),
+    bit('Released', 'M104', 'The finished machine has been rolled off to test.'),
+    clock('Settle', 'T40', 'A moment after loading, before the build starts.'),
+    clock('EngineIn', 'T41', 'How long the engine takes to come down.'),
+    clock('CabOn', 'T42', 'How long the cab takes to go on.'),
+  ],
+
+  TEST: [
+    bit('TruckCalled', 'M130', 'A lorry has been sent for and has not left yet.'),
+    clock('PumpUp', 'T50', 'How long the hydraulic pack takes to come up to pressure.'),
+  ],
+
+  // The spine holds no state of its own at all. Every zone drive is a function
+  // of that zone's eye and nothing else, which is the whole of what zero
+  // pressure accumulation means.
+  CONV: [],
+};
 
 // --- SEC1 WELD ----------------------------------------------------------------
 
@@ -29,15 +137,17 @@ const { no, nc, re, out, set, rst, tmr, mov, cmp, rung } = build;
  * only ever needed one run down one side.
  */
 export const WELD_PLAIN: Rung[] = [
-  rung('w-select', [[no('M10'), out('Y6')]]),
+  rung('w-select', [[no('BoomNext'), out('SelectBoom')]]),
   // A cycle starts with the plant running, the outfeed clear, and a tip that can
   // still lay a pass.
-  rung('w-start', [[no('M0'), nc('X10'), nc('X9'), nc('M11'), set('M11')]]),
+  rung('w-start', [
+    [no('PlantRun'), nc('WeldOutfeedOccupied'), nc('TorchTipWorn'), nc('InCycle'), set('InCycle')],
+  ]),
   // The jaws hold for the whole cycle and open as the release begins. Holding
   // them through the release looks harmless and is not: the fixture would pick
   // up the next blank on the scan the old part left, before the alternating
   // relay had flipped, and weld two of the same kind in a row.
-  rung('w-clamp', [[no('M11'), nc('M14'), out('Y2')]]),
+  rung('w-clamp', [[no('InCycle'), nc('WeldDone'), out('Clamp')]]),
   // The two passes, timed on their own conditions rather than off the arc bits.
   // The order of these rungs is load bearing: the step latches are set *above*
   // the coils that read them, so the scan a pass finishes on is the scan the
@@ -47,31 +157,80 @@ export const WELD_PLAIN: Rung[] = [
   // K=13 covers the longest single pass on the fixture, which is the boom's.
   // A preset that only just covers it is a preset that sometimes cuts the arc a
   // scan early, and a pass left at 99 % is a seam the fixture will not release.
-  rung('w-t1', [[no('M0'), no('M11'), no('X6'), no('X7'), nc('M13'), tmr('T10', 13)]]),
-  rung('w-p1', [[no('T10'), set('M13')]]),
-  rung('w-t2', [[no('M0'), no('M11'), no('X6'), no('X8'), no('M13'), nc('M14'), tmr('T11', 13)]]),
-  rung('w-p2', [[no('T11'), set('M14')]]),
-  rung('w-arc1', [[no('M0'), no('M11'), no('X6'), no('X7'), nc('M13'), out('M20')]]),
-  rung('w-arc2', [[no('M0'), no('M11'), no('X6'), no('X8'), no('M13'), nc('M14'), out('M21')]]),
-  // One coil for the torch, fed from either pass. Two rungs both driving Y3
-  // would be a double coil, and only the second would ever take effect.
-  rung('w-torch', [[no('M20'), out('Y3')], [no('M21')]], [{ row: 0, col: 1 }]),
-  // Roll it over, and keep Y4 on through pass two: let it go and the positioner
-  // rolls straight back to A with the arc still lit.
-  rung('w-rotate', [[no('M0'), no('M13'), nc('M14'), out('Y4')]]),
-  rung('w-release', [[no('M0'), no('M14'), nc('M16'), out('Y5')]]),
-  rung('w-gone', [[no('M14'), no('X10'), set('M16')]]),
-  rung('w-done', [
-    [no('M16'), out('M17'), rst('T10'), rst('T11'), rst('M11'), rst('M13'), rst('M14'), rst('M16')],
+  rung('w-t1', [
+    [
+      no('PlantRun'),
+      no('InCycle'),
+      no('FixtureClamped'),
+      no('PositionerAtA'),
+      nc('PassOneDone'),
+      tmr('PassA', 13),
+    ],
   ]),
-  // Alternating relay: arm, clear, apply. Three rungs in this order flip M10
-  // exactly once per pulse; two cannot, because the second would see the bit the
-  // first just wrote.
-  rung('w-alt-arm', [[no('M17'), nc('M10'), set('M18')]]),
-  rung('w-alt-clear', [[no('M17'), rst('M10')]]),
-  rung('w-alt-apply', [[no('M18'), set('M10'), rst('M18')]]),
+  rung('w-p1', [[no('PassA'), set('PassOneDone')]]),
+  rung('w-t2', [
+    [
+      no('PlantRun'),
+      no('InCycle'),
+      no('FixtureClamped'),
+      no('PositionerAtB'),
+      no('PassOneDone'),
+      nc('WeldDone'),
+      tmr('PassB', 13),
+    ],
+  ]),
+  rung('w-p2', [[no('PassB'), set('WeldDone')]]),
+  rung('w-arc1', [
+    [
+      no('PlantRun'),
+      no('InCycle'),
+      no('FixtureClamped'),
+      no('PositionerAtA'),
+      nc('PassOneDone'),
+      out('ArcAtA'),
+    ],
+  ]),
+  rung('w-arc2', [
+    [
+      no('PlantRun'),
+      no('InCycle'),
+      no('FixtureClamped'),
+      no('PositionerAtB'),
+      no('PassOneDone'),
+      nc('WeldDone'),
+      out('ArcAtB'),
+    ],
+  ]),
+  // One coil for the torch, fed from either pass. Two rungs both driving the
+  // torch would be a double coil, and only the second would ever take effect.
+  rung('w-torch', [[no('ArcAtA'), out('Torch')], [no('ArcAtB')]], [{ row: 0, col: 1 }]),
+  // Roll it over, and keep the positioner turning through pass two: let it go
+  // and it rolls straight back to A with the arc still lit.
+  rung('w-rotate', [
+    [no('PlantRun'), no('PassOneDone'), nc('WeldDone'), out('RotatePositioner')],
+  ]),
+  rung('w-release', [[no('PlantRun'), no('WeldDone'), nc('PartGone'), out('Release')]]),
+  rung('w-gone', [[no('WeldDone'), no('WeldOutfeedOccupied'), set('PartGone')]]),
+  rung('w-done', [
+    [
+      no('PartGone'),
+      out('CycleDone'),
+      rst('PassA'),
+      rst('PassB'),
+      rst('InCycle'),
+      rst('PassOneDone'),
+      rst('WeldDone'),
+      rst('PartGone'),
+    ],
+  ]),
+  // Alternating relay: arm, clear, apply. Three rungs in this order flip
+  // BoomNext exactly once per pulse; two cannot, because the second would see
+  // the bit the first just wrote.
+  rung('w-alt-arm', [[no('CycleDone'), nc('BoomNext'), set('FlipArm')]]),
+  rung('w-alt-clear', [[no('CycleDone'), rst('BoomNext')]]),
+  rung('w-alt-apply', [[no('FlipArm'), set('BoomNext'), rst('FlipArm')]]),
   // The tip, changed when the field says so and the fixture is empty.
-  rung('w-tip', [[no('M0'), no('X9'), nc('M11'), out('Y7')]]),
+  rung('w-tip', [[no('PlantRun'), no('TorchTipWorn'), nc('InCycle'), out('ChangeTip')]]),
 ];
 
 /**
@@ -83,58 +242,109 @@ export const WELD_PLAIN: Rung[] = [
  * rungs.
  */
 export const WELD_TUNED: Rung[] = [
-  rung('w-select', [[no('M10'), out('Y6')]]),
-  // No X10 here. The plain program will not clamp a blank until the last part
-  // has arrived at the store, three zones away — which is a second and a half of
-  // travel plus a loader stroke that the fixture spends standing empty. What the
-  // fixture actually needs is its own jaws free, and M11 already says that.
-  rung('w-start', [[no('M0'), nc('X9'), nc('M11'), set('M11')]]),
-  rung('w-clamp', [[no('M11'), nc('M14'), out('Y2')]]),
-  // One timer per part. M10 is the selector, and the fixture latched it when it
-  // clamped, so it is stable for the whole cycle.
-  rung('w-t1-f', [[no('M0'), no('M11'), no('X6'), no('X7'), nc('M10'), nc('M13'), tmr('T10', 12)]]),
-  rung('w-t1-b', [[no('M0'), no('M11'), no('X6'), no('X7'), no('M10'), nc('M13'), tmr('T12', 13)]]),
-  rung('w-p1', [[no('T10'), set('M13')], [no('T12')]], [{ row: 0, col: 1 }]),
+  rung('w-select', [[no('BoomNext'), out('SelectBoom')]]),
+  // No WeldOutfeedOccupied here. The plain program will not clamp a blank until
+  // the last part has arrived at the store, three zones away — which is a second
+  // and a half of travel plus a loader stroke that the fixture spends standing
+  // empty. What the fixture actually needs is its own jaws free, and InCycle
+  // already says that.
+  rung('w-start', [[no('PlantRun'), nc('TorchTipWorn'), nc('InCycle'), set('InCycle')]]),
+  rung('w-clamp', [[no('InCycle'), nc('WeldDone'), out('Clamp')]]),
+  // One timer per part. BoomNext is the selector, and the fixture latched it
+  // when it clamped, so it is stable for the whole cycle.
+  rung('w-t1-f', [
+    [
+      no('PlantRun'),
+      no('InCycle'),
+      no('FixtureClamped'),
+      no('PositionerAtA'),
+      nc('BoomNext'),
+      nc('PassOneDone'),
+      tmr('PassA', 12),
+    ],
+  ]),
+  rung('w-t1-b', [
+    [
+      no('PlantRun'),
+      no('InCycle'),
+      no('FixtureClamped'),
+      no('PositionerAtA'),
+      no('BoomNext'),
+      nc('PassOneDone'),
+      tmr('BoomPass', 13),
+    ],
+  ]),
+  rung('w-p1', [[no('PassA'), set('PassOneDone')], [no('BoomPass')]], [{ row: 0, col: 1 }]),
   // A boom is finished after that one pass, so it skips straight to the release
   // and never rolls the positioner over at all.
-  rung('w-b-done', [[no('M13'), no('M10'), set('M14')]]),
+  rung('w-b-done', [[no('PassOneDone'), no('BoomNext'), set('WeldDone')]]),
   rung('w-t2', [
-    [no('M0'), no('M11'), no('X6'), no('X8'), no('M13'), nc('M10'), nc('M14'), tmr('T11', 12)],
+    [
+      no('PlantRun'),
+      no('InCycle'),
+      no('FixtureClamped'),
+      no('PositionerAtB'),
+      no('PassOneDone'),
+      nc('BoomNext'),
+      nc('WeldDone'),
+      tmr('PassB', 12),
+    ],
   ]),
-  rung('w-p2', [[no('T11'), set('M14')]]),
-  rung('w-arc1', [[no('M0'), no('M11'), no('X6'), no('X7'), nc('M13'), out('M20')]]),
+  rung('w-p2', [[no('PassB'), set('WeldDone')]]),
+  rung('w-arc1', [
+    [
+      no('PlantRun'),
+      no('InCycle'),
+      no('FixtureClamped'),
+      no('PositionerAtA'),
+      nc('PassOneDone'),
+      out('ArcAtA'),
+    ],
+  ]),
   rung('w-arc2', [
-    [no('M0'), no('M11'), no('X6'), no('X8'), no('M13'), nc('M10'), nc('M14'), out('M21')],
+    [
+      no('PlantRun'),
+      no('InCycle'),
+      no('FixtureClamped'),
+      no('PositionerAtB'),
+      no('PassOneDone'),
+      nc('BoomNext'),
+      nc('WeldDone'),
+      out('ArcAtB'),
+    ],
   ]),
-  rung('w-torch', [[no('M20'), out('Y3')], [no('M21')]], [{ row: 0, col: 1 }]),
-  rung('w-rotate', [[no('M0'), no('M13'), nc('M10'), nc('M14'), out('Y4')]]),
-  rung('w-release', [[no('M0'), no('M14'), nc('M16'), out('Y5')]]),
-  // The cycle is over when the weldment is on the spine, which the outfeed eye
-  // says the instant the roll-off lands it on Z1. The plain program waits for
-  // X10 instead — the same part, three zones and a loader stroke later.
+  rung('w-torch', [[no('ArcAtA'), out('Torch')], [no('ArcAtB')]], [{ row: 0, col: 1 }]),
+  rung('w-rotate', [
+    [no('PlantRun'), no('PassOneDone'), nc('BoomNext'), nc('WeldDone'), out('RotatePositioner')],
+  ]),
+  rung('w-release', [[no('PlantRun'), no('WeldDone'), nc('PartGone'), out('Release')]]),
+  // The cycle is over when the weldment is on the spine, which zone 1's eye says
+  // the instant the roll-off lands it there. The plain program waits for the
+  // store's own infeed instead — the same part, three zones and a loader stroke
+  // later.
   //
   // The *edge*, not the level. Z1 is the one zone the fixture can see, and when
   // the spine is backed up there is already a part standing on it: a level
   // contact would call the cycle finished with the weldment still in the jaws,
   // and the next worn tip would then be changed on a loaded fixture.
-  rung('w-gone', [[no('M14'), re('X32'), set('M16')]]),
+  rung('w-gone', [[no('WeldDone'), re('Z1Occupied'), set('PartGone')]]),
   rung('w-done', [
     [
-      no('M16'),
-      out('M17'),
-      rst('T10'),
-      rst('T11'),
-      rst('T12'),
-      rst('M11'),
-      rst('M13'),
-      rst('M14'),
-      rst('M16'),
+      no('PartGone'),
+      out('CycleDone'),
+      rst('PassA'),
+      rst('PassB'),
+      rst('BoomPass'),
+      rst('InCycle'),
+      rst('PassOneDone'),
+      rst('WeldDone'),
+      rst('PartGone'),
     ],
   ]),
-  rung('w-alt-arm', [[no('M17'), nc('M10'), set('M18')]]),
-  rung('w-alt-clear', [[no('M17'), rst('M10')]]),
-  rung('w-alt-apply', [[no('M18'), set('M10'), rst('M18')]]),
-  rung('w-tip', [[no('M0'), no('X9'), nc('M11'), out('Y7')]]),
+  rung('w-alt-arm', [[no('CycleDone'), nc('BoomNext'), set('FlipArm')]]),
+  rung('w-alt-clear', [[no('CycleDone'), rst('BoomNext')]]),
+  rung('w-alt-apply', [[no('FlipArm'), set('BoomNext'), rst('FlipArm')]]),
+  rung('w-tip', [[no('PlantRun'), no('TorchTipWorn'), nc('InCycle'), out('ChangeTip')]]),
 ];
 
 // --- SEC2 STORE AND PORTAL ----------------------------------------------------
@@ -150,34 +360,37 @@ export const WELD_TUNED: Rung[] = [
  * right through the traverse and broken only once the cups are back down on the
  * booth skid.
  *
- * Its five step latches live in **M60..M64**, up at the far end of the section's
- * M40-M69 block, and nothing else in this file may touch them. That fence is not
- * decoration. The rack logic below wants a handful of level relays for "there is
- * room in the frame pair" and "there is a boom to draw", and a level `OUT` coil
- * written *above* these rungs simply overwrites whatever the step chain latched
- * on the scan before — the portal then stops being a sequence and becomes a
- * follower of whichever rack flag it collided with. It still moves, so it reads
- * as working; it stalls for good the first time that flag goes false and stays
- * false, which on a rack is the moment the rack fills.
+ * Its five step latches are **`StepPick` to `StepHome`**, up at the far end of
+ * the section's block, and nothing else in this file may touch them. That fence
+ * is not decoration. The rack logic below wants a handful of level relays for
+ * "there is room in the frame pair" and "there is a boom to draw", and a level
+ * `OUT` coil written *above* these rungs simply overwrites whatever the step
+ * chain latched on the scan before — the portal then stops being a sequence and
+ * becomes a follower of whichever rack flag it collided with. It still moves, so
+ * it reads as working; it stalls for good the first time that flag goes false
+ * and stays false, which on a rack is the moment the rack fills.
+ *
+ * Under scoping the collision is now unrepresentable between *sections*. Inside
+ * one section it is still the author's job, which is what the names are for.
  */
 const portalCycle = (lowerEarly: boolean): Rung[] => [
   // Begin a pick: parked over the store, head up, something on the outfeed, and
   // nothing already in hand or in progress.
   rung('por-pick', [
     [
-      no('M0'),
-      no('X14'),
-      no('X17'),
-      no('X13'),
-      nc('X18'),
-      nc('M61'),
-      nc('M62'),
-      nc('M63'),
-      nc('M64'),
-      set('M60'),
+      no('PlantRun'),
+      no('PortalAtStore'),
+      no('PortalUp'),
+      no('PartAtStoreOutfeed'),
+      nc('PartHeld'),
+      nc('StepCarry'),
+      nc('StepLower'),
+      nc('StepRelease'),
+      nc('StepHome'),
+      set('StepPick'),
     ],
   ]),
-  rung('por-got', [[no('M60'), no('X18'), set('M61'), rst('M60')]]),
+  rung('por-got', [[no('StepPick'), no('PartHeld'), set('StepCarry'), rst('StepPick')]]),
   // Where the wait for the booth is spent. Held on the traverse step, the head
   // stays two meters up until the skid is clear and only then starts down, so
   // every changeover costs a full lower. Held on the set-down step instead, the
@@ -185,24 +398,44 @@ const portalCycle = (lowerEarly: boolean): Rung[] => [
   // to do is break the vacuum — and it is safe, because the part is not placed
   // until the cups let go, which is what the interlock was ever guarding.
   lowerEarly
-    ? rung('por-there', [[no('M61'), no('X15'), set('M62'), rst('M61')]])
-    : rung('por-there', [[no('M61'), no('X15'), nc('X19'), set('M62'), rst('M61')]]),
+    ? rung('por-there', [
+        [no('StepCarry'), no('PortalAtBooth'), set('StepLower'), rst('StepCarry')],
+      ])
+    : rung('por-there', [
+        [
+          no('StepCarry'),
+          no('PortalAtBooth'),
+          nc('PartAtBooth'),
+          set('StepLower'),
+          rst('StepCarry'),
+        ],
+      ]),
   lowerEarly
-    ? rung('por-set-down', [[no('M62'), no('X16'), nc('X19'), set('M63'), rst('M62')]])
-    : rung('por-set-down', [[no('M62'), no('X16'), set('M63'), rst('M62')]]),
+    ? rung('por-set-down', [
+        [
+          no('StepLower'),
+          no('PortalDown'),
+          nc('PartAtBooth'),
+          set('StepRelease'),
+          rst('StepLower'),
+        ],
+      ])
+    : rung('por-set-down', [
+        [no('StepLower'), no('PortalDown'), set('StepRelease'), rst('StepLower')],
+      ]),
   // Vacuum off, head still down: the part is on the skid before the cups let go.
-  rung('por-let-go', [[no('M63'), nc('X18'), set('M64'), rst('M63')]]),
-  rung('por-parked', [[no('M64'), no('X14'), rst('M64')]]),
+  rung('por-let-go', [[no('StepRelease'), nc('PartHeld'), set('StepHome'), rst('StepRelease')]]),
+  rung('por-parked', [[no('StepHome'), no('PortalAtStore'), rst('StepHome')]]),
   // Every step above, then every coil below. That order is not tidiness: on the
   // scan the head arrives over the booth, the step that starts lowering it and
   // the coil that is still driving the traverse both want to be right, and only
   // one of them can be. Put a coil above the step that clears it and the portal
   // sets off down the rail with its head coming down.
-  rung('por-run', [[no('M61'), no('X17'), out('Y10')]]),
-  rung('por-home', [[no('M64'), no('X17'), out('Y11')]]),
+  rung('por-run', [[no('StepCarry'), no('PortalUp'), out('TravelToBooth')]]),
+  rung('por-home', [[no('StepHome'), no('PortalUp'), out('TravelToStore')]]),
   rung(
     'por-lower',
-    [[no('M60'), out('Y12')], [no('M62')], [no('M63')]],
+    [[no('StepPick'), out('LowerHead')], [no('StepLower')], [no('StepRelease')]],
     [
       { row: 0, col: 1 },
       { row: 1, col: 1 },
@@ -210,7 +443,7 @@ const portalCycle = (lowerEarly: boolean): Rung[] => [
   ),
   rung(
     'por-vac',
-    [[no('M60'), out('Y13')], [no('M61')], [no('M62')]],
+    [[no('StepPick'), out('Vacuum')], [no('StepCarry')], [no('StepLower')]],
     [
       { row: 0, col: 1 },
       { row: 1, col: 1 },
@@ -228,9 +461,13 @@ const portalCycle = (lowerEarly: boolean): Rung[] => [
  * stopped to change a tip and a booth with nothing to spray.
  */
 export const STORE_PLAIN: Rung[] = [
-  rung('s-lane', [[mov('K1', 'D13'), mov('K1', 'D14')]]),
-  rung('s-load', [[no('M0'), no('X11'), cmp('<', 'D4', 'K2'), out('Y8')]]),
-  rung('s-pick', [[no('M0'), nc('X13'), cmp('>', 'D4', 'K0'), out('Y9')]]),
+  rung('s-lane', [[mov('K1', 'LoadLaneSelect'), mov('K1', 'PickLaneSelect')]]),
+  rung('s-load', [
+    [no('PlantRun'), no('PartAtStoreInfeed'), cmp('<', 'Lane1Count', 'K2'), out('LoadIntoLane')],
+  ]),
+  rung('s-pick', [
+    [no('PlantRun'), nc('PartAtStoreOutfeed'), cmp('>', 'Lane1Count', 'K0'), out('PickFromLane')],
+  ]),
   ...portalCycle(false),
 ];
 
@@ -246,23 +483,51 @@ export const STORE_PLAIN: Rung[] = [
  */
 export const STORE_TUNED: Rung[] = [
   // Put away: the first lane of the pair that has room in it.
-  rung('s-put-f1', [[no('M0'), nc('X12'), cmp('<', 'D4', 'K2'), mov('K1', 'D13')]]),
-  rung('s-put-f2', [[no('M0'), nc('X12'), cmp('>=', 'D4', 'K2'), mov('K2', 'D13')]]),
-  rung('s-put-b1', [[no('M0'), no('X12'), cmp('<', 'D6', 'K2'), mov('K3', 'D13')]]),
-  rung('s-put-b2', [[no('M0'), no('X12'), cmp('>=', 'D6', 'K2'), mov('K4', 'D13')]]),
+  rung('s-put-f1', [
+    [
+      no('PlantRun'),
+      nc('BoomAtStoreInfeed'),
+      cmp('<', 'Lane1Count', 'K2'),
+      mov('K1', 'LoadLaneSelect'),
+    ],
+  ]),
+  rung('s-put-f2', [
+    [
+      no('PlantRun'),
+      nc('BoomAtStoreInfeed'),
+      cmp('>=', 'Lane1Count', 'K2'),
+      mov('K2', 'LoadLaneSelect'),
+    ],
+  ]),
+  rung('s-put-b1', [
+    [
+      no('PlantRun'),
+      no('BoomAtStoreInfeed'),
+      cmp('<', 'Lane3Count', 'K2'),
+      mov('K3', 'LoadLaneSelect'),
+    ],
+  ]),
+  rung('s-put-b2', [
+    [
+      no('PlantRun'),
+      no('BoomAtStoreInfeed'),
+      cmp('>=', 'Lane3Count', 'K2'),
+      mov('K4', 'LoadLaneSelect'),
+    ],
+  ]),
   rung(
     's-room-f',
     [
-      [nc('X12'), cmp('<', 'D4', 'K2'), out('M40')],
-      [nc('X12'), cmp('<', 'D5', 'K2')],
+      [nc('BoomAtStoreInfeed'), cmp('<', 'Lane1Count', 'K2'), out('RoomForFrame')],
+      [nc('BoomAtStoreInfeed'), cmp('<', 'Lane2Count', 'K2')],
     ],
     [{ row: 0, col: 2 }],
   ),
   rung(
     's-room-b',
     [
-      [no('X12'), cmp('<', 'D6', 'K2'), out('M41')],
-      [no('X12'), cmp('<', 'D7', 'K2')],
+      [no('BoomAtStoreInfeed'), cmp('<', 'Lane3Count', 'K2'), out('RoomForBoom')],
+      [no('BoomAtStoreInfeed'), cmp('<', 'Lane4Count', 'K2')],
     ],
     [{ row: 0, col: 2 }],
   ),
@@ -272,46 +537,54 @@ export const STORE_TUNED: Rung[] = [
   rung(
     's-load',
     [
-      [no('M0'), no('X11'), no('M40'), out('Y8')],
-      [no('M0'), no('X11'), no('M41')],
+      [no('PlantRun'), no('PartAtStoreInfeed'), no('RoomForFrame'), out('LoadIntoLane')],
+      [no('PlantRun'), no('PartAtStoreInfeed'), no('RoomForBoom')],
     ],
     [{ row: 0, col: 3 }],
   ),
   // Draw out: whichever type is due next, from the fuller lane of its pair.
-  rung('s-take-f1', [[nc('M46'), cmp('>', 'D4', 'K0'), mov('K1', 'D14')]]),
-  rung('s-take-f2', [[nc('M46'), cmp('<=', 'D4', 'K0'), mov('K2', 'D14')]]),
-  rung('s-take-b1', [[no('M46'), cmp('>', 'D6', 'K0'), mov('K3', 'D14')]]),
-  rung('s-take-b2', [[no('M46'), cmp('<=', 'D6', 'K0'), mov('K4', 'D14')]]),
+  rung('s-take-f1', [
+    [nc('BoomDue'), cmp('>', 'Lane1Count', 'K0'), mov('K1', 'PickLaneSelect')],
+  ]),
+  rung('s-take-f2', [
+    [nc('BoomDue'), cmp('<=', 'Lane1Count', 'K0'), mov('K2', 'PickLaneSelect')],
+  ]),
+  rung('s-take-b1', [
+    [no('BoomDue'), cmp('>', 'Lane3Count', 'K0'), mov('K3', 'PickLaneSelect')],
+  ]),
+  rung('s-take-b2', [
+    [no('BoomDue'), cmp('<=', 'Lane3Count', 'K0'), mov('K4', 'PickLaneSelect')],
+  ]),
   rung(
     's-have-f',
     [
-      [nc('M46'), cmp('>', 'D4', 'K0'), out('M47')],
-      [nc('M46'), cmp('>', 'D5', 'K0')],
+      [nc('BoomDue'), cmp('>', 'Lane1Count', 'K0'), out('HaveFrame')],
+      [nc('BoomDue'), cmp('>', 'Lane2Count', 'K0')],
     ],
     [{ row: 0, col: 2 }],
   ),
   rung(
     's-have-b',
     [
-      [no('M46'), cmp('>', 'D6', 'K0'), out('M48')],
-      [no('M46'), cmp('>', 'D7', 'K0')],
+      [no('BoomDue'), cmp('>', 'Lane3Count', 'K0'), out('HaveBoom')],
+      [no('BoomDue'), cmp('>', 'Lane4Count', 'K0')],
     ],
     [{ row: 0, col: 2 }],
   ),
   rung(
     's-pick',
     [
-      [no('M0'), nc('X13'), no('M47'), out('Y9')],
-      [no('M0'), nc('X13'), no('M48')],
+      [no('PlantRun'), nc('PartAtStoreOutfeed'), no('HaveFrame'), out('PickFromLane')],
+      [no('PlantRun'), nc('PartAtStoreOutfeed'), no('HaveBoom')],
     ],
     [{ row: 0, col: 3 }],
   ),
   // Turn about on the rising edge of a part landing on the outfeed. A level
   // contact cannot do this: it is true for as long as the part sits there, and
   // the relay would flip on every scan of it.
-  rung('s-alt-arm', [[re('X13'), nc('M46'), set('M49')]]),
-  rung('s-alt-clear', [[re('X13'), rst('M46')]]),
-  rung('s-alt-apply', [[no('M49'), set('M46'), rst('M49')]]),
+  rung('s-alt-arm', [[re('PartAtStoreOutfeed'), nc('BoomDue'), set('TurnArm')]]),
+  rung('s-alt-clear', [[re('PartAtStoreOutfeed'), rst('BoomDue')]]),
+  rung('s-alt-apply', [[no('TurnArm'), set('BoomDue'), rst('TurnArm')]]),
   ...portalCycle(true),
 ];
 
@@ -335,30 +608,32 @@ export const STORE_TUNED: Rung[] = [
  * been clear half a second.
  */
 export const PAINT_PLAIN: Rung[] = [
-  rung('p-recipe', [[mov('K2200', 'D2'), mov('K4000', 'D3')]]),
-  rung('p-drum', [[mov('D8', 'D15')]]),
+  rung('p-recipe', [[mov('K2200', 'HeaterCommand'), mov('K4000', 'GunFlowCommand')]]),
+  rung('p-drum', [[mov('NextPaintColor', 'DrumSelect')]]),
   // Spray above purge, so the purge rung below reads this scan's gun rather than
   // last scan's. The two must never be commanded together.
   rung('p-spray', [
     [
-      no('M0'),
-      no('X19'),
-      cmp('=', 'D9', 'D8'),
-      cmp('<', 'D1', 'K2400'),
-      cmp('>=', 'D0', 'K1900'),
-      out('Y14'),
+      no('PlantRun'),
+      no('PartAtBooth'),
+      cmp('=', 'ColorInGun', 'NextPaintColor'),
+      cmp('<', 'FilmThickness', 'K2400'),
+      cmp('>=', 'BoothTemperature', 'K1900'),
+      out('SprayGun'),
     ],
   ]),
-  rung('p-purge', [[no('M0'), nc('Y14'), cmp('<>', 'D9', 'D8'), out('Y16')]]),
+  rung('p-purge', [
+    [no('PlantRun'), nc('SprayGun'), cmp('<>', 'ColorInGun', 'NextPaintColor'), out('PurgeGun')],
+  ]),
   rung('p-oven', [
     [
-      no('M0'),
-      no('X19'),
-      cmp('=', 'D9', 'D8'),
-      cmp('>=', 'D1', 'K2400'),
-      nc('X21'),
-      nc('X22'),
-      out('Y15'),
+      no('PlantRun'),
+      no('PartAtBooth'),
+      cmp('=', 'ColorInGun', 'NextPaintColor'),
+      cmp('>=', 'FilmThickness', 'K2400'),
+      nc('OvenFull'),
+      nc('PaintedLaneFull'),
+      out('OvenInfeed'),
     ],
   ]),
 ];
@@ -366,41 +641,43 @@ export const PAINT_PLAIN: Rung[] = [
 /**
  * The paint shop, with a recipe per part and a changeover that costs nothing.
  *
- * The film target moves into a register chosen by X20, so one spray rung serves
- * both parts: a boom takes 150 um instead of 240, which is nearly a second less
- * spraying and most of a second less bake, both of them booth time. And the
- * purge runs whenever the color is wrong, blast or no blast, because it flushes
- * to waste and the part in the booth never sees it.
+ * The film target moves into a register chosen by the part in the booth, so one
+ * spray rung serves both: a boom takes 150 um instead of 240, which is nearly a
+ * second less spraying and most of a second less bake, both of them booth time.
+ * And the purge runs whenever the color is wrong, blast or no blast, because it
+ * flushes to waste and the part in the booth never sees it.
  */
 export const PAINT_TUNED: Rung[] = [
-  rung('p-recipe', [[mov('K2200', 'D2'), mov('K4000', 'D3')]]),
-  rung('p-drum', [[mov('D8', 'D15')]]),
+  rung('p-recipe', [[mov('K2200', 'HeaterCommand'), mov('K4000', 'GunFlowCommand')]]),
+  rung('p-drum', [[mov('NextPaintColor', 'DrumSelect')]]),
   // Two MOVs into one register is the value-selection idiom, not a double write:
   // each fires only on the scan its own rung conducts.
-  rung('p-target-f', [[no('M0'), nc('X20'), mov('K2100', 'D40')]]),
-  rung('p-target-b', [[no('M0'), no('X20'), mov('K1500', 'D40')]]),
+  rung('p-target-f', [[no('PlantRun'), nc('BoomInBooth'), mov('K2100', 'FilmTarget')]]),
+  rung('p-target-b', [[no('PlantRun'), no('BoomInBooth'), mov('K1500', 'FilmTarget')]]),
   // Spray first, so the purge rung below reads this scan's gun rather than last
   // scan's. The two must never be commanded together.
   rung('p-spray', [
     [
-      no('M0'),
-      no('X19'),
-      cmp('=', 'D9', 'D8'),
-      cmp('<', 'D1', 'D40'),
-      cmp('>=', 'D0', 'K1900'),
-      out('Y14'),
+      no('PlantRun'),
+      no('PartAtBooth'),
+      cmp('=', 'ColorInGun', 'NextPaintColor'),
+      cmp('<', 'FilmThickness', 'FilmTarget'),
+      cmp('>=', 'BoothTemperature', 'K1900'),
+      out('SprayGun'),
     ],
   ]),
-  rung('p-purge', [[no('M0'), nc('Y14'), cmp('<>', 'D9', 'D8'), out('Y16')]]),
+  rung('p-purge', [
+    [no('PlantRun'), nc('SprayGun'), cmp('<>', 'ColorInGun', 'NextPaintColor'), out('PurgeGun')],
+  ]),
   rung('p-oven', [
     [
-      no('M0'),
-      no('X19'),
-      cmp('=', 'D9', 'D8'),
-      cmp('>=', 'D1', 'D40'),
-      nc('X21'),
-      nc('X22'),
-      out('Y15'),
+      no('PlantRun'),
+      no('PartAtBooth'),
+      cmp('=', 'ColorInGun', 'NextPaintColor'),
+      cmp('>=', 'FilmThickness', 'FilmTarget'),
+      nc('OvenFull'),
+      nc('PaintedLaneFull'),
+      out('OvenInfeed'),
     ],
   ]),
 ];
@@ -418,39 +695,75 @@ export const PAINT_TUNED: Rung[] = [
  * cab. It was waiting for a boom, which it has had since the build began.
  */
 export const ASSEMBLY_PLAIN: Rung[] = [
-  rung('a-start', [[no('M0'), no('X23'), no('X24'), nc('M100'), set('M100')]]),
+  rung('a-start', [
+    [no('PlantRun'), no('FrameReady'), no('BoomReady'), nc('Building'), set('Building')],
+  ]),
   // Both calls off one rung: an energized output passes power to its right, so
   // the frame and the boom are asked for together and the jig never sets out to
   // build half a machine.
   //
-  // The calls stand until both parts are actually in, which D16 and D17 report,
-  // rather than for a fixed window. A lane the sort is loading into is a lane
-  // that is *moving*, and the jig cannot lift off a moving lane — so a call that
-  // lasted one scan would silently miss, and the bench would later be run with
+  // The calls stand until both parts are actually in, which FrameInJig and
+  // BoomInJig report, rather than for a fixed window. A lane the sort is loading
+  // into is a lane that is *moving*, and the jig cannot lift off a moving lane —
+  // so a call that lasted one scan would silently miss, and the bench would
+  // later be run with nothing on it.
+  rung('a-call', [[no('Building'), nc('FrameIn'), out('CallFrame'), out('CallBoom')]]),
+  // One rung claims both, because this program only ever takes them together.
+  // Two names for the two claims all the same: BoomIn is what the release
+  // resets, and a bit that is set and never cleared is a bit that lies the
+  // second time round.
+  rung('a-both', [
+    [
+      no('Building'),
+      cmp('>', 'FrameInJig', 'K0'),
+      cmp('>', 'BoomInJig', 'K0'),
+      set('FrameIn'),
+      set('BoomIn'),
+    ],
+  ]),
+  rung('a-loaded', [[no('FrameIn'), tmr('Settle', 1)]]),
+  rung('a-engine', [[no('PlantRun'), no('Settle'), nc('EngineIn'), out('LowerEngine')]]),
+  rung('a-engine-t', [[no('PlantRun'), no('Settle'), tmr('EngineIn', 25)]]),
+  rung('a-cab', [[no('PlantRun'), no('EngineIn'), nc('CabOn'), out('FitCab')]]),
+  rung('a-cab-t', [[no('PlantRun'), no('EngineIn'), tmr('CabOn', 20)]]),
+  // NC on Released and MachineComplete for the same reason the pin rung carries
+  // them: the scan after a machine is released the step timers are still
+  // standing done and the jig is empty, so without them the bench runs with
   // nothing on it.
-  rung('a-call', [[no('M100'), nc('M102'), out('Y17'), out('Y18')]]),
-  rung('a-both', [[no('M100'), cmp('>', 'D16', 'K0'), cmp('>', 'D17', 'K0'), set('M102')]]),
-  rung('a-loaded', [[no('M102'), tmr('T40', 1)]]),
-  rung('a-engine', [[no('M0'), no('T40'), nc('T41'), out('Y19')]]),
-  rung('a-engine-t', [[no('M0'), no('T40'), tmr('T41', 25)]]),
-  rung('a-cab', [[no('M0'), no('T41'), nc('T42'), out('Y20')]]),
-  rung('a-cab-t', [[no('M0'), no('T41'), tmr('T42', 20)]]),
-  // NC on M104 and X26 for the same reason the pin rung carries them: the scan
-  // after a machine is released the step timers are still standing done and the
-  // jig is empty, so without them the bench runs with nothing on it.
-  rung('a-prep', [[no('M0'), no('T42'), nc('X25'), nc('X26'), nc('M104'), out('Y21')]]),
-  rung('a-pin', [[no('M0'), no('T42'), no('X25'), nc('X26'), nc('M104'), out('Y22')]]),
-  rung('a-release', [[no('M0'), no('X26'), no('X27'), out('Y23'), set('M104')]]),
+  rung('a-prep', [
+    [
+      no('PlantRun'),
+      no('CabOn'),
+      nc('BoomMadeUp'),
+      nc('MachineComplete'),
+      nc('Released'),
+      out('MakeUpBoom'),
+    ],
+  ]),
+  rung('a-pin', [
+    [
+      no('PlantRun'),
+      no('CabOn'),
+      no('BoomMadeUp'),
+      nc('MachineComplete'),
+      nc('Released'),
+      out('PinBoom'),
+    ],
+  ]),
+  rung('a-release', [
+    [no('PlantRun'), no('MachineComplete'), no('TestBayClear'), out('ReleaseToTest'), set('Released')],
+  ]),
   rung('a-reset', [
     [
-      no('M104'),
-      nc('X26'),
-      rst('T40'),
-      rst('T41'),
-      rst('T42'),
-      rst('M100'),
-      rst('M102'),
-      rst('M104'),
+      no('Released'),
+      nc('MachineComplete'),
+      rst('Settle'),
+      rst('EngineIn'),
+      rst('CabOn'),
+      rst('Building'),
+      rst('FrameIn'),
+      rst('BoomIn'),
+      rst('Released'),
     ],
   ]),
 ];
@@ -466,38 +779,60 @@ export const ASSEMBLY_PLAIN: Rung[] = [
  * bench is beside the jig and not in front of it.
  */
 export const ASSEMBLY_TUNED: Rung[] = [
-  rung('a-start', [[no('M0'), no('X23'), nc('M100'), set('M100')]]),
-  // The call stands until the frame is in the jig, which D16 reports. The lane
-  // has to be stopped for the jig to lift off it, and the sort runs that same
-  // lane to take a part from the paddle, so a call that lasted one scan would
-  // sooner or later be raised against a moving belt and quietly miss.
-  rung('a-call-f', [[no('M100'), nc('M102'), out('Y17')]]),
-  rung('a-got-f', [[no('M100'), cmp('>', 'D16', 'K0'), set('M102')]]),
-  rung('a-loaded', [[no('M102'), tmr('T40', 1)]]),
+  rung('a-start', [[no('PlantRun'), no('FrameReady'), nc('Building'), set('Building')]]),
+  // The call stands until the frame is in the jig, which FrameInJig reports. The
+  // lane has to be stopped for the jig to lift off it, and the sort runs that
+  // same lane to take a part from the paddle, so a call that lasted one scan
+  // would sooner or later be raised against a moving belt and quietly miss.
+  rung('a-call-f', [[no('Building'), nc('FrameIn'), out('CallFrame')]]),
+  rung('a-got-f', [[no('Building'), cmp('>', 'FrameInJig', 'K0'), set('FrameIn')]]),
+  rung('a-loaded', [[no('FrameIn'), tmr('Settle', 1)]]),
   // The call for a boom stands for the whole build, and only for a boom that
-  // belongs to the same machine as the frame already in the jig: D16 is what the
-  // jig is holding, D11 what is at the head of the boom lane.
-  rung('a-call-b', [[no('M100'), nc('M101'), cmp('=', 'D11', 'D16'), out('Y18')]]),
-  rung('a-have-b', [[no('M100'), cmp('>', 'D17', 'K0'), set('M101')]]),
-  rung('a-engine', [[no('M0'), no('T40'), nc('T41'), out('Y19')]]),
-  rung('a-engine-t', [[no('M0'), no('T40'), tmr('T41', 23)]]),
-  rung('a-cab', [[no('M0'), no('T41'), nc('T42'), out('Y20')]]),
-  rung('a-cab-t', [[no('M0'), no('T41'), tmr('T42', 19)]]),
+  // belongs to the same machine as the frame already in the jig: FrameInJig is
+  // what the jig is holding, BoomColorReady what is at the head of the boom lane.
+  rung('a-call-b', [
+    [no('Building'), nc('BoomIn'), cmp('=', 'BoomColorReady', 'FrameInJig'), out('CallBoom')],
+  ]),
+  rung('a-have-b', [[no('Building'), cmp('>', 'BoomInJig', 'K0'), set('BoomIn')]]),
+  rung('a-engine', [[no('PlantRun'), no('Settle'), nc('EngineIn'), out('LowerEngine')]]),
+  rung('a-engine-t', [[no('PlantRun'), no('Settle'), tmr('EngineIn', 23)]]),
+  rung('a-cab', [[no('PlantRun'), no('EngineIn'), nc('CabOn'), out('FitCab')]]),
+  rung('a-cab-t', [[no('PlantRun'), no('EngineIn'), tmr('CabOn', 19)]]),
   // The bench, from the moment there is a boom to put on it.
-  rung('a-prep', [[no('M0'), no('M101'), nc('X25'), nc('X26'), nc('M104'), out('Y21')]]),
-  rung('a-pin', [[no('M0'), no('T42'), no('X25'), nc('X26'), nc('M104'), out('Y22')]]),
-  rung('a-release', [[no('M0'), no('X26'), no('X27'), out('Y23'), set('M104')]]),
+  rung('a-prep', [
+    [
+      no('PlantRun'),
+      no('BoomIn'),
+      nc('BoomMadeUp'),
+      nc('MachineComplete'),
+      nc('Released'),
+      out('MakeUpBoom'),
+    ],
+  ]),
+  rung('a-pin', [
+    [
+      no('PlantRun'),
+      no('CabOn'),
+      no('BoomMadeUp'),
+      nc('MachineComplete'),
+      nc('Released'),
+      out('PinBoom'),
+    ],
+  ]),
+  rung('a-release', [
+    [no('PlantRun'), no('MachineComplete'), no('TestBayClear'), out('ReleaseToTest'), set('Released')],
+  ]),
   rung('a-reset', [
     [
-      no('M104'),
-      nc('X26'),
-      rst('T40'),
-      rst('T41'),
-      rst('T42'),
-      rst('M100'),
-      rst('M101'),
-      rst('M102'),
-      rst('M104'),
+      no('Released'),
+      nc('MachineComplete'),
+      rst('Settle'),
+      rst('EngineIn'),
+      rst('CabOn'),
+      rst('Building'),
+      rst('BoomIn'),
+      rst('FrameIn'),
+      rst('Released'),
     ],
   ]),
 ];
@@ -517,24 +852,30 @@ export const ASSEMBLY_TUNED: Rung[] = [
  * standing still all the way back to the weld fixture.
  */
 export const TEST_PLAIN: Rung[] = [
-  rung('t-pump', [[no('M0'), no('X28'), nc('X29'), out('Y24')]]),
-  // NC on X29 so the timer clears the moment the test passes: the bay can pull
-  // the next machine in on the same scan the last one drives off, and a pressure
-  // timer still standing done would work the boom on a dead circuit.
+  rung('t-pump', [
+    [no('PlantRun'), no('MachineAtTest'), nc('TestPassed'), out('HydraulicPump')],
+  ]),
+  // NC on TestPassed so the timer clears the moment the test passes: the bay can
+  // pull the next machine in on the same scan the last one drives off, and a
+  // pressure timer still standing done would work the boom on a dead circuit.
   //
   // K=18 covers the 1.6 s the pack takes to come up with a tenth in hand. A
   // preset sized exactly to the pump is a rung that jams the first time anything
   // about the pack changes, which is a lesson the plant would rather teach in a
   // briefing than in a stack trace.
-  rung('t-pressure', [[no('M0'), no('X28'), nc('X29'), tmr('T50', 18)]]),
-  rung('t-cycle', [[no('M0'), no('T50'), nc('X29'), out('Y25')]]),
-  rung('t-dispatch', [[no('M0'), no('X29'), no('X30'), out('Y26')]]),
+  rung('t-pressure', [
+    [no('PlantRun'), no('MachineAtTest'), nc('TestPassed'), tmr('PumpUp', 18)],
+  ]),
+  rung('t-cycle', [[no('PlantRun'), no('PumpUp'), nc('TestPassed'), out('FunctionTest')]]),
+  rung('t-dispatch', [[no('PlantRun'), no('TestPassed'), no('YardSpace'), out('Dispatch')]]),
   // Send for a lorry once there is nowhere left to put a machine …
-  rung('t-call', [[nc('X30'), set('M130')]]),
+  rung('t-call', [[nc('YardSpace'), set('TruckCalled')]]),
   // … hold it on the dock while it loads …
-  rung('t-hold', [[no('M130'), out('Y27')]]),
+  rung('t-hold', [[no('TruckCalled'), out('CallTruck')]]),
   // … and let it go once the yard behind it is clear.
-  rung('t-release', [[no('X31'), cmp('<=', 'D12', 'K0'), rst('M130')]]),
+  rung('t-release', [
+    [no('TruckAtDock'), cmp('<=', 'MachinesInYard', 'K0'), rst('TruckCalled')],
+  ]),
 ];
 
 /**
@@ -545,13 +886,19 @@ export const TEST_PLAIN: Rung[] = [
  * line never once has to stop and wait for it.
  */
 export const TEST_TUNED: Rung[] = [
-  rung('t-pump', [[no('M0'), no('X28'), nc('X29'), out('Y24')]]),
-  rung('t-pressure', [[no('M0'), no('X28'), nc('X29'), tmr('T50', 18)]]),
-  rung('t-cycle', [[no('M0'), no('T50'), nc('X29'), out('Y25')]]),
-  rung('t-dispatch', [[no('M0'), no('X29'), no('X30'), out('Y26')]]),
-  rung('t-call', [[cmp('>=', 'D12', 'K3'), set('M130')]]),
-  rung('t-hold', [[no('M130'), out('Y27')]]),
-  rung('t-release', [[no('X31'), cmp('<=', 'D12', 'K0'), rst('M130')]]),
+  rung('t-pump', [
+    [no('PlantRun'), no('MachineAtTest'), nc('TestPassed'), out('HydraulicPump')],
+  ]),
+  rung('t-pressure', [
+    [no('PlantRun'), no('MachineAtTest'), nc('TestPassed'), tmr('PumpUp', 18)],
+  ]),
+  rung('t-cycle', [[no('PlantRun'), no('PumpUp'), nc('TestPassed'), out('FunctionTest')]]),
+  rung('t-dispatch', [[no('PlantRun'), no('TestPassed'), no('YardSpace'), out('Dispatch')]]),
+  rung('t-call', [[cmp('>=', 'MachinesInYard', 'K3'), set('TruckCalled')]]),
+  rung('t-hold', [[no('TruckCalled'), out('CallTruck')]]),
+  rung('t-release', [
+    [no('TruckAtDock'), cmp('<=', 'MachinesInYard', 'K0'), rst('TruckCalled')],
+  ]),
 ];
 
 // --- SEC6 CONV ----------------------------------------------------------------
@@ -572,24 +919,40 @@ export const TEST_TUNED: Rung[] = [
  */
 export const CONV_PLAIN: Rung[] = [
   // Weld outfeed to the store, run as one belt while the infeed is clear.
-  rung('c-a1', [[no('M0'), nc('X34'), out('Y28')]]),
-  rung('c-a2', [[no('M0'), nc('X34'), out('Y29')]]),
-  rung('c-a3', [[no('M0'), nc('X34'), out('Y30')]]),
+  rung('c-a1', [[no('PlantRun'), nc('Z3Occupied'), out('Z1Drive')]]),
+  rung('c-a2', [[no('PlantRun'), nc('Z3Occupied'), out('Z2Drive')]]),
+  rung('c-a3', [[no('PlantRun'), nc('Z3Occupied'), out('Z3Drive')]]),
   // Oven discharge to the sort, likewise.
-  rung('c-b1', [[no('M0'), nc('X38'), out('Y31')]]),
-  rung('c-b2', [[no('M0'), nc('X38'), out('Y32')]]),
-  rung('c-b3', [[no('M0'), nc('X38'), out('Y33')]]),
-  rung('c-b4', [[no('M0'), nc('X38'), out('Y34')]]),
+  rung('c-b1', [[no('PlantRun'), nc('Z7Occupied'), out('Z4Drive')]]),
+  rung('c-b2', [[no('PlantRun'), nc('Z7Occupied'), out('Z5Drive')]]),
+  rung('c-b3', [[no('PlantRun'), nc('Z7Occupied'), out('Z6Drive')]]),
+  rung('c-b4', [[no('PlantRun'), nc('Z7Occupied'), out('Z7Drive')]]),
   // The sort reads the part it is holding and paddles it into its own lane. The
   // lane has to be turning to take it, so the paddle and the lane go together.
-  rung('c-sortf', [[no('M0'), no('X38'), nc('X44'), nc('X45'), out('Y40')]]),
-  rung('c-sortb', [[no('M0'), no('X38'), no('X44'), nc('X46'), out('Y41')]]),
-  rung('c-lanef', [[no('Y40'), out('Y35')]]),
-  rung('c-laneb', [[no('Y41'), out('Y36')]]),
+  rung('c-sortf', [
+    [
+      no('PlantRun'),
+      no('Z7Occupied'),
+      nc('BoomAtSort'),
+      nc('FrameLaneFull'),
+      out('DivertToFrameLane'),
+    ],
+  ]),
+  rung('c-sortb', [
+    [
+      no('PlantRun'),
+      no('Z7Occupied'),
+      no('BoomAtSort'),
+      nc('BoomLaneFull'),
+      out('DivertToBoomLane'),
+    ],
+  ]),
+  rung('c-lanef', [[no('DivertToFrameLane'), out('Z8Drive')]]),
+  rung('c-laneb', [[no('DivertToBoomLane'), out('Z9Drive')]]),
   // Assembly out through test, and the dock apron.
-  rung('c-c1', [[no('M0'), nc('X42'), out('Y37')]]),
-  rung('c-c2', [[no('M0'), nc('X42'), out('Y38')]]),
-  rung('c-d1', [[no('M0'), nc('X43'), out('Y39')]]),
+  rung('c-c1', [[no('PlantRun'), nc('Z11Occupied'), out('Z10Drive')]]),
+  rung('c-c2', [[no('PlantRun'), nc('Z11Occupied'), out('Z11Drive')]]),
+  rung('c-d1', [[no('PlantRun'), nc('Z12Occupied'), out('Z12Drive')]]),
 ];
 
 /**
@@ -607,18 +970,34 @@ export const CONV_PLAIN: Rung[] = [
  * eye would leave it turning under a part final assembly is trying to take.
  */
 export const CONV_TUNED: Rung[] = [
-  rung('c-z1', [[no('M0'), nc('X32'), out('Y28')]]),
-  rung('c-z2', [[no('M0'), nc('X33'), out('Y29')]]),
-  rung('c-z3', [[no('M0'), nc('X34'), out('Y30')]]),
-  rung('c-z4', [[no('M0'), nc('X35'), out('Y31')]]),
-  rung('c-z5', [[no('M0'), nc('X36'), out('Y32')]]),
-  rung('c-z6', [[no('M0'), nc('X37'), out('Y33')]]),
-  rung('c-z7', [[no('M0'), nc('X38'), out('Y34')]]),
-  rung('c-sortf', [[no('M0'), no('X38'), nc('X44'), nc('X45'), out('Y40')]]),
-  rung('c-sortb', [[no('M0'), no('X38'), no('X44'), nc('X46'), out('Y41')]]),
-  rung('c-lanef', [[no('Y40'), out('Y35')]]),
-  rung('c-laneb', [[no('Y41'), out('Y36')]]),
-  rung('c-z10', [[no('M0'), nc('X41'), out('Y37')]]),
-  rung('c-z11', [[no('M0'), nc('X42'), out('Y38')]]),
-  rung('c-z12', [[no('M0'), nc('X43'), out('Y39')]]),
+  rung('c-z1', [[no('PlantRun'), nc('Z1Occupied'), out('Z1Drive')]]),
+  rung('c-z2', [[no('PlantRun'), nc('Z2Occupied'), out('Z2Drive')]]),
+  rung('c-z3', [[no('PlantRun'), nc('Z3Occupied'), out('Z3Drive')]]),
+  rung('c-z4', [[no('PlantRun'), nc('Z4Occupied'), out('Z4Drive')]]),
+  rung('c-z5', [[no('PlantRun'), nc('Z5Occupied'), out('Z5Drive')]]),
+  rung('c-z6', [[no('PlantRun'), nc('Z6Occupied'), out('Z6Drive')]]),
+  rung('c-z7', [[no('PlantRun'), nc('Z7Occupied'), out('Z7Drive')]]),
+  rung('c-sortf', [
+    [
+      no('PlantRun'),
+      no('Z7Occupied'),
+      nc('BoomAtSort'),
+      nc('FrameLaneFull'),
+      out('DivertToFrameLane'),
+    ],
+  ]),
+  rung('c-sortb', [
+    [
+      no('PlantRun'),
+      no('Z7Occupied'),
+      no('BoomAtSort'),
+      nc('BoomLaneFull'),
+      out('DivertToBoomLane'),
+    ],
+  ]),
+  rung('c-lanef', [[no('DivertToFrameLane'), out('Z8Drive')]]),
+  rung('c-laneb', [[no('DivertToBoomLane'), out('Z9Drive')]]),
+  rung('c-z10', [[no('PlantRun'), nc('Z10Occupied'), out('Z10Drive')]]),
+  rung('c-z11', [[no('PlantRun'), nc('Z11Occupied'), out('Z11Drive')]]),
+  rung('c-z12', [[no('PlantRun'), nc('Z12Occupied'), out('Z12Drive')]]),
 ];

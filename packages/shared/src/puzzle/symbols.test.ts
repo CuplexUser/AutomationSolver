@@ -644,7 +644,9 @@ describe('symbols — every shipped puzzle resolves to itself', () => {
     expect(ladderPuzzles.length).toBeGreaterThan(40);
   });
 
-  it.each(ladderPuzzles.map((p) => [p.slug, p] as const))(
+  const written = (p: LadderPuzzleSpec) => (p.symbols ?? 'off') !== 'off';
+
+  it.each(ladderPuzzles.filter((p) => !written(p)).map((p) => [p.slug, p] as const))(
     '%s is byte-identical after assembly and resolution',
     (_slug, puzzle) => {
       // The literal-address fallback is the compatibility hinge: a program with
@@ -660,9 +662,37 @@ describe('symbols — every shipped puzzle resolves to itself', () => {
 
   it('leaves programs untouched by reference where symbols are off', () => {
     for (const puzzle of ladderPuzzles) {
-      if ((puzzle.symbols ?? 'off') !== 'off') continue;
+      if (written(puzzle)) continue;
       const assembled = assembleProject(puzzle, initialProject(puzzle));
       expect(resolveProject(puzzle, assembled).project).toBe(assembled);
+    }
+  });
+
+  // A puzzle that *is* written in names cannot claim the identity above, and
+  // should not: resolving it is the whole point. What it owes instead is that
+  // every name in the sections it ships resolves to something — a mistyped
+  // symbol in the content would otherwise reach a player as "not declared here"
+  // on a rung they did not write.
+  it.each(ladderPuzzles.filter(written).map((p) => [p.slug, p] as const))(
+    '%s ships sections whose every name resolves',
+    (_slug, puzzle) => {
+      const assembled = assembleProject(puzzle, initialProject(puzzle));
+      const { issues } = resolveProject(puzzle, assembled);
+      expect(issues).toEqual([]);
+    },
+  );
+
+  // And the migration guarantee still holds for them, by a different route: an
+  // old saved slot has no declarations, so every name in it is a bare address,
+  // and `optional` hands each one straight back.
+  it('still resolves a bare-address program to itself under symbols', () => {
+    for (const puzzle of ladderPuzzles.filter(written)) {
+      const legacy: LadderProject = {
+        pous: [{ id: 'CONV', name: 'SEC6_CONVEYOR', rungs: [rung('r1', 'M0', 'Y28')] }],
+        tasks: [],
+      };
+      const { project } = resolveProject(puzzle, legacy);
+      expect(project.pous[0].rungs).toEqual(legacy.pous[0].rungs);
     }
   });
 });
