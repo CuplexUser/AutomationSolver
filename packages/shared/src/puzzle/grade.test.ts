@@ -7,7 +7,15 @@ import type {
   VLink,
 } from '../ladder/types.js';
 import { getPuzzle, PUZZLES } from './content/index.js';
-import { CONV_TUNED, WELD_TUNED } from './content/factory-line-programs.js';
+import {
+  ASSEMBLY_TUNED,
+  CONV_TUNED,
+  PAINT_TUNED,
+  STORE_PLAIN,
+  STORE_TUNED,
+  TEST_TUNED,
+  WELD_TUNED,
+} from './content/factory-line-programs.js';
 import {
   CORRECTNESS_WEIGHT,
   PAR_SLACK,
@@ -1431,6 +1439,38 @@ const projectSolutions: Record<string, LadderProject> = {
     pous: [{ id: 'CONV', name: 'SEC6_CONVEYOR', rungs: CONV_TUNED }],
     tasks: [],
   },
+  'factory-handling': {
+    pous: [{ id: 'STORE', name: 'SEC2_STORE', rungs: STORE_TUNED }],
+    tasks: [],
+  },
+  'factory-paint': {
+    pous: [{ id: 'PAINT', name: 'SEC3_PAINT', rungs: PAINT_TUNED }],
+    tasks: [],
+  },
+  // The first puzzle in this category that opens two sections at once, so its
+  // answer is two POUs. Everything else about the shape is the same.
+  'factory-assembly': {
+    pous: [
+      { id: 'ASSY', name: 'SEC4_ASSEMBLY', rungs: ASSEMBLY_TUNED },
+      { id: 'TEST', name: 'SEC5_TEST', rungs: TEST_TUNED },
+    ],
+    tasks: [],
+  },
+  // The capstone: every section open, and the canonical answer is the whole
+  // plant run properly. The supervisor is left out on purpose — it is editable
+  // here, so `assembleProject` takes it from the slot's own seed, which proves
+  // a partial submission is merged the way the client posts one.
+  'factory-line': {
+    pous: [
+      { id: 'WELD', name: 'SEC1_WELD', rungs: WELD_TUNED },
+      { id: 'STORE', name: 'SEC2_STORE', rungs: STORE_TUNED },
+      { id: 'PAINT', name: 'SEC3_PAINT', rungs: PAINT_TUNED },
+      { id: 'ASSY', name: 'SEC4_ASSEMBLY', rungs: ASSEMBLY_TUNED },
+      { id: 'TEST', name: 'SEC5_TEST', rungs: TEST_TUNED },
+      { id: 'CONV', name: 'SEC6_CONVEYOR', rungs: CONV_TUNED },
+    ],
+    tasks: [],
+  },
 };
 
 describe('gradeProgram — canonical solutions solve every sectioned puzzle', () => {
@@ -2415,6 +2455,309 @@ describe('gradeProgram — the plausible wrong spine is rejected', () => {
   it('a spine that never turns: the weld bay has nowhere to put a weldment', () => {
     const result = gradeProgram(spec(), conveyor(SORT));
     expect(result.solved).toBe(false);
+  });
+});
+
+/**
+ * The four sectioned puzzles that finish the excavator line, and the mistakes
+ * each one is actually about.
+ *
+ * Every variant below starts from the shipped program for that section and
+ * changes one thing, so a test that fails tells you which rung was carrying the
+ * lesson rather than that some hand-written program somewhere did not work.
+ */
+describe('gradeProgram — the plausible wrong line sections are rejected', () => {
+  /** A shipped section with one rung replaced, or dropped when `make` is null. */
+  function patch(rungs: Rung[], edits: Record<string, Rung | null>): Rung[] {
+    return structuredClone(rungs).flatMap((r) => {
+      if (!(r.id in edits)) return [r];
+      const replacement = edits[r.id];
+      return replacement ? [replacement] : [];
+    });
+  }
+
+  const section = (id: string, name: string, rungs: Rung[]): LadderProject => ({
+    pous: [{ id, name, rungs }],
+    tasks: [],
+  });
+
+  const failureText = (result: ReturnType<typeof gradeProgram>): string =>
+    result.scenarios.flatMap((s) => s.steps).flatMap((s) => s.failures).join(' ');
+
+  // --- 50, the rack store and the portal ------------------------------------
+
+  const store = (rungs: Rung[]) => section('STORE', 'SEC2_STORE', rungs);
+
+  /**
+   * The store's whole lesson, and the one thing a rack run as a queue cannot
+   * do. Two frames standing in lane 1 at the start of the shift are two frames
+   * fed to the booth back to back, which colors them as halves of two different
+   * machines, and the jig finds out about it forty seconds later.
+   */
+  it('factory-handling: one lane in and one lane out cannot recover the mix', () => {
+    const result = gradeProgram(getLadderPuzzle('factory-handling')!, store(STORE_PLAIN));
+    expect(result.solved).toBe(false);
+  });
+
+  it('factory-handling: the portal sets off along the rail with its head down', () => {
+    // The head is still down on the outfeed at the moment it takes hold of the
+    // part, so a traverse that does not wait for X17 starts with two metres of
+    // gantry hanging into the aisle.
+    const result = gradeProgram(
+      getLadderPuzzle('factory-handling')!,
+      store(
+        patch(STORE_TUNED, {
+          'por-run': R('por-run', 1, 2, { '0,0': no('M61'), '0,1': out('Y10') }),
+        }),
+      ),
+    );
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('head still down');
+  });
+
+  it('factory-handling: the portal lets go at the top of the stroke', () => {
+    // Lowering on the way in but not on the way out is the easiest half of this
+    // interlock to write and the expensive half to leave out: the cups break
+    // vacuum while the head is on its way back up and the part falls.
+    const result = gradeProgram(
+      getLadderPuzzle('factory-handling')!,
+      store(
+        patch(STORE_TUNED, {
+          'por-lower': R(
+            'por-lower',
+            2,
+            2,
+            { '0,0': no('M60'), '0,1': out('Y12'), '1,0': no('M62') },
+            [{ row: 0, col: 1 }],
+          ),
+        }),
+      ),
+    );
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('from the top of the stroke');
+  });
+
+  it('factory-handling: a picker that always draws from lane 1 never sends a boom', () => {
+    // Sorting the rack on the way in and then drawing from the first lane on
+    // the way out is half a store. The booms go into lanes of their own and
+    // stay there, and the jig is left holding a frame it can never marry.
+    const result = gradeProgram(
+      getLadderPuzzle('factory-handling')!,
+      store(
+        patch(STORE_TUNED, {
+          's-take-f1': R('s-take-f1', 1, 2, { '0,0': wire, '0,1': mov('K1', 'D14') }),
+          's-take-f2': null,
+          's-take-b1': null,
+          's-take-b2': null,
+          's-have-f': null,
+          's-have-b': null,
+          's-pick': R('s-pick', 1, 4, {
+            '0,0': no('M0'), '0,1': nc('X13'), '0,2': cmp('>', 'D4', 'K0'), '0,3': out('Y9'),
+          }),
+          's-alt-arm': null,
+          's-alt-clear': null,
+          's-alt-apply': null,
+        }),
+      ),
+    );
+    expect(result.solved).toBe(false);
+  });
+
+  // --- 51, the paint shop ----------------------------------------------------
+
+  const paint = (rungs: Rung[]) => section('PAINT', 'SEC3_PAINT', rungs);
+
+  it('factory-paint: a booth left cold lays no film at all', () => {
+    // Paint only cross-links between 90 and 130 C, so out of band the gun runs
+    // and nothing happens. The station looks like it is working and the film
+    // gauge never moves.
+    const result = gradeProgram(
+      getLadderPuzzle('factory-paint')!,
+      paint(patch(PAINT_TUNED, { 'p-recipe': null })),
+    );
+    expect(result.solved).toBe(false);
+  });
+
+  it('factory-paint: a flush with no drum selected faults the station', () => {
+    // The easiest rung in the section to forget, because the drum command is
+    // not a decision: it is a MOV of the order book straight through to the
+    // selector. Leave it out and the first changeover flushes onto nothing.
+    const result = gradeProgram(
+      getLadderPuzzle('factory-paint')!,
+      paint(patch(PAINT_TUNED, { 'p-drum': null })),
+    );
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('no drum selected');
+  });
+
+  it('factory-paint: spraying and purging together puts thinners on the part', () => {
+    // Both rungs written as the plain statement of what they are for - spray
+    // whenever there is a part, flush whenever the color is wrong - and at a
+    // changeover both are true at once.
+    const result = gradeProgram(
+      getLadderPuzzle('factory-paint')!,
+      paint(
+        patch(PAINT_TUNED, {
+          'p-spray': R('p-spray', 1, 5, {
+            '0,0': no('M0'), '0,1': no('X19'), '0,2': cmp('<', 'D1', 'D40'),
+            '0,3': cmp('>=', 'D0', 'K1900'), '0,4': out('Y14'),
+          }),
+          'p-purge': R('p-purge', 1, 3, {
+            '0,0': no('M0'), '0,1': cmp('<>', 'D9', 'D8'), '0,2': out('Y16'),
+          }),
+        }),
+      ),
+    );
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('still spraying');
+  });
+
+  it('factory-paint: spraying through a changeover with no purge scraps the part', () => {
+    // The failure this station is built around, because nothing reports it. The
+    // gun lays the old color down behind the new one, the part goes into the
+    // oven looking exactly like every other part, and it comes out scrap.
+    const result = gradeProgram(
+      getLadderPuzzle('factory-paint')!,
+      paint(
+        patch(PAINT_TUNED, {
+          'p-spray': R('p-spray', 1, 5, {
+            '0,0': no('M0'), '0,1': no('X19'), '0,2': cmp('<', 'D1', 'D40'),
+            '0,3': cmp('>=', 'D0', 'K1900'), '0,4': out('Y14'),
+          }),
+          'p-purge': null,
+        }),
+      ),
+    );
+    expect(result.solved).toBe(false);
+  });
+
+  // --- 52, assembly and dispatch ---------------------------------------------
+
+  const build = (assy: Rung[], test: Rung[]): LadderProject => ({
+    pous: [
+      { id: 'ASSY', name: 'SEC4_ASSEMBLY', rungs: assy },
+      { id: 'TEST', name: 'SEC5_TEST', rungs: test },
+    ],
+    tasks: [],
+  });
+
+  it('factory-assembly: the boom is pinned before the cab is on', () => {
+    const result = gradeProgram(
+      getLadderPuzzle('factory-assembly')!,
+      build(
+        patch(ASSEMBLY_TUNED, {
+          'a-pin': R('a-pin', 1, 5, {
+            '0,0': no('M0'), '0,1': no('X25'), '0,2': nc('X26'), '0,3': nc('M104'),
+            '0,4': out('Y22'),
+          }),
+        }),
+        TEST_TUNED,
+      ),
+    );
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('before the machine was ready');
+  });
+
+  it('factory-assembly: the bench is run for the whole build rather than on a boom', () => {
+    // "Run the bench while a build is in progress" is one contact away from
+    // "run the bench while there is a boom on it", and the build starts on a
+    // frame alone.
+    const result = gradeProgram(
+      getLadderPuzzle('factory-assembly')!,
+      build(
+        patch(ASSEMBLY_TUNED, {
+          'a-prep': R('a-prep', 1, 6, {
+            '0,0': no('M0'), '0,1': no('M100'), '0,2': nc('X25'), '0,3': nc('X26'),
+            '0,4': nc('M104'), '0,5': out('Y21'),
+          }),
+        }),
+        TEST_TUNED,
+      ),
+    );
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('no boom on it');
+  });
+
+  it('factory-assembly: the function test runs before the pack is up', () => {
+    const result = gradeProgram(
+      getLadderPuzzle('factory-assembly')!,
+      build(
+        ASSEMBLY_TUNED,
+        patch(TEST_TUNED, {
+          't-cycle': R('t-cycle', 1, 3, {
+            '0,0': no('M0'), '0,1': nc('X29'), '0,2': out('Y25'),
+          }),
+        }),
+      ),
+    );
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('up to pressure');
+  });
+
+  it('factory-assembly: the machine is driven off the pad still under pressure', () => {
+    // The pump held on for as long as there is a machine at test is the obvious
+    // rung and the one that takes the hose with it. The quick release has to be
+    // dropped before the dispatch, which means the pump comes off on X29.
+    const result = gradeProgram(
+      getLadderPuzzle('factory-assembly')!,
+      build(
+        ASSEMBLY_TUNED,
+        patch(TEST_TUNED, {
+          't-pump': R('t-pump', 1, 3, { '0,0': no('M0'), '0,1': no('X28'), '0,2': out('Y24') }),
+        }),
+      ),
+    );
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('still coupled and under pressure');
+  });
+
+  // --- 53, the capstone ------------------------------------------------------
+
+  /**
+   * The capstone's bargain, asserted rather than described.
+   *
+   * The plant as it is handed over **passes**, and that is the design: a player
+   * is given a line that works and asked to make it earn more, so a seed that
+   * failed would be a broken plant rather than a slow one. It simply scores
+   * badly, and the canonical scores 100 on the same three scenarios.
+   */
+  it('factory-line: the plant as handed over solves the capstone and scores badly', () => {
+    const spec = getLadderPuzzle('factory-line')!;
+    // Nothing submitted at all, so every section falls back to the seed in its
+    // own slot - which is exactly what a player who changes nothing posts.
+    const handedOver = { pous: [], tasks: [] };
+    // It has to *validate* as well as pass. A seeded section is a submission
+    // like any other once the player owns it, so a seed that broke its own
+    // ownership block would hand out a validation error nobody had earned.
+    const validation = validateProgram(spec, handedOver);
+    expect(validation.errors, JSON.stringify(validation.errors)).toEqual([]);
+    expect(validation.warnings, JSON.stringify(validation.warnings)).toEqual([]);
+    const asHandedOver = gradeProgram(spec, handedOver);
+    expect(asHandedOver.solved).toBe(true);
+    expect(asHandedOver.score).toBeLessThan(95);
+  });
+
+  it('factory-line: a weld bay that stops changing its tip jams the plant', () => {
+    // The three seconds a tip change costs are the most visible idle time in
+    // the building and the cheapest thing to delete. The bay then strikes a new
+    // weldment on a worn tip and burns back into the diffuser.
+    const spec = getLadderPuzzle('factory-line')!;
+    const result = gradeProgram(spec, {
+      pous: [
+        {
+          id: 'WELD',
+          name: 'SEC1_WELD',
+          rungs: patch(WELD_TUNED, {
+            'w-start': R('w-start', 1, 3, {
+              '0,0': no('M0'), '0,1': nc('M11'), '0,2': set('M11'),
+            }),
+          }),
+        },
+      ],
+      tasks: [],
+    });
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('worn contact tip');
   });
 });
 

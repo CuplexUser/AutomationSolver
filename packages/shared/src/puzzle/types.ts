@@ -65,7 +65,7 @@ export const CATEGORY_BLURBS: Record<PuzzleCategory, string> = {
   warehouse:
     'One stacker crane, eight rack slots and two production lines that both want feeding.',
   factory:
-    'A whole plant in five programs: weld, paint, assembly and test, scheduled by one supervisor.',
+    'A whole plant in seven programs: weld, store, paint, assembly, test and the conveyor between them.',
 };
 
 /**

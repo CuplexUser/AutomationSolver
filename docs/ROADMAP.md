@@ -314,7 +314,7 @@ alone (it strokes between slots), delivering everything to the aisle head (line 
 overflows and line B never eats), never putting anything away (goods in blocks), and running
 orders only at full rate (the rack empties out from under the lines).
 
-## Excavator plant — first puzzle shipped
+## Excavator plant — shipped
 
 An eleventh category, `factory`, and the first thing in the game that is not a machine but a
 **plant**: four stations coupled into one line, and the first puzzle written in more than one
@@ -373,12 +373,32 @@ Two bugs the fixtures found, both worth keeping in mind when writing any station
   the timer rungs ever see it low, so the second machine inherited three finished timers and the
   jig pinned a boom onto an empty fixture. Reset step timers explicitly.
 
-Still to come in this category: four more puzzles, each opening one more area, and a capstone
-graded on throughput. That work has since grown its own plant — a rack store, a portal robot,
-multi-pass welding and a four-drum booth, in a second process model (`factory-line`) that leaves
-the commissioning puzzle's plant untouched. It is detailed enough to have its own document:
-**[FACTORY.md](./FACTORY.md)** carries the vision, the station-by-station design, the plan for
-puzzles 48-52 and the current state of play. Read that rather than this section.
+**The rest of the category then grew its own plant.** A rack store, a portal robot, multi-pass
+welding, a four-drum booth with its own cure oven, a dock with a haulier, and a **twelve-zone
+accumulating conveyor the player programs as a seventh section** — all in a second process model
+(`factory-line`) that leaves the commissioning puzzle's plant provably untouched. Six more
+puzzles ship on it, one per section plus a capstone: `factory-weld` → `factory-conveyor` →
+`factory-handling` → `factory-paint` → `factory-assembly` → `factory-line`. The capstone is the
+first puzzle in the game that opens **every** section and seeds them all with a working program:
+there is nothing to commission, the line ships 23 machines a shift where it will do 37, and the
+question is which station is holding it up.
+
+Three findings from building it cut against the design intent and are worth recording here, with
+the full account in **[FACTORY.md](./FACTORY.md)** and
+**[FACTORY-LINE-DESIGN.md](./FACTORY-LINE-DESIGN.md)**:
+
+- **A station's lever is zero unless its plain program blocks whatever is setting the pace.**
+  Measured over a 300 s shift, the store and the conveyor cost the plant nothing however badly
+  they are written, and no scenario can recover it. Both puzzles grade correctness and say so.
+- **A section with no throughput lever can still have the category's best lesson.** Sorting the
+  rack is not faster; it is the only thing that makes the line's *mix* recoverable, and a shift
+  that starts with two frames in one lane proves it as a jam rather than as seconds.
+- **Six sections interacting through nine buffers is past the point where arithmetic beats a
+  run.** `factoryLineTempo.test.ts` soaks a shift per configuration and is the only place any
+  timing number in those documents comes from. Every attempt to reason one out was wrong, in
+  both directions.
+
+Read [FACTORY.md](./FACTORY.md) rather than this section.
 
 ## Next: the rest of the analog plan
 

@@ -298,10 +298,10 @@ which puzzle they have reached.
 |---|---|---|---|---|
 | 48 | ~~`factory-weld`~~ **shipped** | WELD | sequence a fixture with a positioner; alternate the mix; live with a consumable | one seam schedule per part, not one for both |
 | 49 | ~~`factory-conveyor`~~ **shipped** | **CONV** | zero-pressure accumulation; divert by type; read a line that is backing up | none, measured. Graded on correctness; see the note below |
-| 50 | `factory-handling` | STORE | sort a rack by type; drive a portal robot; decouple two neighbours | four lanes instead of one, and a picker that chooses |
-| 51 | `factory-paint` | PAINT | hold an analog band; spray to a spec; batch a changeover | a film recipe per part, and a purge hidden inside a blast |
-| 52 | `factory-assembly` | ASSY + TEST | interlock a build; take a calculated risk on supply; run a dock | the bench beside the jig, and a lorry sent for early |
-| 53 | `factory-line` | all seven, seeded plain | the plant is the puzzle | all of the above, at once, against the clock |
+| 50 | ~~`factory-handling`~~ **shipped** | STORE | sort a rack by type; drive a portal robot; decouple two neighbours | none as throughput. Sorting is what makes the mix *recoverable*; see below |
+| 51 | ~~`factory-paint`~~ **shipped** | PAINT | hold an analog band; spray to a spec; batch a changeover | a film recipe per part, worth 8 s over six machines |
+| 52 | ~~`factory-assembly`~~ **shipped** | ASSY + TEST | interlock a build; take a calculated risk on supply; run a dock | the bench beside the jig (12 s over six machines) and a lorry sent for early (5.7 s over four) |
+| 53 | ~~`factory-line`~~ **shipped** | all seven, seeded plain | the plant is the puzzle | 112.7 s for twelve machines against 170.3 s as handed over |
 
 `CONV` comes second on purpose. It is the section every later puzzle depends on being able to
 read: once a player has watched a queue grow backwards down the spine, "which station is holding
@@ -309,7 +309,7 @@ the line up" stops being a phrase in a briefing and becomes something they can s
 
 ### What puzzle 48 settled about how these are graded
 
-Worth recording, because the next five will each want to make the same mistake:
+Worth recording, because each of the five after it wanted to make the same mistake:
 
 - **The lever is scored, not graded.** `WELD_PLAIN` solves puzzle 48 and scores 88 against the
   canonical 100, which is the category's stated bargain in FACTORY.md and is what the three
@@ -446,6 +446,9 @@ is what `factory/` already is, so nothing has to be unwound to get here.
 5. ~~**Retime.**~~ Done, in two passes — see §5a. Station loads are within 0.5 s of each other, the
    line pipelines, and four of the six sections have a lever. Store and conveyor still do not, for a
    reason neither retiming nor rewriting can fix; §5a says what would.
+5b. ~~**The six puzzles.**~~ Done — 48 through 53, one per section plus the capstone, with
+   canonical answers and sixteen negative tests in `grade.test.ts`. See §5 for the table and
+   [FACTORY.md](./FACTORY.md) for what each one settled.
 6. **Re-model the cells**, one at a time, inside their fixed footprints.
 7. **Blender**, later and per cell, replacing procedural geometry where a GLB earns its download.
    The fixed footprints and named anchors in §2 are what make that a swap rather than a redesign.
@@ -556,6 +559,17 @@ rack and idle 0.79 s waiting for the portal. Nothing else on the line is within 
 - **`STORE_PLAIN`'s one lane never overflows**, because the buffer the line actually uses is the
   spine, not the rack. The rack peaks at one part in the tuned configuration and only fills when
   something downstream is already broken.
+  - **And writing puzzle 50 found the lesson anyway, in a different currency.** Sorting the rack
+    is not faster and never will be on this plant. What it is, is the only thing that makes the
+    line's *mix* recoverable. A rack run as a single queue can only hand the booth what the weld
+    bay happened to make, and the weld bay alternates, so a queue is right until the arrival
+    order is disturbed once. Start a shift with two frames standing in lane 1 — which is what a
+    real rack looks like at seven in the morning — and a queue feeds three frames in a row, the
+    booth colors them as halves of two different machines, the frame lane runs one part ahead of
+    the boom lane from then on, and the jig is holding a frame it can never marry forty seconds
+    later. A sorted rack absorbs the same two frames without a hiccup. That is puzzle 50's third
+    scenario, `STORE_PLAIN` fails it outright, and it is the discriminator this section said
+    could not be built. It could not be built as a *throughput* lever. It exists as a jam.
 
 Those two facts are the same fact from opposite ends, and the fix is a design decision rather than a
 tuning pass:
@@ -571,13 +585,20 @@ tuning pass:
    `grade.test.ts` pin those. Its `parMs` targets are calibrated to catch a sluggish spine and do
    not separate the two shipped programs, and the spec says so in as many words.
 
-Option 1 is therefore the only one left. It costs one zone, two addresses and a change to
-`stepPortal`'s place rule, and until it is done §3's claim that the spine is "the biggest lever in
-the plant" stays the one thing in this document that measurement contradicts outright.
+Option 1 is therefore the only one left for the *conveyor*, and it is now deliberately deferred
+rather than pending. It costs one zone, two addresses and a change to `stepPortal`'s place rule,
+and all six line puzzles are written against the addresses and the place rule it would move.
+Until somebody takes it, §3's claim that the spine is "the biggest lever in the plant" stays the
+one thing in this document that measurement contradicts outright, and puzzle 49 says so in its
+own spec instead of pretending otherwise.
 
 Worth noting for the capstone: from the all-plain seed only the weld bay has a lever at all
-(23 → 30 machines); every other section is worth +0 until weld is fixed. That is puzzle 53's real
-shape and is worth knowing before its briefing is written.
+(23 → 30 machines); every other section is worth +0 until weld is fixed. Puzzle 53 is written
+around that shape rather than against it. Its briefing points at `D19` and the queue instead of
+listing six equal improvements, on the grounds that a capstone claiming a line is the sum of its
+stations would teach the one thing this whole category exists to take away. Measured on its own
+three scenarios: the plant as handed over ships twelve machines in 170.3 s, fixing the weld bay
+alone takes that to 135.5 s, and the whole line run properly does it in 112.7 s.
 
 ---
 

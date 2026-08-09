@@ -333,6 +333,19 @@ units** and **tasks** over the existing model without touching it:
     - `FACTORY_SECTIONS` exports the POU ids the puzzles use (`SUP`/`WELD`/`PAINT`/`ASSY`/
       `TEST`). They are a contract, not a convention: the plant view frames a bay by the id of
       the selected section.
+    - **Used by the commissioning tutorial only.** Everything after it runs `factory-line`.
+  - `factory-line` — the same plant rebuilt at honest scale, and the model every factory puzzle
+    after the tutorial declares. Seven sections (`SUP`/`WELD`/`STORE`/`PAINT`/`ASSY`/`TEST`/
+    `CONV`), 47 in / 42 out / 22 registers, and three transport mechanisms the program drives:
+    a four-lane rack store, a portal robot over the aisle, and a **twelve-zone accumulating
+    conveyor** that is a program section in its own right. Two rules carry the spine: a part
+    only enters a zone while that zone is running and clear, and a station cannot lift a part
+    off a zone that is moving. Split from `factory` rather than feature-flagged onto it because
+    the *flow* differs rather than the fittings, which is also what leaves puzzle 47 provably
+    untouched. `LINE_SECTIONS`, `LINE_LIMITS` and `LINE_ZONES` are the contracts the 3D scene
+    and the briefings both quote. **[FACTORY.md](./FACTORY.md)** and
+    **[FACTORY-LINE-DESIGN.md](./FACTORY-LINE-DESIGN.md)** carry this one in full; it is the
+    only process model deep enough to need its own documents.
   - `elevator` — continuous car position across 3 floors; derives the floor sensors `X3`/`X4`/`X5`.
   - `elevator5` — the same continuous-position idea generalized to 5 floors with per-floor call
     buttons (`X0`–`X4`), floor sensors (`X10`–`X14`), and an optional door (feature-detected by
@@ -476,10 +489,16 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 46 | `asrs-replenish` | hard | a second job in the opposite direction — put-away into the nearest empty slot, without letting goods in back up | warehouse |
 | 47 | `asrs-dual-cycle` | hard | capstone: three demands on one crane, trips planned as a list of stops, a stop switch, and dual-command cycling | warehouse |
 | 48 | `factory-supervisor` | tutorial | the first puzzle written in **sections**: four station POUs ship working and read-only, the player writes the supervisor whose one bit lets them run | factory |
+| 49 | `factory-weld` | hard | the rebuilt line's first bay: sequence a fixture with a positioner, alternate the mix, and live with a consumable tip | factory-line |
+| 50 | `factory-conveyor` | hard | twelve zones of zero-pressure accumulation, a diverter that reads the part, and the rule that you cannot pick one off a moving belt | factory-line |
+| 51 | `factory-handling` | hard | sort a rack by type and drive a portal robot, so a shift that starts out of order can still be recovered | factory-line |
+| 52 | `factory-paint` | hard | hold an analog cure band, spray each part to its own film spec, and change color without stopping or scrapping | factory-line |
+| 53 | `factory-assembly` | hard | two sections at once: interlock a build, run the bench beside the jig, and send for a lorry ten seconds before it is needed | factory-line |
+| 54 | `factory-line` | hard | capstone: **all seven sections open and seeded with the working plant**, graded on how much faster it ships than the line you were handed | factory-line |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 `elevator`,
 15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`, 29–32 `drill`,
-33–37 `process-control`, 38–41 `motion`, 42–47 `warehouse`, 48 `factory`.
+33–37 `process-control`, 38–41 `motion`, 42–47 `warehouse`, 48–54 `factory`.
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,

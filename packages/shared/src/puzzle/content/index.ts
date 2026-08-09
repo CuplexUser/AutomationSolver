@@ -48,6 +48,10 @@ import { asrsDualCycle } from './46-asrs-dual-cycle.js';
 import { factorySupervisor } from './47-factory-supervisor.js';
 import { factoryWeld } from './48-factory-weld.js';
 import { factoryConveyor } from './49-factory-conveyor.js';
+import { factoryHandling } from './50-factory-handling.js';
+import { factoryPaint } from './51-factory-paint.js';
+import { factoryAssembly } from './52-factory-assembly.js';
+import { factoryLineCapstone } from './53-factory-line.js';
 
 /**
  * The excavator line's plant definition, ahead of the puzzles that use it.
@@ -131,6 +135,10 @@ export const PUZZLES: PuzzleSpec[] = [
   factorySupervisor,
   factoryWeld,
   factoryConveyor,
+  factoryHandling,
+  factoryPaint,
+  factoryAssembly,
+  factoryLineCapstone,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

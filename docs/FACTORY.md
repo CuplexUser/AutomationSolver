@@ -4,12 +4,13 @@ Everything about the `factory` category in one place: what it is for, what exist
 is half built, and what is left. [FEATURE-MAP.md](./FEATURE-MAP.md) is the whole codebase's
 "what exists"; this is the one category deep enough to need its own.
 
-> **The plant is being rebuilt.** [FACTORY-LINE-DESIGN.md](./FACTORY-LINE-DESIGN.md) is the
-> locked specification for the new floor: 55 x 38 m, a **fully zoned conveyor the player
-> programs** as a seventh section, and all six stations retimed so the bottleneck moves. It
-> supersedes this document's layout, its I/O totals, its station timings and the "deliberately
-> left out" note about a conveyor spine. What stays true here is the vision, the two-plants
-> decision, and the plain-versus-tuned pairing.
+> **The plant has been rebuilt, and the category is complete.**
+> [FACTORY-LINE-DESIGN.md](./FACTORY-LINE-DESIGN.md) is the specification the new floor was
+> built to: 55 x 38 m, a **fully zoned conveyor the player programs** as a seventh section, and
+> all six stations retimed so the bottleneck moves. It supersedes this document's layout, its
+> I/O totals, its station timings and the "deliberately left out" note about a conveyor spine.
+> What stays true here is the vision, the two-plants decision, and the plain-versus-tuned
+> pairing. Seven puzzles ship, 47 through 53, and *Progress* below is the live state.
 
 ## The vision
 
@@ -217,21 +218,27 @@ All additive; nothing existing changed behavior.
 - **Puzzle 47 `factory-supervisor`** — the commissioning tutorial. Four stations ship working
   and read-only; the player writes the supervisor whose one bit lets them run. Unchanged by all
   of the above and verified so.
-
-### Built, tested, not yet wired to a puzzle
-- `processes/factoryLine.ts` — the six-station plant, complete.
-- `content/factory-line-plant.ts` — device map, analog ranges, per-section ownership blocks,
-  the supervisor program.
-- `content/factory-line-programs.ts` — all five stations in plain and tuned form, 118 rungs.
-- `processes/factoryLine.test.ts` — 48 tests: dt-independence for the fixture and the booth's
-  integrators, every station's interlocks and faults, and a **soak** that runs all six sections
-  together for a three-minute shift in all seven shipped combinations (all tuned, all plain, and
-  each station plain against tuned neighbors). That soak is the guardrail the per-station tests
-  cannot be: both bugs below ran clean for a minute apiece before they stopped the line for good,
-  because each section was correct on its own and only collided once the buffers filled.
-- Repo is green: `npm test` (365 tests), `npm run typecheck`, `npm run lint`.
-- Tuned end to end: **9.1 s/machine**, no faults, no scrap. Plain end to end: 11.5 s/machine —
-  a quarter of the output left on the floor, which is what the pairing promised.
+- **Puzzles 48 to 53, the whole line.** 48 `factory-weld`, 49 `factory-conveyor`,
+  50 `factory-handling`, 51 `factory-paint`, 52 `factory-assembly` and 53 `factory-line`. Every
+  section of the plant is opened by exactly one of them, and the capstone opens all seven at
+  once. Each canonical answer is the tuned program the plant's own soak test measures, imported
+  from `factory-line-programs.ts` rather than copied out, so a puzzle cannot quietly stop being
+  the one that was measured. Each ships negative tests in `grade.test.ts` for the mistakes it is
+  actually about, sixteen of them across the four new puzzles.
+- **The plant itself.** `processes/factoryLine.ts` (seven sections, 47 in / 42 out / 22
+  registers), `content/factory-line-plant.ts` (device map, analog ranges, ownership blocks),
+  `content/factory-line-programs.ts` (every section in plain and tuned form) and
+  `content/factory-line-sections.ts` (the seven slots, their briefs and the scan order, written
+  once so six puzzles cannot commission six slightly different factories).
+- `processes/factoryLine.test.ts` — dt-independence for the fixture and the booth's integrators,
+  every station's interlocks and faults, and a **soak** that runs all seven sections together
+  for a three-minute shift in every shipped combination. `factoryLineTempo.test.ts` is the
+  instrument for the levers. Both are guardrails the per-station tests cannot be: the two bugs
+  below ran clean for a minute apiece before they stopped the line for good.
+- Repo is green: `npm test` (470 shared + 36 server), `npm run typecheck`, `npm run lint`.
+- Tuned end to end: **8.1 s/machine**, 37 machines a shift, no faults and no scrap. The plant as
+  the capstone hands it over: 23 machines, which is the quarter of the output the pairing
+  promised and then some.
 
 ### Fixed
 - **The portal robot's step latches collided with the rack's room flags.** `PORTAL_CYCLE` used
@@ -247,25 +254,32 @@ All additive; nothing existing changed behavior.
   skid holding the next part and drops it within ~400 ms of the booth clearing. The first
   changeover therefore deadlocked the line: a part in the booth that could not be sprayed
   (`D9 <> D8`) and a gun that could not be flushed. Regated on `nc Y14` like the tuned version.
+- **The capstone's opening state seeded a plant that broke itself.** The first draft of puzzle
+  53's third scenario started the shift with two frames standing in lane 1, borrowed from puzzle
+  50 because it looked like a good disturbance. It is, and it is puzzle 50's: a queue-run store
+  fed two frames in a row and `ASSEMBLY_PLAIN`, which has no color guard, pinned a mismatched
+  pair fifty seconds in. A capstone whose seed jams is not a slow answer to improve on but a
+  broken plant handed over as if it worked, so the rack seeding came out and the yard, the lanes
+  and the outfeed run stayed.
 
 ### Known open
-- **Only the weld bay and final assembly have a throughput lever.** Measured over a 300 s shift,
-  swapping one station from tuned to plain against tuned neighbors costs: weld 33 → 26 machines,
-  assembly 33 → 31, and store, paint and test **33 → 33, exactly**. From all-plain, tuning the
-  weld bay alone recovers 26 → 31 and tuning any other station alone recovers nothing at all.
-  The line is weld-paced, so three of the five station puzzles currently have a lever that
-  measures zero and the capstone reduces to "fix the weld bay". See *Balance* below.
+- **Two of the seven sections have a throughput lever of zero**, and it is a property of the
+  plant rather than of the programs. Measured over a 300 s shift, swapping one section from
+  tuned to plain costs weld 14 machines, assembly 6, paint 2, test 2, and store and conveyor
+  **nothing at all**. Both of those puzzles therefore grade correctness, and both say so in
+  their own specs rather than setting a `parMs` that pretends otherwise. The one change that
+  would fix it is FACTORY-LINE-DESIGN.md §5a's option 1, a zone between the portal and the
+  booth skid, and it is deliberately not taken now: it moves an address and a place rule that
+  six shipped puzzles are written against.
+- **Correctness is 85 of the 100 marks**, so the plant as handed over scores 93 on the capstone
+  and the tuned line scores 100. That gap is the game's scoring model rather than anything
+  about this category, and every other capstone sits in the same place.
 
 ### Not started
-- The balance pass described below, which the specs depend on.
-- The five puzzle specs and briefings.
-- Canonical solutions in `grade.test.ts`, and the negative tests that prove the plausible wrong
-  answers fail.
-- Par calibration for each station and for the capstone.
-- The 3D scene: `Factory3D` and `features/sim/factory/` currently draw the five-section plant.
-  The rack wall, the portal robot, the drum bank, the dock and the conveyor runs are all still
-  to build, along with the fencing, hazard striping, floor markings and per-bay HMI panels that
-  make it read as a shop floor rather than four objects on a slab.
+- **Re-modelling the cells** (FACTORY-LINE-DESIGN.md §8, steps 6 and 7). The scene draws all
+  eight cells, the spine and every zone's contents live, inside the footprints §2 fixes; what
+  is left is detail inside those boxes, one cell at a time, and a Blender GLB per cell where
+  one earns its download.
 
 ## The plan
 
@@ -275,21 +289,45 @@ All additive; nothing existing changed behavior.
 > puzzle 48 settled about how these are graded. The five-puzzle table that stood here is gone
 > rather than corrected, because two tables is how the numbering drifted in the first place.
 
-Status: **48 `factory-weld` and 49 `factory-conveyor` are shipped.** The seven section slots,
-their briefs and the scan order live in `content/factory-line-sections.ts`, so the four that
-follow declare which section they open and inherit the rest.
+Status: **all six are shipped**, 48 through 53. The seven section slots, their briefs and the
+scan order live in `content/factory-line-sections.ts`, so each puzzle declares which section it
+opens and inherits the rest.
 
-One result from 49 belongs here rather than only in the design doc, because it revises job 3 of
-the vision above: **not every section has a lever, and the conveyor has none at all.** Its two
-programs reach every milestone on the same scan under every load that could be constructed for
-them. The puzzle grades correctness instead, which is ample, and says so in its own spec rather
-than setting a `parMs` that pretends to measure something.
+Two results belong here rather than only in the design doc, because between them they revise
+job 3 of the vision above.
 
-**Grading.** Correctness is the pass and unlocks what follows, as everywhere else. Throughput
-takes the same 15 marks and the same `PAR_SLACK` taper the rest of the game uses. Station
-puzzles grade against that station's own output (`welded`, `painted`) so a par is not silently
-set by a neighbor; the capstone grades time to ship a fixed number of machines, which is the
-same question as output in a fixed window and reuses `parMs` rather than inventing an axis.
+**Not every section has a lever, and two have none at all.** The conveyor's two programs reach
+every milestone on the same scan under every load that could be constructed for them, and the
+store's plain program costs the plant nothing over a balanced shift. Both puzzles grade
+correctness instead, and there is plenty of it: twelve zones and a diverter that crashes if it
+reads the part wrong; a portal with two interlocks that each drop a part on the floor.
+
+**A section with no lever can still have a lesson with teeth.** The store's is the one the
+whole category is built on, and it turned out to be a *correctness* property rather than a
+timing one. Sorting the rack is not faster. What it is, is the only thing that makes the line's
+mix recoverable: a rack run as a single queue can only hand the booth what the weld bay
+happened to make, and a shift that starts with two frames left in lane 1 then feeds two frames
+in a row, colors them as halves of two different machines, and drifts the two painted lanes a
+machine apart about forty seconds later, in a bay nobody was looking at. Puzzle 50's third
+scenario is exactly that shift, and it is the discriminator the tempo harness said could not
+exist. It could not exist *as a throughput lever*. It exists as a jam.
+
+**Grading, as built.** Correctness is the pass and unlocks what follows, as everywhere else.
+Throughput takes the same 15 marks and the same `PAR_SLACK` taper the rest of the game uses.
+Three rules came out of actually writing the six:
+
+1. **Grade the milestone the station owns, and reach it with `until`.** Every step waits on a
+   milestone rather than a deadline, so two equally correct programs are not separated by their
+   pace. A station's own counter (`welded`, `painted`, `sprayed`, `purges`) is what a scenario
+   waits on where it can, and `shipped` only where the whole line is the point.
+2. **Measure both programs against the scenario before writing the Acceptance block.** Puzzle 48
+   learned this by grading a boom's second pass as a tip-life defect that both programs passed;
+   puzzle 51 learned the same thing in reverse, where four parts was too short a run for the
+   film recipe to show and twelve was enough. Every `parMs` in this category carries the two
+   measured numbers in a comment beside it.
+3. **A par is a claim, so do not make one you cannot support.** Where the two programs finish on
+   the same scan, the spec says so in as many words rather than setting a target that pretends
+   to measure something. That is puzzle 49 outright and puzzle 50's first two scenarios.
 
 ## Balance
 
