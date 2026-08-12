@@ -20,6 +20,7 @@ import { MachineView } from '../../features/sim/MachineView';
 import { ReplayBar } from '../../features/sim/ReplayBar';
 import { useReplay, type ReplayController } from '../../features/sim/useReplay';
 import { useSimRunner } from '../../features/sim/useSimRunner';
+import { SlotsPanel } from '../../features/slots/SlotsPanel';
 import { useActiveSlot } from '../../features/slots/useActiveSlot';
 import {
   cascadeBox,
@@ -38,8 +39,10 @@ import type { PlayProps } from './LadderPlay';
 const HMI_WINDOW = '__hmi';
 /** Window id for the project's globals table — the interface between sections. */
 const GLOBALS_WINDOW = '__globals';
+/** Window id for save-slot switching and export/import. */
+const SLOTS_WINDOW = '__slots';
 /** Windows that are not a POU, and so must not be handed a ladder editor. */
-const TOOL_WINDOWS = new Set<string>([HMI_WINDOW, GLOBALS_WINDOW]);
+const TOOL_WINDOWS = new Set<string>([HMI_WINDOW, GLOBALS_WINDOW, SLOTS_WINDOW]);
 
 /**
  * The plant workspace.
@@ -134,6 +137,7 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
   const windowTitle = (id: string): string => {
     if (id === HMI_WINDOW) return 'Operator panel';
     if (id === GLOBALS_WINDOW) return 'Globals';
+    if (id === SLOTS_WINDOW) return 'Save slots';
     return project.pous.find((p) => p.id === id)?.name ?? slots.find((s) => s.id === id)?.name ?? id;
   };
   const minimizedTabs: MinimizedTab[] = windows.open
@@ -180,6 +184,16 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
           >
             <PanelIcon size={16} />
             <span>Operator panel</span>
+          </button>
+          <button
+            className={`rail-tool${windows.isOpen(SLOTS_WINDOW) ? ' on' : ''}`}
+            onClick={() => windows.toggle(SLOTS_WINDOW)}
+            aria-pressed={windows.isOpen(SLOTS_WINDOW)}
+            disabled={!user}
+            title={user ? 'Switch, export or import save slots for this project' : 'Sign in to save'}
+          >
+            <SaveIcon size={16} />
+            <span>Save slots{activeSlot.slots.length > 0 ? ` (${activeSlot.slots.length})` : ''}</span>
           </button>
           <button
             className="rail-quiet"
@@ -393,6 +407,32 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
             scope={GLOBAL_SCOPE}
             title="Globals"
             suggestions={missingGlobal}
+          />
+        </FloatingWindow>
+      )}
+
+      {windows.isOpen(SLOTS_WINDOW) && (
+        <FloatingWindow
+          id={SLOTS_WINDOW}
+          storageKey={`ws.win.${spec.slug}.slots`}
+          title="Save slots"
+          subtitle="the whole project — every POU, task and global"
+          initial={{ x: 160, y: 110, w: 380, h: 480 }}
+          focused={windows.focused === SLOTS_WINDOW}
+          z={10 + windows.depth(SLOTS_WINDOW)}
+          onFocus={() => windows.focus(SLOTS_WINDOW)}
+          onClose={() => windows.close(SLOTS_WINDOW)}
+          minimized={windows.isMinimized(SLOTS_WINDOW)}
+          onMinimize={() => windows.minimize(SLOTS_WINDOW)}
+        >
+          <SlotsPanel
+            spec={spec}
+            slots={activeSlot.slots}
+            activeId={activeSlot.activeId}
+            program={project}
+            emptyProgram={initialProject(spec)}
+            onSelect={(id) => activeSlot.setActive(id)}
+            onClose={() => windows.close(SLOTS_WINDOW)}
           />
         </FloatingWindow>
       )}

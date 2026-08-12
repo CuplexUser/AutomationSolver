@@ -162,16 +162,21 @@ Raised from play against the plant workspace, not from a design doc — see
 [`docs/FEATURE-MAP.md`](docs/FEATURE-MAP.md) §5 "The plant workspace" for what exists today.
 None of this touches the simulation engine.
 
-- [ ] **High prio: give the plant workspace project export/import and save-slot switching.**
-      `features/slots/SlotsPanel.tsx` + `slotFile.ts` already export/import a full `LadderProject`
-      (POUs, tasks, globals) as a `.ladder` file, but the plant workspace (`FactoryPlay.tsx` /
-      `PouExplorer.tsx`) never mounts `SlotsPanel`, so a factory-line player has no way to reach
-      it — and the feature itself is off by default behind `settings.enableImportExport`. Two
-      separable pieces: wire `SlotsPanel` (or an equivalent) into the plant workspace so
-      multi-POU projects can be switched between save slots and exported/imported the same way
-      single-program puzzles already can, and separately decide whether `enableImportExport`
-      should default on. → `packages/client/src/features/slots/SlotsPanel.tsx`, `slotFile.ts`,
-      `pages/play/FactoryPlay.tsx`
+- [x] **High prio: give the plant workspace project export/import and save-slot switching.**
+      `FactoryPlay.tsx` gained a `__slots` tool window (same idiom as the operator panel and
+      globals — a rail button toggles a `FloatingWindow`) wrapping the existing `SlotsPanel`
+      unmodified, wired to the workspace's own `project`/`initialProject(spec)`. Left
+      `enableImportExport` off by default: it's a cross-cutting setting shared with every
+      single-program puzzle, and flipping its default is a separate call from wiring the panel
+      in. Verified end-to-end on `factory-conveyor`: switch, create and minimize/restore a slot,
+      then confirm export/import appear only once the setting is turned on.
+      Along the way, found and fixed a real bug this surfaced: the server's `projectSchema`
+      predated symbols and capped `device`/`operands` at 8 characters (rejects any declared name
+      longer than that — the excavator line's own converted programs use names up to 20) and had
+      no `vars`/`globals` fields at all, so a multi-POU save would either hard-fail or silently
+      drop every declaration. Fixed in `validation.ts`, with a regression test in `app.test.ts`.
+      → `packages/client/src/features/slots/SlotsPanel.tsx`, `pages/play/FactoryPlay.tsx`,
+      `packages/server/src/validation.ts`
 - [x] **Fix: picking a symbol from address-field autocomplete silently no-ops.** Root cause was
       `slotAccepts` calling `parseAddress` alone, which only matches literal addresses — a picked
       name never got past it. `CellFields.tsx` gained `resolveDeviceKind` (address or, given

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type { LadderElement, LadderProgram, WiringDoc } from '@automationsolver/shared';
+import type { LadderElement, LadderProgram, LadderPuzzleSpec, WiringDoc } from '@automationsolver/shared';
 
 // Use an isolated in-memory DB for the test run.
 process.env.DB_PATH = ':memory:';
@@ -606,6 +606,40 @@ describe('save slots', () => {
       .post('/api/puzzles/direct-control/slots')
       .send({ program: directControlSolution });
     expect(res.status).toBe(401);
+  });
+
+  it('round-trips a multi-POU project with declared names and globals', async () => {
+    // Regression for a schema that predated symbols: `device`/`operands` were
+    // capped at 8 characters (fine for a literal address, not for a declared
+    // name like the excavator line's own `WeldOutfeedOccupied`) and `vars`/
+    // `globals` were missing from the schema entirely, so zod silently
+    // stripped every declaration on save.
+    const { getPuzzle, initialProject } = await import('@automationsolver/shared');
+    const spec = getPuzzle('factory-conveyor') as LadderPuzzleSpec;
+    const project = initialProject(spec);
+    const editablePou = project.pous.find((p) => spec.pous!.find((s) => s.id === p.id)?.editable)!;
+    editablePou.vars = [{ name: 'AVeryLongDeclaredNameOverEightChars', kind: 'bool', address: 'M160' }];
+    editablePou.rungs[0] = {
+      id: 'r1',
+      rows: 1,
+      cols: 2,
+      cells: [[{ type: 'contact-no', device: 'AVeryLongDeclaredNameOverEightChars' }, { type: 'coil-out', device: 'Y28' }]],
+      vlinks: [],
+    };
+    project.globals = [{ name: 'AnotherLongGlobalNameHere', kind: 'bool', address: 'M170' }];
+
+    const agent = request.agent(app);
+    await registerAndLogin(agent, 'symbols-slots@example.com', 'password123');
+
+    const create = await agent.post('/api/puzzles/factory-conveyor/slots').send({ program: project });
+    expect(create.status).toBe(201);
+
+    const loaded = await agent.get(`/api/puzzles/factory-conveyor/slots/${create.body.id}`);
+    expect(loaded.status).toBe(200);
+    const savedPou = loaded.body.program.pous.find((p: { id: string }) => p.id === editablePou.id);
+    expect(savedPou.vars).toEqual(editablePou.vars);
+    expect(savedPou.rungs[0].cells[0][0].device).toBe('AVeryLongDeclaredNameOverEightChars');
+    expect(loaded.body.program.globals).toEqual(project.globals);
   });
 });
 
