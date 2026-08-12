@@ -162,6 +162,15 @@ Raised from play against the plant workspace, not from a design doc — see
 [`docs/FEATURE-MAP.md`](docs/FEATURE-MAP.md) §5 "The plant workspace" for what exists today.
 None of this touches the simulation engine.
 
+- [x] **Unpinning the ladder toolbar leaves no way back to it but scrolling all the way up.**
+      Reported live against a POU window: unpinned is meant to let the toolbar scroll away with
+      the program, but a long section then buries it with no shortcut back. `LadderEditor.tsx`
+      now watches `paletteRef` with an `IntersectionObserver` and, only once unpinned and
+      actually out of view, renders a small sticky `▴ Toolbar` strip that scrolls it back into
+      view on click. Same fix serves both contexts the toolbar renders in (the play column's
+      `.play-main` and a window's own `.ladder-scroll`), since intersection is clipped by
+      whichever one actually scrolls either way. → `packages/client/src/features/ladder/LadderEditor.tsx`,
+      `styles/ladder-editor.css`
 - [x] **High prio: give the plant workspace project export/import and save-slot switching.**
       `FactoryPlay.tsx` gained a `__slots` tool window (same idiom as the operator panel and
       globals — a rail button toggles a `FloatingWindow`) wrapping the existing `SlotsPanel`

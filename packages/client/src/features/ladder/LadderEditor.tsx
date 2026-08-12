@@ -278,6 +278,21 @@ export function LadderEditor({
   const [floatingEditor, setFloatingEditor] = usePersistedBool('ladder.floatingEditor', false);
   const [paletteOpen, setPaletteOpen] = usePersistedBool('ladder.paletteOpen', true);
 
+  // Unpinned, the toolbar scrolls away with the program by design — but a long
+  // program then leaves no way back to it short of scrolling all the way up.
+  // Watched against the viewport rather than a specific scroll ancestor because
+  // which element actually scrolls differs by context (the play column's
+  // `.play-main`, a window's own `.ladder-scroll`), and intersection is clipped
+  // by whichever one it is either way.
+  const [paletteVisible, setPaletteVisible] = useState(true);
+  useEffect(() => {
+    const el = paletteRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+    const obs = new IntersectionObserver(([entry]) => setPaletteVisible(entry!.isIntersecting));
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   /** Scale the ladder so the whole program fills the visible area — big on a short program. */
   const fitZoom = useCallback(() => {
     const el = scrollRef.current;
@@ -931,12 +946,35 @@ export function LadderEditor({
     </div>
   );
 
+  // Only when there's actually somewhere to scroll back to: pinned, the
+  // toolbar never leaves view in the first place.
+  const peek = !stickyPalette && !paletteVisible && (
+    <button
+      type="button"
+      className="palette-peek"
+      onClick={() => paletteRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+      title="Scroll back up to the toolbar"
+    >
+      ▴ Toolbar
+    </button>
+  );
+
   return (
     <div className="ladder-editor">
-      {!windowed && toolbar}
+      {!windowed && (
+        <>
+          {toolbar}
+          {peek}
+        </>
+      )}
 
       <div className="ladder-scroll inset" ref={scrollRef}>
-        {windowed && toolbar}
+        {windowed && (
+          <>
+            {toolbar}
+            {peek}
+          </>
+        )}
         {/* Scaling the canvas (rather than the scroller) keeps the scrollable area
             correct at any zoom — the compensating width undoes the transform. */}
         <div className="ladder-canvas" style={{ transform: `scale(${zoom})`, width: `${100 / zoom}%` }}>

@@ -27,6 +27,32 @@
   top: 0;
   z-index: 5;
 }
+/* Unpinned, the toolbar scrolls away like the rest of the program — this is
+   the way back, once it has. Only rendered once it's actually needed, so it
+   never adds a strip of dead chrome to the common (pinned) case. */
+.palette-peek {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 3px 0;
+  border: none;
+  border-bottom: 1px solid var(--edge);
+  background: var(--panel, #14171c);
+  color: var(--ink-dim);
+  font-size: 10.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.palette-peek:hover {
+  color: var(--live);
+  border-bottom-color: var(--live);
+}
 .palette-row {
   display: flex;
   flex-direction: column;
