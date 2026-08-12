@@ -233,6 +233,36 @@ SECTION_FOCUS.SUP = PLANT_FOCUS;
 const FLY_MS = 800;
 
 /**
+ * Where a preset's eye actually lands, given a viewport aspect and an FOV.
+ *
+ * Pure and THREE-free on purpose: `SectionCamera` calls it every time the
+ * viewport changes, and the scene-audit test (`tests/scene-audit.spec.ts`,
+ * via `audit.ts`'s `dumpCameraEyes`) calls the exact same function rather than
+ * a second copy of this arithmetic, so the two cannot silently drift apart.
+ */
+export function resolveFocusEye(
+  focus: Focus,
+  aspect: number,
+  fovDeg: number,
+): { position: [number, number, number]; target: [number, number, number] } {
+  const vTan = Math.tan((fovDeg * Math.PI) / 360);
+  const hTan = vTan * (aspect || 1.6);
+  let dist = Math.max(focus.halfWidth / hTan, focus.halfHeight / vTan);
+  if (focus.maxDistance != null) dist = Math.min(dist, focus.maxDistance);
+  const [tx, ty, tz] = focus.center;
+  const [dx, dy, dz] = focus.dir;
+  const len = Math.hypot(dx, dy, dz) || 1;
+  let ex = tx + (dx / len) * dist;
+  let ey = ty + (dy / len) * dist;
+  let ez = tz + (dz / len) * dist;
+  // Ceiling before floor, so a preset carrying both cannot be pushed through
+  // its own roof by a narrow panel: the floor is the one that has to win.
+  if (focus.maxEyeY != null) ey = Math.min(ey, focus.maxEyeY);
+  if (focus.minEyeY != null) ey = Math.max(ey, focus.minEyeY);
+  return { position: [ex, ey, ez], target: [tx, ty, tz] };
+}
+
+/**
  * Flies the camera to the focused bay.
  *
  * Distance is derived from the live viewport rather than baked into a position,
@@ -259,18 +289,8 @@ export function SectionCamera({ focus }: { focus: Focus }) {
 
   const goal = useMemo(() => {
     const cam = camera as THREE.PerspectiveCamera;
-    const vTan = Math.tan((cam.fov * Math.PI) / 360);
-    const hTan = vTan * (width / height || 1.6);
-    let dist = Math.max(focus.halfWidth / hTan, focus.halfHeight / vTan);
-    if (focus.maxDistance != null) dist = Math.min(dist, focus.maxDistance);
-    const target = new THREE.Vector3(...focus.center);
-    const dir = new THREE.Vector3(...focus.dir).normalize();
-    const position = target.clone().addScaledVector(dir, dist);
-    // Ceiling before floor, so a preset carrying both cannot be pushed through
-    // its own roof by a narrow panel: the floor is the one that has to win.
-    if (focus.maxEyeY != null) position.y = Math.min(position.y, focus.maxEyeY);
-    if (focus.minEyeY != null) position.y = Math.max(position.y, focus.minEyeY);
-    return { target, position };
+    const { position, target } = resolveFocusEye(focus, width / height, cam.fov);
+    return { target: new THREE.Vector3(...target), position: new THREE.Vector3(...position) };
   }, [camera, focus, width, height]);
 
   // Retargeting from wherever the camera currently is, rather than from a fixed

@@ -55,17 +55,24 @@
   border-color: color-mix(in srgb, var(--live) 45%, transparent);
   background: color-mix(in srgb, var(--live) 7%, transparent);
 }
+/* Wide enough for a declared name at its full 24-character limit
+   (`NAME_RE` in symbols.ts), not just a short example — 132px still clipped
+   "PickLaneSelect" against its own box edge, and a name a puzzle's own
+   spine or supervisor actually uses can run longer than that. */
 .field.compact {
-  width: 84px;
+  width: 200px;
   padding: 6px 8px;
 }
 .field.preset {
   width: 70px;
 }
-/* Word-instruction operands: a register (D10) or a constant (K500). */
+/* Word-instruction operands: a register (D10), a constant (K500), or —
+   once declared — a name for a D register. Narrower than the device box:
+   K-constants and D-addresses are still the common case here. No forced
+   uppercase: it used to visually shout a typed K/D value before blur
+   normalized it, but it just as loudly mangles a declared name's case. */
 .field.operand {
-  width: 76px;
-  text-transform: uppercase;
+  width: 160px;
 }
 /* "Placed — now give it an address." Advisory, not a rejection: amber like a
    caution lamp, never the red of a failure. */
@@ -466,6 +473,39 @@
   font-size: 9px;
   line-height: 1;
   opacity: 0.75;
+}
+/* --- Cell right-click menu --------------------------------------------------
+   Positioned at the click point in viewport coordinates, so it has to live
+   outside `.ladder-canvas` (see the comment at its call site) — a transformed
+   ancestor would turn `position: fixed` into fixed-to-that-ancestor instead. */
+.cell-menu {
+  position: fixed;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+.cell-menu-item {
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink);
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+}
+.cell-menu-item:hover {
+  background: color-mix(in srgb, var(--live) 14%, transparent);
+}
+.cell-menu-item.danger:hover {
+  background: color-mix(in srgb, var(--stop) 14%, transparent);
+  color: var(--stop);
 }
 .symbol-list {
   position: absolute;

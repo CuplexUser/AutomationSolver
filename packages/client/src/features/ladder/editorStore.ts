@@ -59,6 +59,14 @@ interface EditorState {
   removeRung: (pou: string, index: number) => void;
   addRow: (pou: string, index: number) => void;
   addCol: (pou: string, index: number) => void;
+  /** Open a blank column at `col` in the given rung, shifting it and everything
+   * after it right — so a new series element can be dropped in the gap instead
+   * of retyping the whole rest of the rung one column over. */
+  insertCol: (pou: string, rungIndex: number, col: number) => void;
+  /** Swap two adjacent columns in a rung, cells and branches both. */
+  moveCol: (pou: string, rungIndex: number, col: number, direction: -1 | 1) => void;
+  /** Swap two adjacent rows in a rung, cells and branches both. */
+  moveRow: (pou: string, rungIndex: number, row: number, direction: -1 | 1) => void;
 
   /**
    * Declarations. `scope` is a POU id for a local, or `GLOBAL_SCOPE` for one
@@ -262,6 +270,70 @@ export const useEditor = create<EditorState>((set, get) => ({
       }),
       dirty: true,
     })),
+
+  insertCol: (pou, rungIndex, col) =>
+    set((s) => ({
+      project: updateRung(s.project, pou, rungIndex, (r) => {
+        if (r.cols >= 12) return r;
+        r.cols += 1;
+        for (const row of r.cells) row.splice(col, 0, null);
+        // A vlink's `col` is a node boundary in [0, cols]; one at or past the
+        // insertion point moves with the column it used to sit in front of, or
+        // the branch it drew would silently jump to whatever slid into its place.
+        r.vlinks = r.vlinks.map((v) => (v.col >= col ? { ...v, col: v.col + 1 } : v));
+        return r;
+      }),
+      dirty: true,
+    })),
+
+  moveCol: (pou, rungIndex, col, direction) =>
+    set((s) => {
+      const rung = rungsOf(s.project, pou)[rungIndex];
+      if (!rung) return s;
+      const target = col + direction;
+      if (target < 0 || target >= rung.cols) return s;
+      let selected = s.selected;
+      if (selected && selected.pou === pou && selected.rung === rungIndex) {
+        if (selected.col === col) selected = { ...selected, col: target };
+        else if (selected.col === target) selected = { ...selected, col };
+      }
+      return {
+        // Cell contents swap; vlinks are left alone. A vlink's `col` names a
+        // node boundary, not an element, so it stays exactly where it was
+        // drawn — the two swapped columns slide past the branch wire rather
+        // than dragging it along.
+        project: updateRung(s.project, pou, rungIndex, (r) => {
+          for (const row of r.cells) [row[col], row[target]] = [row[target], row[col]];
+          return r;
+        }),
+        selected,
+        dirty: true,
+      };
+    }),
+
+  moveRow: (pou, rungIndex, row, direction) =>
+    set((s) => {
+      const rung = rungsOf(s.project, pou)[rungIndex];
+      if (!rung) return s;
+      const target = row + direction;
+      if (target < 0 || target >= rung.rows) return s;
+      let selected = s.selected;
+      if (selected && selected.pou === pou && selected.rung === rungIndex) {
+        if (selected.row === row) selected = { ...selected, row: target };
+        else if (selected.row === target) selected = { ...selected, row };
+      }
+      return {
+        // Same reasoning as moveCol: a vlink's `row` names a boundary between
+        // two row positions, so swapping what those positions hold needs no
+        // change to it.
+        project: updateRung(s.project, pou, rungIndex, (r) => {
+          [r.cells[row], r.cells[target]] = [r.cells[target], r.cells[row]];
+          return r;
+        }),
+        selected,
+        dirty: true,
+      };
+    }),
 
   addVar: (scope, decl) =>
     set((s) => ({ project: updateVars(s.project, scope, (v) => [...v, decl]), dirty: true })),

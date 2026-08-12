@@ -1,6 +1,5 @@
 import { useEffect, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
-import * as THREE from 'three';
 import { LINE_LIMITS, LINE_ZONES, type MachineState } from '@automationsolver/shared';
 import { MachineCanvas } from '../MachineCanvas';
 import {
@@ -25,6 +24,7 @@ import { AssemblyCell, DockCell, TestCell, YardCell } from './rowB';
 import { BoothCell, OvenCell, PortalCell, StoreCell, WeldCell } from './rowA';
 import { Shell } from './Shell';
 import { buildLineTextures, disposeLineTextures } from './textures';
+import { describeMesh, installSceneAudit } from './audit';
 
 /**
  * The excavator line: eight cells, one spine, one floor.
@@ -48,51 +48,15 @@ import { buildLineTextures, disposeLineTextures } from './textures';
  */
 
 /**
- * What one mesh in the plant *is*, in the terms `plant.ts` describes it in.
+ * Dev only: hand the live scene, and an audit snapshot function, to the page.
  *
- * There is no other way to answer "what is that thing crossing the rack?" from
- * a screenshot. The scene is thousands of anonymous boxes generated from a
- * hundred constants, and matching one to a line of source by eye is guesswork
- * that has been wrong more often than right. A click gives its world position,
- * its geometry and the arguments it was built with, which names it uniquely.
- */
-export function describeMesh(o: THREE.Object3D): string {
-  const p = new THREE.Vector3();
-  o.getWorldPosition(p);
-  const at = `[${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}]`;
-  const mesh = o as THREE.Mesh;
-  const g = mesh.geometry as THREE.BufferGeometry & { parameters?: Record<string, unknown> };
-  const kind = g?.type ?? o.type;
-  const args = g?.parameters
-    ? Object.entries(g.parameters)
-        .filter(([, v]) => typeof v === 'number')
-        .map(([k, v]) => `${k} ${(v as number).toFixed(2)}`)
-        .join(', ')
-    : '';
-  const mat = mesh.material as THREE.MeshStandardMaterial | undefined;
-  const color = mat?.color ? ` color #${mat.color.getHexString()}` : '';
-  return `${kind} at ${at}${args ? ` (${args})` : ''}${color}`;
-}
-
-/**
- * Dev only: hand the live scene to the page, for tooling that has to inspect it.
- *
- * Mounted only on `/dev/line`, and only because the alternative is worse. The
- * plant is thousands of boxes generated from a hundred constants in `plant.ts`,
- * and every "these meshes collide" report so far has been answered by matching a
- * screenshot to a line of source by eye — which has been wrong as often as
- * right. With the scene reachable, a script can walk it and compute the world
- * bounds of every mesh, so "what is that" and "do these two actually intersect"
- * become arithmetic instead of opinion.
+ * Mounted only on `/dev/line`. See `audit.ts` for what gets exposed and why —
+ * this component is just the hook into React's render/unmount lifecycle that
+ * `installSceneAudit` needs to attach and detach it.
  */
 function SceneProbe() {
   const scene = useThree((s) => s.scene);
-  useEffect(() => {
-    (window as unknown as { __plantScene?: THREE.Scene }).__plantScene = scene;
-    return () => {
-      delete (window as unknown as { __plantScene?: THREE.Scene }).__plantScene;
-    };
-  }, [scene]);
+  useEffect(() => installSceneAudit(scene), [scene]);
   return null;
 }
 

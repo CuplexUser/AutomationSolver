@@ -23,6 +23,9 @@ interface Props {
   z: number;
   onFocus: () => void;
   onClose: () => void;
+  /** Collapsed to a tab in the strip — the window itself draws nothing while this is true. */
+  minimized?: boolean;
+  onMinimize?: () => void;
   children: ReactNode;
 }
 
@@ -142,6 +145,8 @@ export function FloatingWindow({
   z,
   onFocus,
   onClose,
+  minimized = false,
+  onMinimize,
   children,
 }: Props) {
   const [box, setBox] = useState<WindowBox>(() => loadBox(storageKey, initial));
@@ -219,6 +224,11 @@ export function FloatingWindow({
         zIndex: (onTop ? ONTOP_BAND : 0) + z,
       };
 
+  // Collapsed to a tab in `WindowTabStrip` — box/maximized/onTop stay live in
+  // state so restoring puts the window back exactly where it was, but nothing
+  // here draws while minimized.
+  if (minimized) return null;
+
   return (
     <section
       className={`float-win${focused ? ' focused' : ''}${maximized ? ' maximized' : ''}`}
@@ -252,6 +262,11 @@ export function FloatingWindow({
         >
           <PinIcon pinned={onTop} />
         </button>
+        {onMinimize && (
+          <button className="fw-btn" onClick={onMinimize} title="Minimize to a tab" aria-label="Minimize window">
+            −
+          </button>
+        )}
         <button
           className="fw-btn"
           onClick={() => setMaximized((v) => !v)}
@@ -294,4 +309,31 @@ export function FloatingWindow({
 export function cascadeBox(index: number, w = 620, h = 420): WindowBox {
   const step = 34;
   return { x: 96 + index * step, y: 72 + index * step, w, h };
+}
+
+export interface MinimizedTab {
+  id: string;
+  title: string;
+  onRestore: () => void;
+}
+
+/**
+ * One tab per minimized window, along the bottom of the workspace.
+ *
+ * A window's own title bar is the only way to reach it once minimized, so the
+ * tab carries the same title — a bare id would ask the player to remember
+ * what they collapsed. Renders nothing when there is nothing collapsed,
+ * rather than an empty strip claiming a row of screen for no reason.
+ */
+export function WindowTabStrip({ tabs }: { tabs: MinimizedTab[] }) {
+  if (tabs.length === 0) return null;
+  return (
+    <div className="win-tabstrip" role="tablist" aria-label="Minimized windows">
+      {tabs.map((t) => (
+        <button key={t.id} className="win-tab" onClick={t.onRestore} title={`Restore ${t.title}`}>
+          {t.title}
+        </button>
+      ))}
+    </div>
+  );
 }

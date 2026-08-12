@@ -484,6 +484,20 @@ The same page also carries click-to-identify: clicking any mesh reports its worl
 geometry and arguments in the caption strip, which turns "what is that thing" into a lookup.
 Reach for both before reasoning about a scene bug from a picture.
 
+**The dump and two of the three checks are now a Playwright test**, `tests/scene-audit.spec.ts`,
+so the next footprint change fails CI instead of quietly re-breaking a shot or burying a prop in a
+wall. `SceneProbe`'s dumping half moved into `features/sim/factoryLine/audit.ts` (`installSceneAudit`,
+`dumpMeshBoxes`, `dumpCameraEyes`, `describeMesh`) so the test and the dev page share one
+implementation; `camera.tsx` grew `resolveFocusEye`, the pure THREE-free arithmetic both
+`SectionCamera` and `dumpCameraEyes` now call, so the eye position a puzzle screenshot actually
+uses and the one the test checks cannot drift apart. Automated: outside-the-building AABBs, camera
+eye-height/floor bounds, and sight-line blocking. **Floating geometry and coplanar faces are
+deliberately not automated** — both were tried against the real 439-mesh dump and both flagged
+legitimate wall- or ceiling-mounted fixtures as often as real bugs, because nothing in the scene
+records what a mesh is attached to. Worth revisiting if the scene ever gains that metadata; a check
+that cries wolf on every wall fixture is worse than none. Run alone with
+`npm run test:e2e -w @automationsolver/client -- tests/scene-audit.spec.ts`.
+
 ### Two placement bugs the same pass found
 
 Both are the same mistake and worth stating as a rule: **a box's `z0` is its north edge, so

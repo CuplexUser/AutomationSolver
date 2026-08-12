@@ -1,6 +1,8 @@
 /* ===================== HMI panel ===================== */
 .hmi {
   padding: 14px;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .hmi-head {

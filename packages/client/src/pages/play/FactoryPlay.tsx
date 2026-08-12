@@ -21,7 +21,12 @@ import { ReplayBar } from '../../features/sim/ReplayBar';
 import { useReplay, type ReplayController } from '../../features/sim/useReplay';
 import { useSimRunner } from '../../features/sim/useSimRunner';
 import { useActiveSlot } from '../../features/slots/useActiveSlot';
-import { cascadeBox, FloatingWindow } from '../../features/workspace/FloatingWindow';
+import {
+  cascadeBox,
+  FloatingWindow,
+  WindowTabStrip,
+  type MinimizedTab,
+} from '../../features/workspace/FloatingWindow';
 import { PinnableSidebar } from '../../features/workspace/PinnableSidebar';
 import { PouExplorer } from '../../features/workspace/PouExplorer';
 import { useWindows } from '../../features/workspace/useWindows';
@@ -122,6 +127,25 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
     focusPou(pouId);
     windows.show(pouId);
   };
+
+  // One tab per minimized window, whatever kind it is — a bare id would ask
+  // the player to remember what they collapsed, so it carries the same title
+  // the window's own bar would have shown.
+  const windowTitle = (id: string): string => {
+    if (id === HMI_WINDOW) return 'Operator panel';
+    if (id === GLOBALS_WINDOW) return 'Globals';
+    return project.pous.find((p) => p.id === id)?.name ?? slots.find((s) => s.id === id)?.name ?? id;
+  };
+  const minimizedTabs: MinimizedTab[] = windows.open
+    .filter((id) => windows.isMinimized(id))
+    .map((id) => ({
+      id,
+      title: windowTitle(id),
+      onRestore: () => {
+        windows.restore(id);
+        if (!TOOL_WINDOWS.has(id)) focusPou(id);
+      },
+    }));
 
   return (
     <div className="workspace">
@@ -291,6 +315,8 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
                 focusPou(pouId);
               }}
               onClose={() => windows.close(pouId)}
+              minimized={windows.isMinimized(pouId)}
+              onMinimize={() => windows.minimize(pouId)}
             >
               <div className="pou-body">
                 <LadderEditor
@@ -341,6 +367,8 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
           z={10 + windows.depth(HMI_WINDOW)}
           onFocus={() => windows.focus(HMI_WINDOW)}
           onClose={() => windows.close(HMI_WINDOW)}
+          minimized={windows.isMinimized(HMI_WINDOW)}
+          onMinimize={() => windows.minimize(HMI_WINDOW)}
         >
           <HmiPanel devices={spec.devices} runner={activeRunner} />
         </FloatingWindow>
@@ -357,6 +385,8 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
           z={10 + windows.depth(GLOBALS_WINDOW)}
           onFocus={() => windows.focus(GLOBALS_WINDOW)}
           onClose={() => windows.close(GLOBALS_WINDOW)}
+          minimized={windows.isMinimized(GLOBALS_WINDOW)}
+          onMinimize={() => windows.minimize(GLOBALS_WINDOW)}
         >
           <VariablesPanel
             spec={spec}
@@ -389,6 +419,8 @@ export function FactoryPlay({ spec, user, submit }: PlayProps<LadderPuzzleSpec>)
           }}
         />
       </PinnableSidebar>
+
+      <WindowTabStrip tabs={minimizedTabs} />
     </div>
   );
 }

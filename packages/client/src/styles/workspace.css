@@ -567,6 +567,46 @@
   height: 100%;
 }
 
+/* --- minimized-window tab strip ---
+   A taskbar along the bottom of the workspace, `position: fixed` for the same
+   reason a maximized window is `absolute` inside `.workspace` rather than the
+   viewport is the *opposite* choice there — a maximized window has to clear
+   the app's top bar, but a strip pinned to the bottom never approaches it.
+   z-index sits above even an on-top window's band (`ONTOP_BAND` = 1000, plus
+   at most a handful of open windows), so the one way back to a collapsed
+   window can never itself be buried under one. */
+.win-tabstrip {
+  position: fixed;
+  left: 232px;
+  right: 0;
+  bottom: 0;
+  z-index: 1500;
+  display: flex;
+  gap: 6px;
+  padding: 6px 10px;
+  overflow-x: auto;
+  background: var(--panel, #14171c);
+  border-top: 1px solid var(--edge);
+}
+.win-tab {
+  flex: 0 0 auto;
+  max-width: 200px;
+  padding: 5px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 999px;
+  background: var(--panel-2, rgb(255 255 255 / 4%));
+  color: var(--ink);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.win-tab:hover {
+  border-color: var(--live);
+  color: var(--live);
+}
+
 /* --- a section's window: the program, and optionally its declarations ---
    The drawer takes the height its table needs, up to a cap, and the ladder
    takes the rest: locals are read while writing a rung, so pushing the rung off

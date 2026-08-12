@@ -3,7 +3,6 @@ import {
   COMPARE_OPS,
   DEFAULT_POU_ID,
   formatValueOperand,
-  isValueOperand,
   isWordInstruction,
   MATH_SYMBOL,
   parseValueOperand,
@@ -22,6 +21,8 @@ import {
   CellFields,
   chipTarget,
   fieldsFor,
+  normalizeDeviceValue,
+  normalizeOperandValue,
   PidTuning,
   slotAccepts,
   slotsFor,
@@ -196,6 +197,9 @@ export function LadderEditor({
     removeRung: removeRungIn,
     addRow: addRowIn,
     addCol: addColIn,
+    insertCol: insertColIn,
+    moveCol: moveColIn,
+    moveRow: moveRowIn,
   } = useEditor();
 
   // Everything below this line thinks in one POU's rungs, exactly as it did
@@ -214,6 +218,18 @@ export function LadderEditor({
   const removeRung = useCallback((i: number) => removeRungIn(pouId, i), [removeRungIn, pouId]);
   const addRow = useCallback((i: number) => addRowIn(pouId, i), [addRowIn, pouId]);
   const addCol = useCallback((i: number) => addColIn(pouId, i), [addColIn, pouId]);
+  const insertCol = useCallback(
+    (rungIndex: number, col: number) => insertColIn(pouId, rungIndex, col),
+    [insertColIn, pouId],
+  );
+  const moveCol = useCallback(
+    (rungIndex: number, col: number, d: -1 | 1) => moveColIn(pouId, rungIndex, col, d),
+    [moveColIn, pouId],
+  );
+  const moveRow = useCallback(
+    (rungIndex: number, row: number, d: -1 | 1) => moveRowIn(pouId, rungIndex, row, d),
+    [moveRowIn, pouId],
+  );
   const [address, setAddress] = useState('X0');
   const [preset, setPreset] = useState(10);
   // Word-instruction operands, primed for the next placement and retyped in
@@ -231,6 +247,13 @@ export function LadderEditor({
   // MOV's Source and then clicking D20 fills Source rather than the destination.
   const [focusSlot, setFocusSlot] = useState<FieldSlot | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [cellMenu, setCellMenu] = useState<{
+    rung: number;
+    row: number;
+    col: number;
+    x: number;
+    y: number;
+  } | null>(null);
   const addressRef = useRef<HTMLInputElement>(null);
   const operandRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -304,15 +327,62 @@ export function LadderEditor({
     [program, select, pouId],
   );
 
+  /** Double-click jumps straight to editing the cell's field — the same box a
+   * single click into the toolbar's own address input already focuses. */
+  const dblClickCell = useCallback(
+    (rung: number, row: number, col: number) => {
+      if (!editable) return;
+      selectCell({ rung, row, col });
+      const cfg = fieldsFor(program.rungs[rung]?.cells[row]?.[col]?.type ?? null);
+      if (cfg.address) {
+        addressRef.current?.focus();
+        addressRef.current?.select();
+      } else if (cfg.operands?.[0]) {
+        operandRef.current?.focus();
+        operandRef.current?.select();
+      }
+    },
+    [editable, selectCell, program],
+  );
+
+  const openCellMenu = useCallback(
+    (rung: number, row: number, col: number, e: React.MouseEvent) => {
+      if (!editable) return;
+      e.preventDefault();
+      selectCell({ rung, row, col });
+      setCellMenu({ rung, row, col, x: e.clientX, y: e.clientY });
+    },
+    [editable, selectCell],
+  );
+  const closeCellMenu = useCallback(() => setCellMenu(null), []);
+
+  // Close the context menu on any click elsewhere, or Escape — a menu that
+  // only closes via its own items is a menu that gets left open over the grid.
+  useEffect(() => {
+    if (!cellMenu) return;
+    const onDown = () => setCellMenu(null);
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setCellMenu(null);
+    };
+    document.addEventListener('pointerdown', onDown);
+    document.addEventListener('keydown', onEsc);
+    return () => {
+      document.removeEventListener('pointerdown', onDown);
+      document.removeEventListener('keydown', onEsc);
+    };
+  }, [cellMenu]);
+
   const changeAddress = (v: string) => {
     setAddress(v);
     setNote(null);
     if (!retypeDevice) return;
     // Retyping is held to the same rule as placing: the address has to be one
     // this element can legally act on, so a MOV's destination only ever takes a
-    // D and a timer only ever a T.
-    if (slotAccepts('device', fields, selectedEl?.type ?? null, v)) {
-      patchSelected({ device: v.trim().toUpperCase() });
+    // D and a timer only ever a T. `v` may be a literal (`M20`) or, once the
+    // picker is in play, a declared name (`ArcAtA`) — slotAccepts resolves
+    // either against `symbols`.
+    if (slotAccepts('device', fields, selectedEl?.type ?? null, v, symbols)) {
+      patchSelected({ device: normalizeDeviceValue(v) });
     }
   };
 
@@ -332,10 +402,12 @@ export function LadderEditor({
     if (index === 0) setOpA(v);
     else setOpB(v);
     setNote(null);
-    const ref = parseValueOperand(v);
-    if (!retypeWord || !ref) return;
+    if (!retypeWord) return;
+    // `D10`/`K500` as always, or — once declared — a name for a D register.
+    const stored = normalizeOperandValue(v, symbols);
+    if (stored === null) return;
     const next = [...(selectedEl?.operands ?? [])];
-    next[index] = formatValueOperand(ref);
+    next[index] = stored;
     patchSelected({ operands: next });
   };
 
@@ -407,15 +479,12 @@ export function LadderEditor({
   /** The operand/op/tuning payload a word instruction is placed with. */
   const wordPayload = useCallback(
     (type: ElementType): Partial<LadderElement> => {
-      const norm = (raw: string): string => {
-        const ref = parseValueOperand(raw);
-        return ref ? formatValueOperand(ref) : raw.trim().toUpperCase();
-      };
-      // An operand the box can't parse is stored empty rather than as a literal
+      // An operand the box can't parse — as `D10`/`K500` or, once declared, a
+      // name for a D register — is stored empty rather than as a literal
       // string, so the block shows a "?" for it and the validator can say what
       // is missing instead of what is malformed.
-      const a = isValueOperand(opA) ? norm(opA) : '';
-      const b = isValueOperand(opB) ? norm(opB) : '';
+      const a = normalizeOperandValue(opA, symbols) ?? '';
+      const b = normalizeOperandValue(opB, symbols) ?? '';
       switch (type) {
         case 'compare':
           return { operands: [a, b], op: cmpOp };
@@ -429,7 +498,7 @@ export function LadderEditor({
           return {};
       }
     },
-    [opA, opB, cmpOp, mathOp, tuning],
+    [opA, opB, cmpOp, mathOp, tuning, symbols],
   );
 
   /**
@@ -447,8 +516,8 @@ export function LadderEditor({
     (meta: InstrMeta) => {
       if (!selected) return;
       const cfg = fieldsFor(meta.type);
-      const addr = address.trim().toUpperCase();
-      const fits = slotAccepts('device', cfg, meta.type, addr);
+      const addr = normalizeDeviceValue(address);
+      const fits = slotAccepts('device', cfg, meta.type, addr, symbols);
 
       setLastPlaced(meta.type);
       placeSelected(
@@ -462,7 +531,7 @@ export function LadderEditor({
       // one box to aim at, the caret) there — filling it in is the next
       // keystroke rather than a hunt.
       const blankOperand = slotsFor(cfg).find(
-        (s) => s !== 'device' && !isValueOperand(s === 'a' ? opA : opB),
+        (s) => s !== 'device' && normalizeOperandValue(s === 'a' ? opA : opB, symbols) === null,
       );
       if (cfg.address && !fits) {
         setNote(
@@ -488,7 +557,7 @@ export function LadderEditor({
         setFocusSlot(null);
       }
     },
-    [selected, address, preset, placeSelected, wordPayload, opA, opB],
+    [selected, address, preset, placeSelected, wordPayload, opA, opB, symbols],
   );
 
   /** Move the selection, wrapping across rungs at the top and bottom edges. */
@@ -548,7 +617,22 @@ export function LadderEditor({
         }
         return;
       }
-      if (!editable || isTypingTarget(e.target) || e.altKey) return;
+      if (e.altKey) {
+        // Alt+arrow reorders the selected cell within its rung — a column
+        // past its neighbour, a row past the one above/below — rather than
+        // retyping everything from the swap point on.
+        if (editable && selected && !isTypingTarget(e.target)) {
+          if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            e.preventDefault();
+            moveCol(selected.rung, selected.col, e.key === 'ArrowLeft' ? -1 : 1);
+          } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            moveRow(selected.rung, selected.row, e.key === 'ArrowUp' ? -1 : 1);
+          }
+        }
+        return;
+      }
+      if (!editable || isTypingTarget(e.target)) return;
 
       switch (e.key) {
         case 'ArrowUp':
@@ -598,7 +682,8 @@ export function LadderEditor({
       }
       if (k === 'i') {
         e.preventDefault();
-        insertRung(selected ? selected.rung + 1 : program.rungs.length);
+        if (e.shiftKey && selected) insertCol(selected.rung, selected.col);
+        else insertRung(selected ? selected.rung + 1 : program.rungs.length);
         return;
       }
       const meta = palette.find((i) => i.key === k);
@@ -625,6 +710,9 @@ export function LadderEditor({
     moveRung,
     addRow,
     addCol,
+    insertCol,
+    moveCol,
+    moveRow,
     program.rungs.length,
   ]);
 
@@ -788,6 +876,14 @@ export function LadderEditor({
                   <dd>clear the cell</dd>
                 </div>
                 <div>
+                  <dt>Double-click</dt>
+                  <dd>select a cell and jump straight to editing its field</dd>
+                </div>
+                <div>
+                  <dt>Right-click</dt>
+                  <dd>insert a column before/after, or delete the element</dd>
+                </div>
+                <div>
                   <dt>B</dt>
                   <dd>toggle a branch (vertical link) at the cell&apos;s left node</dd>
                 </div>
@@ -800,12 +896,20 @@ export function LadderEditor({
                   <dd>insert a rung after the selected one</dd>
                 </div>
                 <div>
+                  <dt>Shift + I</dt>
+                  <dd>insert a blank column before the selected cell, shifting the rest of the rung right</dd>
+                </div>
+                <div>
                   <dt>Ctrl + ↑ / ↓</dt>
                   <dd>move the selected rung up / down</dd>
                 </div>
                 <div>
                   <dt>Shift + → / ↓</dt>
                   <dd>add a column / a branch row to this rung</dd>
+                </div>
+                <div>
+                  <dt>Alt + ← → ↑ ↓</dt>
+                  <dd>swap the selected cell with its neighbouring column / row</dd>
                 </div>
                 <div>
                   <dt>Enter</dt>
@@ -846,6 +950,8 @@ export function LadderEditor({
               evalResult={evalResults[i]}
               selected={selected?.rung === i ? { row: selected.row, col: selected.col } : null}
               onSelectCell={(row, col) => selectCell({ rung: i, row, col })}
+              onCellDoubleClick={(row, col) => dblClickCell(i, row, col)}
+              onCellContextMenu={(row, col, e) => openCellMenu(i, row, col, e)}
               onToggleVlink={(row, col) => toggleVlink(pouId, i, row, col)}
               onAddRow={() => addRow(i)}
               onAddCol={() => addCol(i)}
@@ -864,6 +970,45 @@ export function LadderEditor({
           )}
         </div>
       </div>
+
+      {/* Rendered outside `.ladder-canvas`, whose `transform: scale(...)` would
+          otherwise turn `position: fixed` into "fixed to the canvas" rather
+          than to the viewport, landing the menu nowhere near the pointer. */}
+      {cellMenu && (
+        <div
+          className="cell-menu panel"
+          style={{ left: cellMenu.x, top: cellMenu.y }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <button
+            className="cell-menu-item"
+            onClick={() => {
+              insertCol(cellMenu.rung, cellMenu.col);
+              closeCellMenu();
+            }}
+          >
+            Insert column before
+          </button>
+          <button
+            className="cell-menu-item"
+            onClick={() => {
+              insertCol(cellMenu.rung, cellMenu.col + 1);
+              closeCellMenu();
+            }}
+          >
+            Insert column after
+          </button>
+          <button
+            className="cell-menu-item danger"
+            onClick={() => {
+              setCell({ pou: pouId, rung: cellMenu.rung, row: cellMenu.row, col: cellMenu.col }, null);
+              closeCellMenu();
+            }}
+          >
+            Delete element
+          </button>
+        </div>
+      )}
 
       {/* The corner echo shows the *same* fields as the toolbar, so a MOV's
           source or a compare's operator can be retyped from down here too — it

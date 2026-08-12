@@ -22,6 +22,11 @@ export interface WindowStack {
   closeAll: () => void;
   /** Stacking order, lowest first — the index is the window's z-position. */
   depth: (id: string) => number;
+  /** Collapsed to a tab rather than closed — still `open`, but not drawn as a window. */
+  isMinimized: (id: string) => boolean;
+  minimize: (id: string) => void;
+  /** Un-collapse and raise/focus it, the same as opening it fresh. */
+  restore: (id: string) => void;
 }
 
 export function useWindows(initial: string[] = []): WindowStack {
@@ -29,15 +34,27 @@ export function useWindows(initial: string[] = []): WindowStack {
   // cheaper to read than a map of indices that has to be kept consistent.
   const [open, setOpen] = useState<string[]>(initial);
   const [focused, setFocused] = useState<string | null>(initial.at(-1) ?? null);
+  // Membership only — geometry (and everything else about *how* a minimized
+  // window would redraw) stays owned by the window itself, same as always.
+  const [minimized, setMinimized] = useState<ReadonlySet<string>>(new Set());
 
   const raise = useCallback((ids: string[], id: string) => [...ids.filter((x) => x !== id), id], []);
+  const unminimize = useCallback((id: string) => {
+    setMinimized((s) => {
+      if (!s.has(id)) return s;
+      const next = new Set(s);
+      next.delete(id);
+      return next;
+    });
+  }, []);
 
   const show = useCallback(
     (id: string) => {
       setOpen((ids) => raise(ids, id));
       setFocused(id);
+      unminimize(id);
     },
-    [raise],
+    [raise, unminimize],
   );
 
   const close = useCallback((id: string) => {
@@ -48,7 +65,8 @@ export function useWindows(initial: string[] = []): WindowStack {
       setFocused(next.at(-1) ?? null);
       return next;
     });
-  }, []);
+    unminimize(id);
+  }, [unminimize]);
 
   const toggle = useCallback(
     (id: string) => {
@@ -61,8 +79,9 @@ export function useWindows(initial: string[] = []): WindowStack {
         setFocused(id);
         return [...ids, id];
       });
+      unminimize(id);
     },
-    [],
+    [unminimize],
   );
 
   const focus = useCallback(
@@ -76,7 +95,23 @@ export function useWindows(initial: string[] = []): WindowStack {
   const closeAll = useCallback(() => {
     setOpen([]);
     setFocused(null);
+    setMinimized(new Set());
   }, []);
+
+  const minimize = useCallback((id: string) => {
+    setMinimized((s) => new Set(s).add(id));
+    // A minimized window is not drawn, so it cannot hold the keyboard either.
+    setFocused((f) => (f === id ? null : f));
+  }, []);
+
+  const restore = useCallback(
+    (id: string) => {
+      unminimize(id);
+      setOpen((ids) => raise(ids, id));
+      setFocused(id);
+    },
+    [raise, unminimize],
+  );
 
   return {
     open,
@@ -87,6 +122,9 @@ export function useWindows(initial: string[] = []): WindowStack {
     toggle,
     focus,
     closeAll,
+    isMinimized: (id) => minimized.has(id),
+    minimize,
+    restore,
     depth: (id) => open.indexOf(id),
   };
 }

@@ -1,10 +1,13 @@
 import {
   allowedDeviceKinds,
   COMPARE_OPS,
+  formatValueOperand,
   MATH_MNEMONIC,
   MATH_OPS,
   parseAddress,
+  parseValueOperand,
   type CompareOp,
+  type DeviceKind,
   type ElementType,
   type MathOp,
   type PidParams,
@@ -65,18 +68,60 @@ export function slotsFor(fields: FieldConfig): FieldSlot[] {
   return slots;
 }
 
+/**
+ * What kind of device an address box actually holds: a literal address's own
+ * kind, or — under `symbols` — a declared name's kind. The picker's `commit()`
+ * fills the box with the *name* (`ArcAtA`, not `M20`), because that's what a
+ * declared variable is for; without this, `parseAddress` alone sees a string
+ * it can't parse and every check below it fails silently.
+ */
+function resolveDeviceKind(address: string, choices: readonly SymbolChoice[]): DeviceKind | null {
+  const ref = parseAddress(address);
+  if (ref) return ref.kind;
+  const name = address.trim().toLowerCase();
+  if (name === '') return null;
+  return choices.find((c) => c.name.toLowerCase() === name)?.kind ?? null;
+}
+
 /** Can this address be typed into this slot? Word operands only ever take a D. */
 export function slotAccepts(
   slot: FieldSlot,
   fields: FieldConfig,
   type: ElementType | null,
   address: string,
+  choices: readonly SymbolChoice[] = [],
 ): boolean {
-  const ref = parseAddress(address);
-  if (!ref) return false;
-  if (slot !== 'device') return ref.kind === 'D';
-  if (fields.writesRegister) return ref.kind === 'D';
-  return type ? allowedDeviceKinds(type).has(ref.kind) : false;
+  const kind = resolveDeviceKind(address, choices);
+  if (!kind) return false;
+  if (slot !== 'device') return kind === 'D';
+  if (fields.writesRegister) return kind === 'D';
+  return type ? allowedDeviceKinds(type).has(kind) : false;
+}
+
+/**
+ * The value to actually store for a device box: a literal address uppercased
+ * (as always), but a symbol name kept in the case the player chose or typed —
+ * resolution matches names case-insensitively, but reading `ARCATA` back off a
+ * placed element instead of `ArcAtA` would defeat the point of naming it.
+ */
+export function normalizeDeviceValue(v: string): string {
+  const trimmed = v.trim();
+  return parseAddress(trimmed.toUpperCase()) ? trimmed.toUpperCase() : trimmed;
+}
+
+/**
+ * The value to store for a word operand box, or null if it fits nowhere: a
+ * literal `D10`/`K500` (normalized the way it always was), or a declared name
+ * for a D register. Word operands never take a bit, so only `kind === 'D'`
+ * names apply here, unlike a device box which checks against the instruction.
+ */
+export function normalizeOperandValue(v: string, choices: readonly SymbolChoice[] = []): string | null {
+  const ref = parseValueOperand(v);
+  if (ref) return formatValueOperand(ref);
+  const name = v.trim();
+  if (name === '') return null;
+  const match = choices.find((c) => c.kind === 'D' && c.name.toLowerCase() === name.toLowerCase());
+  return match ? name : null;
 }
 
 /**

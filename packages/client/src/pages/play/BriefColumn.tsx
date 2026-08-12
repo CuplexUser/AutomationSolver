@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import {
   CORRECTNESS_WEIGHT,
@@ -409,6 +409,14 @@ function ResultsCard({
   user: boolean;
   onReplay?: (scenarioName: string) => void;
 }) {
+  // Scroll the card into view the moment a submission resolves — it renders
+  // at the bottom of the sidebar, after the IO tables, and is easy to miss
+  // otherwise.
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (result && !pending) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [result, pending]);
+
   if (!user) {
     return (
       <div className="results-card panel">
@@ -452,7 +460,7 @@ function ResultsCard({
 
   if (!result.validation.valid) {
     return (
-      <div className="results-card panel invalid">
+      <div className="results-card panel invalid" ref={ref}>
         <span className="eyebrow">Validation failed</span>
         <ul className="fail-list">
           {result.validation.errors.map((e, i) => (
@@ -466,7 +474,7 @@ function ResultsCard({
 
   const grade = result.grade!;
   return (
-    <div className={`results-card panel${grade.solved ? ' solved' : ''}`}>
+    <div className={`results-card panel${grade.solved ? ' solved' : ''}`} ref={ref}>
       <div className="results-head">
         <span className="eyebrow">Grading</span>
         <span className={`score${grade.solved ? ' ok' : ''}`}>{grade.score}%</span>

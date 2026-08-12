@@ -9,6 +9,8 @@ interface Props {
   running: boolean;
   editable: boolean;
   onSelectCell: (row: number, col: number) => void;
+  onCellDoubleClick?: (row: number, col: number) => void;
+  onCellContextMenu?: (row: number, col: number, e: React.MouseEvent) => void;
   onToggleVlink: (row: number, col: number) => void;
   onAddRow: () => void;
   onAddCol: () => void;
@@ -28,6 +30,8 @@ export function RungView({
   running,
   editable,
   onSelectCell,
+  onCellDoubleClick,
+  onCellContextMenu,
   onToggleVlink,
   onAddRow,
   onAddCol,
@@ -108,6 +112,8 @@ export function RungView({
                     rightLive={rightLive}
                     symbolLive={symbolLive}
                     onClick={() => onSelectCell(r, c)}
+                    onDoubleClick={onCellDoubleClick ? () => onCellDoubleClick(r, c) : undefined}
+                    onContextMenu={onCellContextMenu ? (e) => onCellContextMenu(r, c, e) : undefined}
                   />
                 );
               }),

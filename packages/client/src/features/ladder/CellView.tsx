@@ -26,6 +26,20 @@ const DEST_CHAR_W = 6;
 /** A `D` operand is a register (a value that moves); anything else is a constant. */
 const REGISTER_RE = /^D\d+$/i;
 
+/**
+ * Shrink the top line's font to keep a long declared name on one line instead
+ * of spilling into the neighbouring cell. A bare address never needed this —
+ * `M20` is four characters — but a symbol name is the player's own choice of
+ * length, and `mAtStoreInfeed1Count<K1` at the default 11px is nearly twice
+ * `CELL_W`. `overflow: hidden` on the cell stops the spill either way; this
+ * is what keeps a realistic name legible before that clip has to bite.
+ */
+function addrFontSize(len: number): number {
+  if (len <= 7) return 11;
+  const fit = 64 / (len * 0.6);
+  return Math.max(6, Math.min(11, fit));
+}
+
 // Theme-following colors. CSS var() is not valid inside SVG presentation
 // attributes, so every color below is applied through the style prop instead.
 const IDLE_WIRE = 'var(--wire-idle)';
@@ -39,6 +53,9 @@ interface Props {
   rightLive: boolean;
   symbolLive: boolean;
   onClick: () => void;
+  /** Jump straight to editing the cell's field, rather than just selecting it. */
+  onDoubleClick?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
 function glow(live: boolean): React.CSSProperties {
@@ -118,20 +135,33 @@ export function describeElement(element: LadderElement): string {
   }
 }
 
-export function CellView({ element, selected, leftLive, rightLive, symbolLive, onClick }: Props) {
+export function CellView({
+  element,
+  selected,
+  leftLive,
+  rightLive,
+  symbolLive,
+  onClick,
+  onDoubleClick,
+  onContextMenu,
+}: Props) {
   const symColor = symbolLive ? LIVE : IDLE_SYM;
   const leftColor = leftLive ? LIVE : IDLE_WIRE;
   const rightColor = rightLive ? LIVE : IDLE_WIRE;
   const text: CellText = element ? cellText(element) : { top: [] };
+  const topLen = text.top.reduce((n, t) => n + t.length, 0);
 
   return (
     <button
       type="button"
       onClick={onClick}
+      onDoubleClick={onDoubleClick}
+      onContextMenu={onContextMenu}
       className={`ladder-cell${selected ? ' is-selected' : ''}`}
       aria-label={element ? describeElement(element) : 'empty cell'}
+      title={element ? describeElement(element) : undefined}
     >
-      <svg width={CELL_W} height={CELL_H} viewBox={`0 0 ${CELL_W} ${CELL_H}`}>
+      <svg width={CELL_W} height={CELL_H} viewBox={`0 0 ${CELL_W} ${CELL_H}`} style={{ overflow: 'hidden' }}>
         {element?.type === 'hwire' ? (
           // A wire is drawn, not symbolized: one unbroken conductor across the
           // cell. It lights from the *node* either side of it rather than from
@@ -157,7 +187,13 @@ export function CellView({ element, selected, leftLive, rightLive, symbolLive, o
               style={{ stroke: rightColor, ...glow(rightLive) }}
             />
             <Symbol element={element} color={symColor} live={symbolLive} />
-            <text x={CELL_W / 2} y={13} textAnchor="middle" className="cell-addr" style={{ fill: symColor }}>
+            <text
+              x={CELL_W / 2}
+              y={13}
+              textAnchor="middle"
+              className="cell-addr"
+              style={{ fill: symColor, fontSize: addrFontSize(topLen) }}
+            >
               {text.top.map((token, i) => (
                 // Live wins over the register tint: while the sim runs, "is this
                 // conducting" is the more urgent question than "is this a D".

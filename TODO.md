@@ -130,14 +130,12 @@ measurement found.
 - [x] **Stand the floating beams on the floor.** Seven service risers hung from the tray and
       stopped 2.4 m up over the walkway; the booth's gun mast started 0.8 m up. Both now reach the
       slab, and the risers end in a disconnect. → FACTORY-LINE-DESIGN §6
-- [ ] **Turn the scene audit into a test.** Everything above was found by dumping the live scene
-      through the dev-only `SceneProbe` and checking arithmetic — outside-the-building AABBs,
-      floating geometry, coplanar faces, and the camera sight-lines. That is currently a throwaway
-      script, run by hand. As a test it would stop the next footprint change quietly re-breaking a
-      shot or burying a prop in a wall. Two packaging problems to solve first: the client has no
-      unit-test runner (which is why `symbolChoicesFor` lives in `shared`), and the geometry checks
-      need a real scene, so this is either a Playwright fixture or a move of the footprint data
-      into `shared` where a pure check can reach it. → FACTORY-LINE-DESIGN §6 "How this was found"
+- [x] **Turn the scene audit into a test.** `tests/scene-audit.spec.ts` now checks
+      outside-the-building AABBs, camera eye-height/floor bounds and sight-line blocking against the
+      live `/dev/line` scene; the dumping half moved into `features/sim/factoryLine/audit.ts` and
+      `camera.tsx` gained `resolveFocusEye` so the test and `SectionCamera` share one calculation.
+      Floating geometry and coplanar faces stay manual — both cried wolf on legitimate wall/ceiling
+      fixtures against the real dump. → FACTORY-LINE-DESIGN §6 "How this was found"
 - [ ] **Sweep `rowB.tsx` with the same three checks.** Row A has now been through outside-the-box,
       floating and coplanar; the south row has only been through them incidentally, as part of the
       whole-plant dump. Nothing has looked at whether its props sit inside their own footprints.
@@ -155,6 +153,87 @@ measurement found.
       `maxEyeY` binds at every viewport aspect, so the authored elevations do nothing but set the
       bearing's sign. That is the right trade today and worth revisiting when there is interior
       detail worth looking down at. → FACTORY-LINE-DESIGN §6
+
+---
+
+## Factory workspace UX debt
+
+Raised from play against the plant workspace, not from a design doc — see
+[`docs/FEATURE-MAP.md`](docs/FEATURE-MAP.md) §5 "The plant workspace" for what exists today.
+None of this touches the simulation engine.
+
+- [ ] **High prio: give the plant workspace project export/import and save-slot switching.**
+      `features/slots/SlotsPanel.tsx` + `slotFile.ts` already export/import a full `LadderProject`
+      (POUs, tasks, globals) as a `.ladder` file, but the plant workspace (`FactoryPlay.tsx` /
+      `PouExplorer.tsx`) never mounts `SlotsPanel`, so a factory-line player has no way to reach
+      it — and the feature itself is off by default behind `settings.enableImportExport`. Two
+      separable pieces: wire `SlotsPanel` (or an equivalent) into the plant workspace so
+      multi-POU projects can be switched between save slots and exported/imported the same way
+      single-program puzzles already can, and separately decide whether `enableImportExport`
+      should default on. → `packages/client/src/features/slots/SlotsPanel.tsx`, `slotFile.ts`,
+      `pages/play/FactoryPlay.tsx`
+- [x] **Fix: picking a symbol from address-field autocomplete silently no-ops.** Root cause was
+      `slotAccepts` calling `parseAddress` alone, which only matches literal addresses — a picked
+      name never got past it. `CellFields.tsx` gained `resolveDeviceKind` (address or, given
+      `choices`, a declared name) and `normalizeDeviceValue`/`normalizeOperandValue` (store a
+      literal uppercased, a name in the case the player chose); `LadderEditor.tsx`'s
+      `changeAddress`, `changeOperand`, `place()` and `wordPayload` all route through them now.
+      Verified end-to-end on `factory-conveyor`: declaring a name and picking it from the
+      dropdown now visibly retypes the placed element. → `packages/client/src/features/ladder/CellFields.tsx`,
+      `LadderEditor.tsx`
+- [ ] **Investigate: Stop mid-simulation changes "state of operation" after Run has been
+      activated once.** Reported against the commissioning tutorial. The stage bar
+      (`.ws-stage-bar` in `FactoryPlay.tsx`) and the operator panel's SCANNING/HALTED indicator
+      both read the same `activeRunner.running` from `useSimRunner.ts`, which on the surface
+      keeps them in sync — but `activeRunner` is `replay.runner ?? runner`, so the interaction
+      between a completed run and a subsequent replay/restart is the likely place a stale
+      reference or stale `running` value shows through. Needs reproduction against
+      `factory-supervisor` before a fix. → `packages/client/src/pages/play/FactoryPlay.tsx`,
+      `features/sim/useSimRunner.ts`
+- [x] **Scroll the submitted result into view.** `ResultsCard` now carries a ref and a
+      `scrollIntoView({ behavior: 'smooth', block: 'nearest' })` effect keyed on `result`/`pending`,
+      firing the moment a submission resolves. → `packages/client/src/pages/play/BriefColumn.tsx`
+      (`ResultsCard`)
+- [x] **Give device chips and address fields a name-aware, adaptive display.** Widened
+      `.field.compact` (84px → 200px, enough for a declared name at its 24-character limit — 132px
+      was tried first and still clipped `PickLaneSelect`) and `.field.operand` (76px → 160px,
+      dropping its forced `text-transform: uppercase`, which mangled a name's case); added the
+      missing ellipsis rule to `HmiPanel.tsx`'s `.widget-name`. The chip row itself stays bare
+      addresses — asked, and the answer was that the picker fix above is the real fix, widening
+      chips would fight the original "too much space" complaint. A second overlap instance turned
+      up live in the ladder cell's own on-canvas SVG label (`CellView.tsx`'s `.cell-addr`, not
+      `.widget-name` as first assumed): added `overflow: hidden` on the cell's SVG so a long name
+      clips instead of bleeding into the next cell, a length-based `addrFontSize` shrink tier, and
+      a `title` tooltip carrying the full `describeElement()` text. → `packages/client/src/features/ladder/LadderEditor.tsx`,
+      `CellView.tsx`, `styles/ladder-editor.css`, `features/sim/HmiPanel.tsx`, `styles/widgets.css`
+- [x] **Auto-minimize for `FloatingWindow`s.** Manual only, per the design call: a minimize button
+      (alongside pin/maximize/close) collapses a window to a pill in `WindowTabStrip`, a
+      `position: fixed` taskbar along the bottom of the plant workspace (z-index above even an
+      on-top window's band, so the one way back is never itself buried); clicking the pill restores
+      it. `useWindows.ts` gained a `minimized` set and `isMinimized`/`minimize`/`restore`, alongside
+      the existing open/focus/z-order bookkeeping — geometry stays owned by the window itself, so a
+      restored window reopens exactly where it was. No auto-minimize-on-blur pass; that's future
+      work if wanted. → `packages/client/src/features/workspace/FloatingWindow.tsx`,
+      `useWindows.ts`, `pages/play/FactoryPlay.tsx`
+- [x] **Right-click and double-click actions in the ladder grid.** Per the design call: right-click
+      opens a small `.cell-menu` (Insert column before/after, Delete element) at the pointer;
+      double-click selects the cell and focuses its address or first operand field, the same box a
+      single click into the toolbar already reaches. `CellView`/`RungView` gained
+      `onContextMenu`/`onDoubleClick` passthroughs. → `packages/client/src/features/ladder/CellView.tsx`,
+      `RungView.tsx`, `LadderEditor.tsx`
+- [x] **Insert a series element mid-rung without hand-shifting everything after it.**
+      `editorStore.ts` gained `insertCol(pou, rung, col)` — splices a blank column in and shifts
+      any `vlink` at or past it right by one (a vlink's `col` is a node *boundary*, not an element,
+      so this is the only part of the insert that isn't a plain array splice). Reachable via
+      Shift+I (mirroring I for insert-rung) or the right-click menu above. →
+      `packages/client/src/features/ladder/editorStore.ts` (`insertCol`)
+- [x] **Quick fix: disable text selection on the Operator panel.** Added
+      `user-select: none` (`-webkit-` prefixed) to `.hmi`. →
+      `packages/client/src/styles/hmi.css`
+- [x] **Low prio: shift rows/columns within a rung.** `editorStore.ts` gained `moveCol`/`moveRow` —
+      adjacent-swap only, cell contents move but `vlinks` are left alone (a vlink's `row`/`col`
+      names a boundary position, not the element occupying it, so a swap needs no vlink remap).
+      Reachable via Alt+arrow on the selected cell. → `packages/client/src/features/ladder/editorStore.ts`
 
 ---
 

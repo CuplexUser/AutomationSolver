@@ -40,6 +40,10 @@
   font-size: 10px;
   line-height: 1.2;
   color: var(--ink-dim);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .widget-state {
   font-family: var(--font-mono);
