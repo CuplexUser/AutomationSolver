@@ -17,8 +17,7 @@
     "test:shared": "npm run test -w @automationsolver/shared",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "oxlint . && eslint .",
-    "lint:fix": "oxlint . --fix && eslint . --fix",
-    "seed": "npm run seed -w @automationsolver/server"
+    "lint:fix": "oxlint . --fix && eslint . --fix"    
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
