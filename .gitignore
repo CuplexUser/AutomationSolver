@@ -21,3 +21,5 @@ CLAUDE.md
 
 # SQLite database files
 packages/server/data/
+.vercel
+.env*

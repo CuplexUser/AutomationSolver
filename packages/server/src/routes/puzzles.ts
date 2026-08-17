@@ -11,7 +11,7 @@ import {
   type PuzzleCategory,
   type PuzzleSpec,
   type WiringDoc,
-} from '@automationsolver/shared';
+} from '../../../shared/src/index.js';
 import {
   createSlot,
   deleteSlot,
