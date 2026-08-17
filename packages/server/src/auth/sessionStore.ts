@@ -1,58 +1,51 @@
 import { Store, type SessionData } from 'express-session';
-import { getDb } from '../db/index.js';
+import { getDriver } from '../db/index.js';
 
-/** Minimal express-session store backed by the shared node:sqlite database. */
-export class SqliteStore extends Store {
+/** Minimal express-session store backed by the driver from db/index.ts (SQLite or Postgres). */
+export class SessionStore extends Store {
   get(sid: string, cb: (err: unknown, session?: SessionData | null) => void): void {
-    try {
-      const row = getDb()
-        .prepare('SELECT sess, expire FROM sessions WHERE sid = ?')
-        .get(sid) as { sess: string; expire: number } | undefined;
+    (async () => {
+      const row = await (await getDriver()).get<{ sess: string; expire: number }>(
+        'SELECT sess, expire FROM sessions WHERE sid = ?',
+        [sid],
+      );
       if (!row) return cb(null, null);
       if (row.expire < Date.now()) {
         this.destroy(sid, () => undefined);
         return cb(null, null);
       }
       cb(null, JSON.parse(row.sess) as SessionData);
-    } catch (err) {
-      cb(err);
-    }
+    })().catch((err: unknown) => cb(err));
   }
 
   set(sid: string, session: SessionData, cb?: (err?: unknown) => void): void {
-    try {
+    (async () => {
       const maxAge = session.cookie?.maxAge ?? 1000 * 60 * 60 * 24 * 30;
       const expire = Date.now() + maxAge;
-      getDb()
-        .prepare(
-          `INSERT INTO sessions (sid, sess, expire) VALUES (?, ?, ?)
-           ON CONFLICT(sid) DO UPDATE SET sess = excluded.sess, expire = excluded.expire`,
-        )
-        .run(sid, JSON.stringify(session), expire);
+      await (await getDriver()).run(
+        `INSERT INTO sessions (sid, sess, expire) VALUES (?, ?, ?)
+         ON CONFLICT(sid) DO UPDATE SET sess = excluded.sess, expire = excluded.expire`,
+        [sid, JSON.stringify(session), expire],
+      );
       cb?.();
-    } catch (err) {
-      cb?.(err);
-    }
+    })().catch((err: unknown) => cb?.(err));
   }
 
   destroy(sid: string, cb?: (err?: unknown) => void): void {
-    try {
-      getDb().prepare('DELETE FROM sessions WHERE sid = ?').run(sid);
+    (async () => {
+      await (await getDriver()).run('DELETE FROM sessions WHERE sid = ?', [sid]);
       cb?.();
-    } catch (err) {
-      cb?.(err);
-    }
+    })().catch((err: unknown) => cb?.(err));
   }
 
   touch(sid: string, session: SessionData, cb?: (err?: unknown) => void): void {
-    try {
+    (async () => {
       const maxAge = session.cookie?.maxAge ?? 1000 * 60 * 60 * 24 * 30;
-      getDb()
-        .prepare('UPDATE sessions SET expire = ? WHERE sid = ?')
-        .run(Date.now() + maxAge, sid);
+      await (await getDriver()).run('UPDATE sessions SET expire = ? WHERE sid = ?', [
+        Date.now() + maxAge,
+        sid,
+      ]);
       cb?.();
-    } catch (err) {
-      cb?.(err);
-    }
+    })().catch((err: unknown) => cb?.(err));
   }
 }

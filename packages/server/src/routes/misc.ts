@@ -8,8 +8,8 @@ export const progressRouter = Router();
 progressRouter.get(
   '/progress',
   requireAuth,
-  asyncHandler((req, res) => {
-    const rows = getProgress(req.user!.id).map((p) => ({
+  asyncHandler(async (req, res) => {
+    const rows = (await getProgress(req.user!.id)).map((p) => ({
       slug: p.puzzle_slug,
       status: p.status,
       bestScore: p.best_score,
@@ -25,20 +25,20 @@ export const settingsRouter = Router();
 settingsRouter.get(
   '/settings',
   requireAuth,
-  asyncHandler((req, res) => {
-    res.json({ settings: getSettings(req.user!.id) });
+  asyncHandler(async (req, res) => {
+    res.json({ settings: await getSettings(req.user!.id) });
   }),
 );
 
 settingsRouter.put(
   '/settings',
   requireAuth,
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     const parsed = settingsSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid settings' });
     }
-    upsertSettings(req.user!.id, parsed.data.settings);
+    await upsertSettings(req.user!.id, parsed.data.settings);
     return res.json({ settings: parsed.data.settings });
   }),
 );

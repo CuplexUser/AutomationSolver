@@ -9,13 +9,13 @@ export interface PublicUser {
   oauthProviders: string[];
 }
 
-export function publicUser(user: UserRow): PublicUser {
+export async function publicUser(user: UserRow): Promise<PublicUser> {
   return {
     id: user.id,
     email: user.email,
     displayName: user.display_name,
     hasPassword: user.password_hash != null,
-    oauthProviders: getOAuthProviders(user.id),
+    oauthProviders: await getOAuthProviders(user.id),
   };
 }
 

@@ -17,32 +17,28 @@ export function configurePassport(): void {
   });
 
   passport.deserializeUser<number>((id, done) => {
-    try {
-      const user = findUserById(id);
-      done(null, user ?? false);
-    } catch (err) {
-      done(err);
-    }
+    findUserById(id)
+      .then((user) => done(null, user ?? false))
+      .catch((err: unknown) => done(err));
   });
 
   passport.use(
     new LocalStrategy({ usernameField: 'email' }, (email, password, done) => {
-      try {
-        const user = findUserByEmail(email);
-        if (!user || !verifyPassword(password, user.password_hash)) {
-          return done(null, false, { message: 'Invalid email or password' });
-        }
-        if (!user.email_verified_at) {
-          const info = {
-            message: 'Please verify your email before signing in.',
-            code: 'EMAIL_NOT_VERIFIED',
-          };
-          return done(null, false, info);
-        }
-        return done(null, user);
-      } catch (err) {
-        return done(err);
-      }
+      findUserByEmail(email)
+        .then((user) => {
+          if (!user || !verifyPassword(password, user.password_hash)) {
+            return done(null, false, { message: 'Invalid email or password' });
+          }
+          if (!user.email_verified_at) {
+            const info = {
+              message: 'Please verify your email before signing in.',
+              code: 'EMAIL_NOT_VERIFIED',
+            };
+            return done(null, false, info);
+          }
+          return done(null, user);
+        })
+        .catch((err: unknown) => done(err));
     }),
   );
 
@@ -55,18 +51,15 @@ export function configurePassport(): void {
           callbackURL: `${config.serverOrigin}/api/auth/google/callback`,
         },
         (_accessToken, _refreshToken, profile, done) => {
-          try {
-            const email = profile.emails?.[0]?.value ?? null;
-            const user = findOrCreateOAuthUser({
-              provider: 'google',
-              providerUserId: profile.id,
-              email,
-              displayName: profile.displayName || email || 'Player',
-            });
-            done(null, user);
-          } catch (err) {
-            done(err as Error);
-          }
+          const email = profile.emails?.[0]?.value ?? null;
+          findOrCreateOAuthUser({
+            provider: 'google',
+            providerUserId: profile.id,
+            email,
+            displayName: profile.displayName || email || 'Player',
+          })
+            .then((user) => done(null, user))
+            .catch((err: unknown) => done(err as Error));
         },
       ),
     );
@@ -91,18 +84,15 @@ export function configurePassport(): void {
           },
           done: (err: unknown, user?: Express.User | false) => void,
         ) => {
-          try {
-            const email = profile.emails?.[0]?.value ?? null;
-            const user = findOrCreateOAuthUser({
-              provider: 'github',
-              providerUserId: profile.id,
-              email,
-              displayName: profile.displayName || profile.username || email || 'Player',
-            });
-            done(null, user);
-          } catch (err) {
-            done(err);
-          }
+          const email = profile.emails?.[0]?.value ?? null;
+          findOrCreateOAuthUser({
+            provider: 'github',
+            providerUserId: profile.id,
+            email,
+            displayName: profile.displayName || profile.username || email || 'Player',
+          })
+            .then((user) => done(null, user))
+            .catch((err: unknown) => done(err));
         },
       ),
     );

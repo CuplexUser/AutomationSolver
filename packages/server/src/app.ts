@@ -2,15 +2,15 @@ import express, { type NextFunction, type Request, type Response } from 'express
 import session from 'express-session';
 import cors from 'cors';
 import { config } from './config.js';
-import { getDb } from './db/index.js';
+import { getDriver } from './db/index.js';
 import { configurePassport, passport } from './auth/passport.js';
-import { SqliteStore } from './auth/sessionStore.js';
+import { SessionStore } from './auth/sessionStore.js';
 import { authRouter } from './routes/auth.js';
 import { puzzlesRouter } from './routes/puzzles.js';
 import { progressRouter, settingsRouter } from './routes/misc.js';
 
-export function createApp(): express.Express {
-  getDb(); // ensure schema exists
+export async function createApp(): Promise<express.Express> {
+  await getDriver(); // ensure schema exists
   configurePassport();
 
   const app = express();
@@ -25,7 +25,7 @@ export function createApp(): express.Express {
       secret: config.sessionSecret,
       resave: false,
       saveUninitialized: false,
-      store: new SqliteStore(),
+      store: new SessionStore(),
       cookie: {
         httpOnly: true,
         sameSite: 'lax',

@@ -41,16 +41,16 @@ authRouter.post(
       return res.status(400).json({ error: 'Invalid registration', details: parsed.error.flatten() });
     }
     const { email, password, displayName } = parsed.data;
-    if (findUserByEmail(email)) {
+    if (await findUserByEmail(email)) {
       return res.status(409).json({ error: 'An account with that email already exists' });
     }
-    const user = createUser({
+    const user = await createUser({
       email,
       passwordHash: hashPassword(password),
       displayName: displayName?.trim() || email.split('@')[0],
     });
     const token = generateToken();
-    createEmailVerificationToken(user.id, hashToken(token), VERIFY_TOKEN_TTL_MS);
+    await createEmailVerificationToken(user.id, hashToken(token), VERIFY_TOKEN_TTL_MS);
     await sendVerificationEmail(email, token);
     return res
       .status(201)
@@ -74,7 +74,7 @@ authRouter.post('/login', (req, res, next) => {
       }
       req.login(user, (loginErr) => {
         if (loginErr) return next(loginErr);
-        return res.json({ user: publicUser(user) });
+        publicUser(user).then((u) => res.json({ user: u })).catch(next);
       });
     },
   )(req, res, next);
@@ -82,21 +82,23 @@ authRouter.post('/login', (req, res, next) => {
 
 authRouter.post(
   '/verify-email',
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     const parsed = verifyEmailSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid or expired verification link' });
     }
-    const record = findValidEmailVerificationToken(hashToken(parsed.data.token));
+    const record = await findValidEmailVerificationToken(hashToken(parsed.data.token));
     if (!record) {
       return res.status(400).json({ error: 'Invalid or expired verification link' });
     }
-    consumeEmailVerificationToken(hashToken(parsed.data.token));
-    markEmailVerified(record.user_id);
-    const user = findUserById(record.user_id)!;
+    await consumeEmailVerificationToken(hashToken(parsed.data.token));
+    await markEmailVerified(record.user_id);
+    const user = (await findUserById(record.user_id))!;
     req.login(user, (err) => {
       if (err) return res.status(500).json({ error: 'Login after verification failed' });
-      return res.json({ user: publicUser(user) });
+      publicUser(user)
+        .then((u) => res.json({ user: u }))
+        .catch(() => res.status(500).json({ error: 'Login after verification failed' }));
     });
   }),
 );
@@ -108,10 +110,10 @@ authRouter.post(
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid email' });
     }
-    const user = findUserByEmail(parsed.data.email);
+    const user = await findUserByEmail(parsed.data.email);
     if (user && !user.email_verified_at) {
       const token = generateToken();
-      createEmailVerificationToken(user.id, hashToken(token), VERIFY_TOKEN_TTL_MS);
+      await createEmailVerificationToken(user.id, hashToken(token), VERIFY_TOKEN_TTL_MS);
       await sendVerificationEmail(parsed.data.email, token);
     }
     return res.json({ message: 'If an account exists for that email, a verification link has been sent.' });
@@ -125,10 +127,10 @@ authRouter.post(
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid email' });
     }
-    const user = findUserByEmail(parsed.data.email);
+    const user = await findUserByEmail(parsed.data.email);
     if (user) {
       const token = generateToken();
-      createPasswordResetToken(user.id, hashToken(token), RESET_TOKEN_TTL_MS);
+      await createPasswordResetToken(user.id, hashToken(token), RESET_TOKEN_TTL_MS);
       await sendPasswordResetEmail(parsed.data.email, token);
     }
     return res.json({ message: 'If an account exists for that email, a reset link has been sent.' });
@@ -137,23 +139,25 @@ authRouter.post(
 
 authRouter.post(
   '/reset-password',
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     const parsed = resetPasswordSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid or expired reset link' });
     }
-    const record = findValidPasswordResetToken(hashToken(parsed.data.token));
+    const record = await findValidPasswordResetToken(hashToken(parsed.data.token));
     if (!record) {
       return res.status(400).json({ error: 'Invalid or expired reset link' });
     }
-    consumePasswordResetToken(hashToken(parsed.data.token));
-    updatePasswordHash(record.user_id, hashPassword(parsed.data.password));
-    const user = findUserById(record.user_id)!;
-    if (!user.email_verified_at) markEmailVerified(user.id);
-    const verifiedUser = findUserById(record.user_id)!;
+    await consumePasswordResetToken(hashToken(parsed.data.token));
+    await updatePasswordHash(record.user_id, hashPassword(parsed.data.password));
+    const user = (await findUserById(record.user_id))!;
+    if (!user.email_verified_at) await markEmailVerified(user.id);
+    const verifiedUser = (await findUserById(record.user_id))!;
     req.login(verifiedUser, (err) => {
       if (err) return res.status(500).json({ error: 'Login after reset failed' });
-      return res.json({ user: publicUser(verifiedUser) });
+      publicUser(verifiedUser)
+        .then((u) => res.json({ user: u }))
+        .catch(() => res.status(500).json({ error: 'Login after reset failed' }));
     });
   }),
 );
@@ -161,21 +165,21 @@ authRouter.post(
 authRouter.patch(
   '/profile',
   requireAuth,
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     const parsed = updateProfileSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid display name' });
     }
-    updateDisplayName(req.user!.id, parsed.data.displayName.trim());
-    const user = findUserById(req.user!.id)!;
-    return res.json({ user: publicUser(user) });
+    await updateDisplayName(req.user!.id, parsed.data.displayName.trim());
+    const user = (await findUserById(req.user!.id))!;
+    return res.json({ user: await publicUser(user) });
   }),
 );
 
 authRouter.post(
   '/change-password',
   requireAuth,
-  asyncHandler((req, res) => {
+  asyncHandler(async (req, res) => {
     const parsed = changePasswordSchema.safeParse(req.body);
     if (!parsed.success) {
       return res.status(400).json({ error: 'Invalid password' });
@@ -189,7 +193,7 @@ authRouter.post(
         return res.status(401).json({ error: 'Current password is incorrect' });
       }
     }
-    updatePasswordHash(user.id, hashPassword(parsed.data.newPassword));
+    await updatePasswordHash(user.id, hashPassword(parsed.data.newPassword));
     return res.json({ message: 'Password updated.' });
   }),
 );
@@ -206,7 +210,9 @@ authRouter.post('/logout', (req, res, next) => {
 
 authRouter.get('/me', (req, res) => {
   if (req.isAuthenticated() && req.user) {
-    res.json({ user: publicUser(req.user) });
+    publicUser(req.user)
+      .then((u) => res.json({ user: u }))
+      .catch(() => res.status(500).json({ error: 'Internal server error' }));
   } else {
     res.status(401).json({ error: 'Not authenticated' });
   }

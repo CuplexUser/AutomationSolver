@@ -15,6 +15,8 @@ export const config = {
   isProd: process.env.NODE_ENV === 'production',
   sessionSecret: process.env.SESSION_SECRET ?? 'dev-insecure-secret-change-me',
   dbPath: process.env.DB_PATH ?? path.join(process.cwd(), 'data', 'automationsolver.sqlite'),
+  // When set, the server uses Postgres (e.g. Neon) instead of SQLite. See db/index.ts.
+  databaseUrl: process.env.DATABASE_URL || undefined,
   clientOrigin: process.env.CLIENT_ORIGIN ?? 'http://localhost:5173',
   serverOrigin: process.env.SERVER_ORIGIN ?? 'http://localhost:4000',
   google: {

@@ -3,8 +3,11 @@ import request from 'supertest';
 import type { Express } from 'express';
 import type { LadderElement, LadderProgram, LadderPuzzleSpec, WiringDoc } from '@automationsolver/shared';
 
-// Use an isolated in-memory DB for the test run.
+// Use an isolated in-memory DB for the test run, regardless of a
+// DATABASE_URL a developer may have set in the shell or .env — the default
+// test suite always exercises the SQLite driver.
 process.env.DB_PATH = ':memory:';
+delete process.env.DATABASE_URL;
 process.env.SESSION_SECRET = 'test-secret';
 
 function extractToken(text: string): string {
@@ -71,15 +74,15 @@ const cabinetLampSolution: WiringDoc = {
 
 let app: Express;
 let outbox: { to: string; subject: string; text: string }[];
-let getDb: (typeof import('./db/index.js'))['getDb'];
+let getDriver: (typeof import('./db/index.js'))['getDriver'];
 let findOrCreateOAuthUser: (typeof import('./db/repo.js'))['findOrCreateOAuthUser'];
 let hashToken: (typeof import('./auth/tokens.js'))['hashToken'];
 
 beforeAll(async () => {
   const mod = await import('./app.js');
-  app = mod.createApp();
+  app = await mod.createApp();
   ({ outbox } = await import('./email/mailer.js'));
-  ({ getDb } = await import('./db/index.js'));
+  ({ getDriver } = await import('./db/index.js'));
   ({ findOrCreateOAuthUser } = await import('./db/repo.js'));
   ({ hashToken } = await import('./auth/tokens.js'));
 });
@@ -265,9 +268,10 @@ describe('password reset', () => {
     const token = extractToken(outbox.find((m) => m.to === email && m.subject.includes('Reset'))!.text);
 
     // Backdate this token's expiry directly to simulate it having timed out.
-    getDb()
-      .prepare('UPDATE password_reset_tokens SET expires_at = ? WHERE token_hash = ?')
-      .run(Date.now() - 1000, hashToken(token));
+    await (await getDriver()).run('UPDATE password_reset_tokens SET expires_at = ? WHERE token_hash = ?', [
+      Date.now() - 1000,
+      hashToken(token),
+    ]);
     const expired = await request(app)
       .post('/api/auth/reset-password')
       .send({ token, password: 'newpassword2' });
@@ -284,7 +288,7 @@ describe('password reset', () => {
 
 describe('oauth accounts', () => {
   it('are pre-verified on creation, and linking verifies an existing unverified account', async () => {
-    const created = findOrCreateOAuthUser({
+    const created = await findOrCreateOAuthUser({
       provider: 'google',
       providerUserId: 'g-123',
       email: 'oauth-fresh@example.com',
@@ -295,7 +299,7 @@ describe('oauth accounts', () => {
     const email = 'link-me@example.com';
     await request(app).post('/api/auth/register').send({ email, password: 'password123' }).expect(201);
 
-    const linked = findOrCreateOAuthUser({
+    const linked = await findOrCreateOAuthUser({
       provider: 'github',
       providerUserId: 'gh-456',
       email,
@@ -367,9 +371,9 @@ describe('profile', () => {
 
     // Simulate an OAuth-only account (no local password) with an active session —
     // deserializeUser re-reads the row from the DB on every request.
-    getDb()
-      .prepare('UPDATE users SET password_hash = NULL WHERE email = ?')
-      .run('oauth-set-pw@example.com');
+    await (await getDriver()).run('UPDATE users SET password_hash = NULL WHERE email = ?', [
+      'oauth-set-pw@example.com',
+    ]);
 
     const res = await agent.post('/api/auth/change-password').send({ newPassword: 'firstpassword1' });
     expect(res.status).toBe(200);
