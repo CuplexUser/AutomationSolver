@@ -2,7 +2,16 @@ import pg from 'pg';
 import type { DbDriver } from './driver.js';
 import { toPositionalPlaceholders } from './driver.js';
 
-const { Pool } = pg;
+const { Pool, types } = pg;
+
+// pg returns BIGINT (OID 20) as a string by default, since values beyond
+// Number.MAX_SAFE_INTEGER would lose precision as a JS number. Every BIGINT
+// column in this schema is an epoch-ms timestamp, always well inside that
+// range, and repo.ts types them as `number` to match sqliteDriver — without
+// this, callers doing e.g. `new Date(row.updated_at)` get a numeric string,
+// which Date parses as a date string (not epoch ms) and silently produces
+// "Invalid Date".
+types.setTypeParser(20, (val) => parseInt(val, 10));
 
 // Mirrors sqliteDriver's SCHEMA table-for-table. Timestamps stay BIGINT epoch
 // milliseconds (not timestamptz) and booleans stay INTEGER 0/1 (not BOOLEAN) so
