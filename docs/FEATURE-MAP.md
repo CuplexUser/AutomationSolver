@@ -619,6 +619,16 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
   so the same operator panel serves both puzzle kinds. Digit keys **1–9** drive the pressable
   inputs in panel order (hold = momentary, tap = toggle/e-stop; sensors get no key) so multiple
   buttons can be held at once — required by Two-Hand Press's simultaneous palm buttons.
+  - **Every control is driven in terms of *pressed*, never the raw bit** (`bitFor` / `isPressed`
+    in `HmiPanel.tsx`). A device with `normallyClosed: true` rests with its bit **on** and drops
+    it when actuated — `defaultInputs()` already seeds the image that way for both the live
+    runner and the grader — so a widget that wrote the raw bit inverts that device. This was a
+    real bug on the `momentary` widget: the factory plant's X1 STOP is a spring-return NC button,
+    it rendered permanently held, and the first release latched the stop asserted for the rest
+    of the session. The live panel then rewarded an NC contact on X1 and the grader (rightly)
+    rejected it, which is the one failure mode this whole project is built not to have. Any new
+    widget branch applies the polarity through those two helpers, and the pointer, keyboard and
+    blur paths all go through them too.
   - **`SimRunner` is the shared contract** (`{running, inputs, bits, machine, evalResults,
     history, start/stop/step/reset/setInput}`) that `LadderEditor`, `HmiPanel` and `MachineView`
     all render from — they don't know or care whether it's backed by a live `useSimRunner` engine

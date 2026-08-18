@@ -8,6 +8,20 @@ function isLatching(d: PuzzleDevice): boolean {
   return d.widget === 'toggle' || d.widget === 'selector' || d.widget === 'estop';
 }
 
+// A normally closed field device's bit is on at rest and drops when the button
+// is actuated, so every control here is driven in terms of *pressed* and the
+// polarity is applied in exactly one place. Getting this wrong is not cosmetic:
+// a spring-return NC stop that wrote the raw bit would rest asserted and latch
+// itself on the first release, so the live panel and the graded run would
+// disagree about what the ladder is reading.
+function bitFor(d: PuzzleDevice, pressed: boolean): boolean {
+  return d.normallyClosed === true ? !pressed : pressed;
+}
+
+function isPressed(d: PuzzleDevice, inputs: Record<string, boolean>): boolean {
+  return (inputs[d.address] === true) !== (d.normallyClosed === true);
+}
+
 /**
  * Digit keys 1–9 drive the pressable inputs in panel order. Unlike pointer
  * clicks, several keys can be held at once — required by puzzles like
@@ -31,17 +45,17 @@ function useInputHotkeys(keyed: PuzzleDevice[], runner: HmiRunner) {
       if (!d) return;
       e.preventDefault();
       if (e.repeat) return;
-      setInput(d.address, isLatching(d) ? inputs[d.address] !== true : true);
+      setInput(d.address, bitFor(d, isLatching(d) ? !isPressed(d, inputs) : true));
     };
     // No modifier/typing guard on release: a held button must always let go.
     const onKeyUp = (e: KeyboardEvent) => {
       const d = deviceFor(e);
-      if (d && !isLatching(d)) setInput(d.address, false);
+      if (d && !isLatching(d)) setInput(d.address, bitFor(d, false));
     };
     // Keyup is lost when the window blurs mid-hold; spring buttons release.
     const onBlur = () => {
       for (const d of keyed) {
-        if (!isLatching(d) && inputs[d.address] === true) setInput(d.address, false);
+        if (!isLatching(d) && isPressed(d, inputs)) setInput(d.address, bitFor(d, false));
       }
     };
 
@@ -264,15 +278,14 @@ function InputWidget({
   }
 
   if (device.widget === 'estop') {
-    // Ladder inputs read the physical NC contact (normallyClosed: healthy =
-    // true, pressed = false); cabinet devices report "actuated" directly.
-    const nc = device.normallyClosed === true;
-    const pressed = nc ? runner.inputs[addr] === false : runner.inputs[addr] === true;
+    // Maintained: the mushroom head stays where it was left until it is twisted
+    // out again.
+    const pressed = isPressed(device, runner.inputs);
     return (
       <div className="widget">
         <button
           className={`estop${pressed ? ' pressed' : ''}`}
-          onClick={() => runner.setInput(addr, nc ? pressed : !pressed)}
+          onClick={() => runner.setInput(addr, bitFor(device, !pressed))}
           aria-pressed={pressed}
           aria-label={`${device.label} ${pressed ? 'pressed' : 'healthy'}`}
         >
@@ -301,8 +314,8 @@ function InputWidget({
   }
 
   // momentary push button (spring return)
-  const held = runner.inputs[addr] === true;
-  const press = (v: boolean) => runner.setInput(addr, v);
+  const held = isPressed(device, runner.inputs);
+  const press = (v: boolean) => runner.setInput(addr, bitFor(device, v));
   return (
     <div className="widget">
       <button
