@@ -8,8 +8,6 @@
 
 [**Play the demo rung →**](https://cuplexuser.github.io/AutomationSolver/) · a real solver and grader running in the page, no install
 
-[**Play the full game in your browser →**](https://automationsolver-play.vercel.app/) · 10 free graded work orders, all 53 with the $7 unlock
-
 ![The AutomationSolver bench: work order brief, ladder editor and operator panel](docs/shots/bench.webp)
 
 ## The bench
@@ -185,6 +183,12 @@ Write the briefing as an instruction manual rather than prose: a short lead para
 [**`TODO.md`**](TODO.md) is the only work list — a prioritized checklist, and the single point of interest for developing anything new. Top of it right now is finishing **variables and POUs**: the symbol table, the allocator, the resolver and the validation rules are all built and tested, and the declaration pane that would let a player actually create a local or a global is a finished component that nothing mounts yet.
 
 Everything under `docs/` is *reference* rather than a queue. If a piece of work is not a checkbox in `TODO.md`, it is not scheduled, whatever a design document's closing paragraph might imply.
+
+- [`docs/FEATURE-MAP.md`](docs/FEATURE-MAP.md) — where every capability lives and why it is built that way
+- [`docs/VARIABLES-AND-POUS.md`](docs/VARIABLES-AND-POUS.md) — the symbol table, scopes, and player-authored POUs
+- [`docs/FACTORY.md`](docs/FACTORY.md) — the excavator plant: its vision, its two process models, and what each puzzle settled
+- [`docs/FACTORY-LINE-DESIGN.md`](docs/FACTORY-LINE-DESIGN.md) — the line's floor plan, its zoned spine, and every timing measured rather than estimated
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — the historical record of how the phases landed. Not a queue.
 
 ## License
 
