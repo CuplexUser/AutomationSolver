@@ -573,6 +573,18 @@ function packHasBracket(devices: PuzzleDevice[]): boolean {
   return devices.some((d) => d.address === 'Y5');
 }
 
+/**
+ * The puzzle wires the lift/flipper (elevator5-style feature detect). A work
+ * order that doesn't — pack-group — has no way for the player to ever clear
+ * `liftLoad` between groups: the belt refeeds forever, so a second 4-pack
+ * inevitably completes. Without this check that second delivery has nowhere
+ * to land and trips "already loaded", jamming a solution that matches the
+ * work order's own hints. The platform just holds whatever is freshest.
+ */
+function packHasLift(devices: PuzzleDevice[]): boolean {
+  return devices.some((d) => d.address === 'Y2');
+}
+
 /** Cosmetic out-feed transit time for the latest finished pack (ship 0 → 1). */
 const OUTFEED_MS = 3000;
 
@@ -623,6 +635,7 @@ const packaging: ProcessModel = {
       jam = true;
     };
     const hasBracket = packHasBracket(devices);
+    const hasLift = packHasLift(devices);
     const dt = wasJammed ? 0 : dtMs;
 
     // -- actuators -----------------------------------------------------------
@@ -689,7 +702,7 @@ const packaging: ProcessModel = {
       m.sec2 = 0;
     }
     if (strokeEnds('push4') && num(m.carry4) > 0) {
-      if (pos.lift.next <= PACK_EPS && num(m.liftLoad) === 0) m.liftLoad = num(m.carry4);
+      if (pos.lift.next <= PACK_EPS && (num(m.liftLoad) === 0 || !hasLift)) m.liftLoad = num(m.carry4);
       else if (pos.lift.next > PACK_EPS) {
         trip('the 4-pack pusher dumped its boxes against a lift that was not down at the bottom');
       } else {
