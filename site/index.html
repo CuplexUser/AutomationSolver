@@ -6,7 +6,7 @@
 <title>AutomationSolver — a ladder-logic puzzle game</title>
 <meta name="description" content="Program a Mitsubishi-style PLC in ladder logic to solve real motor-control problems. Build the rung, run the scan, watch the power flow, and get graded against scripted test scenarios." />
 <meta property="og:title" content="AutomationSolver" />
-<meta property="og:description" content="A puzzle game where you program a PLC in ladder logic: seal-ins, e-stops, timers, counters, a drill station, a packaging machine, a PID loop, a gantry crane and an automated warehouse." />
+<meta property="og:description" content="A puzzle game where you program a PLC in ladder logic: seal-ins, e-stops, timers, counters, a drill station, a packaging machine, a PID loop, a gantry crane, an automated warehouse, and a whole excavator plant written in seven program sections." />
 <meta property="og:image" content="https://cuplexuser.github.io/AutomationSolver/preview.png" />
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230f141b' stroke='%232b3a4b'/%3E%3Crect x='4' y='6' width='2.5' height='20' rx='1.2' fill='%23ffb020'/%3E%3Crect x='25.5' y='6' width='2.5' height='20' rx='1.2' fill='%233a4d61'/%3E%3Cpath d='M6.5 16 H12.5' stroke='%23ffb020' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M19.5 16 H25.5' stroke='%233a4d61' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M12.5 10 V22' stroke='%23ffb020' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M19.5 10 V22' stroke='%234a5f74' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -258,8 +258,6 @@
 
   /* ---- machine gallery ---- */
   .machines { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
-  /* The seventh scene would otherwise sit alone in a two-up grid. */
-  .machine-wide { grid-column: 1 / -1; }
   .machine {
     background: var(--iron-900); border: 1px solid var(--line); border-radius: 10px; overflow: hidden;
     display: flex; flex-direction: column;
@@ -343,6 +341,7 @@
     <nav class="nav">
       <a class="navlink" href="#bench">The bench</a>
       <a class="navlink" href="#machines">Machines</a>
+      <a class="navlink" href="#plant">The plant</a>
       <a class="navlink" href="#orders">Work orders</a>
       <a class="gh-link" href="https://github.com/CuplexUser/AutomationSolver">GitHub ↗</a>
     </nav>
@@ -356,17 +355,18 @@
       <h1>Make the rung <span class="lit">remember</span></h1>
       <p class="lede">
         Program a <strong>Mitsubishi-style PLC</strong> on a grid editor, hit Run, and watch power
-        flood the rung while a real machine moves in 3D beside it. Forty-five work orders take you
-        from one contact driving one coil to a PID loop holding a tank on setpoint, and on to a
-        stacker crane keeping two production lines fed out of one aisle of racking.
+        flood the rung while a real machine moves in 3D beside it. Fifty-three work orders take you
+        from one contact driving one coil to a PID loop holding a tank on setpoint, and on to a whole
+        excavator plant written in seven program sections, where the job is no longer to make a
+        machine work but to find out which of six stations is holding the line up.
       </p>
       <div class="cta-row">
         <a class="btn btn-amber" href="#try">Build a rung now</a>
         <a class="btn btn-ghost" href="https://github.com/CuplexUser/AutomationSolver">View on GitHub</a>
       </div>
       <dl class="spec">
-        <div><dt>Work orders</dt><dd>45</dd></div>
-        <div><dt>Categories</dt><dd>11</dd></div>
+        <div><dt>Work orders</dt><dd>53</dd></div>
+        <div><dt>Categories</dt><dd>12</dd></div>
         <div><dt>Scan cycle</dt><dd>50 ms</dd></div>
       </dl>
     </div>
@@ -419,7 +419,7 @@
       as power floods it from the left rail.
     </p>
     <div class="bezel">
-      <div class="bezel-strip"><i></i><i></i><i></i><span style="margin-left:8px">work order 02 · start / stop seal-in</span></div>
+      <div class="bezel-strip"><i></i><i></i><i></i><span style="margin-left:8px">work order 32 · drill station: production run</span></div>
       <img src="shots/bench.webp" width="3120" height="1880" alt="AutomationSolver in play: the work-order brief on the left, the ladder editor in the center with a seven-rung drill program glowing amber, and the operator panel on the right showing the 3D drill station and its live I/O." loading="lazy" />
     </div>
     <div class="callouts">
@@ -449,9 +449,10 @@
     <p class="section-lede">
       Nothing animates on its own. Every transform is a pure function of the state the process model
       computed from this scan's <code>dt</code>, so what you see is what the grader saw. Five scenes
-      are hero models authored in Blender and loaded as glTF; two are drawn procedurally, because
-      when the subject is a number moving, or a grid of stock, a shape that <strong>is</strong> that
-      number reads better than geometry would.
+      are hero models authored in Blender and loaded as glTF; three are drawn procedurally, because
+      when the subject is a number moving, a grid of stock, or the same excavator seen at every
+      stage of its own build, a shape that <strong>is</strong> that state reads better than a model
+      whose parts you would only be switching on and off.
     </p>
     <div class="machines">
       <figure class="machine">
@@ -508,7 +509,7 @@
              and the load keeps swinging on its rope after the trolley stops.</p>
         </figcaption>
       </figure>
-      <figure class="machine machine-wide">
+      <figure class="machine">
         <img src="shots/machine-warehouse.webp" width="1440" height="798" alt="The 3D automated warehouse: a twin-mast stacker crane in an aisle of blue and orange racking, carrying a pallet of alloy bar past eight loaded slots." loading="lazy" />
         <figcaption class="machine-body">
           <p class="machine-tag">Automated Warehouse <span class="render">procedural</span></p>
@@ -516,6 +517,16 @@
           <p>Every slot wears the WMS register the program reads, and every material has its own
              load shape as well as its own color, so a mis-delivery is visible before the grader
              says so.</p>
+        </figcaption>
+      </figure>
+      <figure class="machine">
+        <img src="shots/machine-factory-weld.webp" width="1600" height="889" alt="The weld bay on the excavator line: an excavator frame clamped to a rotating positioner under a torch that is striking an arc, inside a mesh-guarded cell with blanks stacked beside it." loading="lazy" />
+        <figcaption class="machine-body">
+          <p class="machine-tag">Excavator Plant <span class="render">procedural</span></p>
+          <h3>One bay of six, mid-seam</h3>
+          <p>Drawn in code rather than imported, because the same excavator is on screen at every
+             stage of its own build: the geometry has to grow parts and recolor them as it moves
+             down the line.</p>
         </figcaption>
       </figure>
     </div>
@@ -555,10 +566,59 @@
   </div>
 </section>
 
+<section id="plant">
+  <div class="wrap">
+    <p class="panel-label">The excavator plant</p>
+    <h2>Then stop programming a machine and program a line</h2>
+    <p class="section-lede">
+      The last seven work orders share one floor: 55 by 38 metres of shop with a weld bay, a rack
+      store, a portal robot, a spray booth and cure oven, a final-assembly jig, a test bay and a
+      dock with a haulier who will not wait. A factory is not a bigger machine. It is several
+      machines that only work as <strong>one</strong>, and almost everything hard about it lives in
+      that word.
+    </p>
+    <div class="bezel">
+      <div class="bezel-strip"><i></i><i></i><i></i><span style="margin-left:8px">work order 48 · excavator line: the weld bay</span></div>
+      <img src="shots/machine-factory.webp" width="1600" height="889" alt="The whole excavator line in 3D: a signed shop floor running from the weld bay past the rack store, spray booth and cure oven to final assembly, a test bay, a dock with a loading truck and a yard of finished excavators, with an orange zoned conveyor running the length of the building." loading="lazy" />
+    </div>
+    <div class="callouts">
+      <div class="callout">
+        <h3>Seven sections, one scan</h3>
+        <p>The program is a tree of POUs on a task, not one long ladder. Six sections ship written
+           and read-only; the one you were hired for is empty. A section that writes a relay it does
+           not own is a validation error, not a bug found next week.</p>
+      </div>
+      <div class="callout">
+        <h3>Transport is the program</h3>
+        <p>Parts do not teleport between stations. The conveyor spine is twelve zones and a seventh
+           program section, so a part left standing on an infeed is a part the station behind it
+           cannot release.</p>
+      </div>
+      <div class="callout">
+        <h3>Correct and good differ</h3>
+        <p>Every station has a plain program that works and a better one costing about the same
+           number of rungs. Welding every boom twice runs the line and never faults. It also gives
+           away 3.6 seconds on the first two parts, and the par times notice.</p>
+      </div>
+    </div>
+    <div class="bezel" style="margin-top:28px">
+      <div class="bezel-strip"><i></i><i></i><i></i><span style="margin-left:8px">the plant workspace · sec1_weld, written in names</span></div>
+      <img src="shots/bench-factory.webp" width="1760" height="900" alt="The plant workspace: the seven-section program tree on the left with five sections padlocked read-only, the plant scene behind, and a floating window holding the weld bay's ladder, whose contacts are labelled PlantRun, TorchTipWorn, InCycle, FixtureClamped and PositionerAtA instead of raw addresses." loading="lazy" />
+    </div>
+    <p class="engine-note">
+      The plant is the workspace, and the programs float above it in windows you open per section.
+      Rungs here are written in <strong>names</strong> rather than addresses: a declaration binds
+      <code>FixtureClamped</code> to a bit once, so renaming is free and the engine never learns
+      that variables exist. The capstone hands you all six stations already working and asks the
+      only question that matters on a real line: which one is holding it up?
+    </p>
+  </div>
+</section>
+
 <section id="orders">
   <div class="wrap">
     <p class="panel-label">Work orders</p>
-    <h2>Forty-five jobs, eleven categories</h2>
+    <h2>Fifty-three jobs, twelve categories</h2>
     <p class="section-lede">
       Each category is its own ladder of difficulty, starting from something you can finish in a
       minute and ending in a capstone that combines everything in it.
@@ -574,7 +634,8 @@
       <div class="order"><span class="name">Drill Station</span><span class="count">4 jobs</span><span class="desc">Clamp, spin up, drill and sort mixed stock through one automatic station.</span></div>
       <div class="order"><span class="name">Process Control</span><span class="count">5 jobs</span><span class="desc">Scale a transmitter, build a P regulator by hand, then let a PID block kill the offset.</span></div>
       <div class="order"><span class="name">Motion Control</span><span class="count">4 jobs</span><span class="desc">Speed references, drive ramp parameters and the stopping distance a load implies.</span></div>
-      <div class="order"><span class="name">Automated Warehouse</span><span class="count">5 jobs</span><span class="desc">Drive a stacker crane by position sensor, search the stock table for the nearest slot, and keep two lines fed.</span></div>
+      <div class="order"><span class="name">Automated Warehouse</span><span class="count">6 jobs</span><span class="desc">Drive a stacker crane by position sensor, search the stock table for the nearest slot, and keep two lines fed.</span></div>
+      <div class="order"><span class="name">Excavator Plant</span><span class="count">7 jobs</span><span class="desc">Not a machine but a line: seven program sections over one floor, ending in a capstone that hands over every station already working and asks you to make it earn more.</span></div>
     </div>
     <p class="lock-note">
       Scoring is 85 marks for scenarios passed plus 15 for performance, and the performance marks

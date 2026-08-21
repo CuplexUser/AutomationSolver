@@ -938,6 +938,16 @@ a plant does not, so here the machine **is** the page.
 - **Placement is idempotent**, matching the real editor: clicking a cell that already holds the
   selected instruction does nothing, rather than toggling it away, so a double click cannot undo
   itself. Erase is the eraser tool, a right click, or Delete on a focused cell.
+- **The page carries every category, and the counts are hand-written.** Hero copy, the spec strip
+  (`53` / `12`), the machines gallery and the work-order list all state numbers that nothing
+  derives from `content/index.ts`, so shipping a puzzle does not update them. They drifted once
+  already: the page sat at "forty-five jobs, eleven categories" with no excavator plant on it at
+  all for the whole of the category's build. When a category lands, the page is part of it.
+- **The excavator plant has its own section** (`#plant`), between the cabinet genre and the work
+  orders, because it is the one category whose subject is not a machine: it carries the whole-line
+  shot, three callouts (sections and ownership, transport as a program, correct versus good) and
+  the workspace shot showing rungs written in declared names. Its scene is also the eighth gallery
+  tile, which is what made the grid come out as four even pairs and retired `.machine-wide`.
 - **Base-relative assets.** Pages serves from `/AutomationSolver/`, so `vite.config.ts` sets
   `base: './'`. Absolute asset paths 404 there.
 - **Deployment** is `.github/workflows/pages.yml` on **every** push to `main`: `npm ci`, typecheck

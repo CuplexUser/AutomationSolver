@@ -26,17 +26,33 @@ Press **Run** and the rung lights up cell by cell as power floods it from the le
 
 ## The machines
 
-Every puzzle family drives a machine visualization that is a diagnostic instrument rather than decoration: nothing animates on its own, and every transform is a pure function of the deterministic state the process model computed from `dt`. Five scenes are hero models authored in Blender and loaded as glTF; two are procedural, because their subject is a number moving, or a grid of stock, and a shape that *is* that number reads better than geometry would.
+Every puzzle family drives a machine visualization that is a diagnostic instrument rather than decoration: nothing animates on its own, and every transform is a pure function of the deterministic state the process model computed from `dt`. Five scenes are hero models authored in Blender and loaded as glTF; three are procedural, because their subject is a number moving, a grid of stock, or the same excavator seen at every stage of its own build, and a shape that *is* that state reads better than a model whose parts you would only be switching on and off.
 
 ![The automated warehouse: a stacker crane in an aisle of racking, carrying a pallet of alloy bar](docs/shots/machine-warehouse.webp)
 
-*The newest category and the hardest. Eight rack slots wearing the WMS register names the program reads (`D101`..`D204`), a twin-mast crane carrying the load between its columns on a three-stage telescopic fork, and two production lines calling for material at either end of the aisle. Each material has its own load shape as well as its own color, so a mis-delivery is visible before the grader says so.*
+*The hardest of the single-machine categories. Eight rack slots wearing the WMS register names the program reads (`D101`..`D204`), a twin-mast crane carrying the load between its columns on a three-stage telescopic fork, and two production lines calling for material at either end of the aisle. Each material has its own load shape as well as its own color, so a mis-delivery is visible before the grader says so.*
 
 | | |
 |---|---|
 | ![Drill station](docs/shots/machine-drill.webp)<br>**Drill Station** · clamp, spindle spin-up, feed and eject, sorting aluminum from hardened steel through a reject gate | ![Packaging machine](docs/shots/machine-pack.webp)<br>**Packaging Machine** · six pneumatic actuators group boxes 2 → 4 → 16, with a lift that flips cartons on end |
 | ![Pick and place arm](docs/shots/machine-pickplace.webp)<br>**Pick & Place** · a two-link arm swings between infeed and tray, reaching on an IK path so the gripper hangs plumb | ![Elevator shaft](docs/shots/machine-elevator.webp)<br>**Elevator** · five floors, call buttons, and doors the car physically will not move against |
 | ![Tank vessel](docs/shots/machine-tank.webp)<br>**Process Control** · the liquid column *is* the register, the inlet stream's radius *is* the valve opening | ![Transfer carriage](docs/shots/machine-axis.webp)<br>**Motion Control** · a VFD gantry on ramp parameters, with a pallet swinging on the hoist after the trolley stops |
+
+## The plant
+
+The last seven work orders share one floor: 55 by 38 m of shop with a weld bay, a rack store, a portal robot, a spray booth and cure oven, a final-assembly jig, a test bay and a dock. A factory is not a bigger machine. It is several machines that only work as *one*, and almost everything hard about it lives in that word.
+
+![The whole excavator line: weld bay, rack store, spray booth, cure oven, final assembly, test bay, dock and yard, with a zoned conveyor running the length of the building](docs/shots/machine-factory.webp)
+
+*Work order 48. Every bay signed, finished excavators between the test bay and the yard, a haulier backed onto the dock, and the orange spine running the length of the building. The zoned conveyor is not scenery: it is a seventh program section.*
+
+- **Seven sections, one scan order.** The program is a tree of POUs on a task, not one long ladder. Six sections ship written and read-only; the one you were hired for is empty. `owns` fences the flat device space, so a section writing a relay it does not own is a validation error rather than a bug found next week.
+- **Transport is the program.** Parts do not teleport between stations. The spine is twelve zones the player drives, so a part left standing on an infeed is a part the station behind it cannot release.
+- **Correct and good are different words.** Every station has a plain program that works and a better one costing about the same number of rungs. Welding every boom twice welds sound booms and never faults, so it solves the puzzle. It also takes 9.2 s to make the first two parts against a par of 5.6 s, and correctness is what unlocks the next job while throughput is scored on top.
+
+![The plant workspace: the seven-section program tree, the plant scene behind it, and a floating window holding the weld bay's ladder written in declared names](docs/shots/bench-factory.webp)
+
+*The plant is the workspace and the programs float above it, one window per section. The rungs are written in **names**: a `VarDecl` binds `FixtureClamped` to a bit once, at declaration, so renaming is free and the engine never learns that variables exist. The capstone hands over all six stations already working and asks the only question that matters on a real line: which one is holding it up?*
 
 ## Two ways to program
 
