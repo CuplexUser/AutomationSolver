@@ -116,14 +116,66 @@ function dirFrom(azimuthDeg: number, elevationDeg: number): [number, number, num
   return [Math.sin(az) * c, Math.sin(el), Math.cos(az) * c];
 }
 
-export const PLANT_TARGET: [number, number, number] = [0, 3, -2];
-export const START_POS: [number, number, number] = [-22, 26, 34];
+/**
+ * What the overview aims at: the middle of the floor by x, at working height,
+ * and 3 m south of its centre by z, which is the front edge of row B.
+ *
+ * Deliberately not the centroid of the slab. The frame is centred on the target
+ * and the building is not symmetric about it — 8.4 m of wall stands above the
+ * floor and nothing below — so aiming at the middle of the slab leaves a band of
+ * empty frame over the roofline. Aiming a little short and a little low balances
+ * the silhouette, and is worth about five percent of the frame.
+ */
+export const PLANT_TARGET: [number, number, number] = [-0.5, 2, 3];
 
+/**
+ * Where the canvas opens, before `SectionCamera` resolves the overview for the
+ * live viewport. Close enough to that eye that the first fly is imperceptible;
+ * the old value was on the far side of the building from it, so the page opened
+ * on a swoop.
+ */
+export const START_POS: [number, number, number] = [34, 38, 68];
+
+/**
+ * The overview, and the one preset that was wrong in both of the ways a preset
+ * can be wrong. It shipped as `dirFrom(210, 34)` with `halfWidth: 30` and
+ * `halfHeight: 20`, and it is the default view of the whole category.
+ *
+ * **It stood behind the only two walls the building has.** `Shell` draws a north
+ * wall at `z = FLOOR.z0` and a west wall at `x = FLOOR.x0` and nothing else, so
+ * the open corner is the south-east one. Azimuth 210 is north-west: the shot
+ * came in over both walls, the floor markings read mirrored because they were
+ * being seen from behind, and the two walls that are meant to be the backdrop
+ * were the foreground instead. Both are `DoubleSide` precisely so that orbiting
+ * behind them still renders — that is a recovery from the player dragging
+ * there, not a place to start.
+ *
+ * **The fit was too tight, independently of the bearing.** `halfWidth` and
+ * `halfHeight` are half-extents fitted at the target plane, and 55 x 38 m of
+ * floor seen at 26 degrees does not project into a 60 x 40 billboard. Measured
+ * as a fraction of the frame (1.0 being the edge) over the building's real
+ * silhouette — the slab's four corners plus the top edges of the two walls —
+ * the old preset ran off the frame at *every* aspect the presets are checked
+ * at, by 15 percent horizontally and by up to 40 percent vertically. At 1.48,
+ * which is the aspect of the plant workspace's own panel, it was 1.15 by 1.37,
+ * and the weld bay was what fell off the edge.
+ *
+ * The numbers below are solved rather than eyeballed: the minimum that keeps
+ * every silhouette corner inside the frustum from aspect 1.1 to 2.6, with the
+ * same 6 percent margin the station presets carry. The worst case left is 0.91
+ * wide at 1.1 and 0.92 tall at 1.78.
+ *
+ * Worth knowing before trusting the audit here: `audit.ts`'s `dumpCameraEyes`
+ * skips `SUP`, which *is* this preset, because the design exempts the overview
+ * from the "eye height 1.4 to 3.4 m" rule. That one exemption drops it out of
+ * **both** camera checks in `tests/scene-audit.spec.ts`, which is why the
+ * default view of the category was the only preset with no coverage at all.
+ */
 export const PLANT_FOCUS: Focus = {
   center: PLANT_TARGET,
-  halfWidth: 30,
-  halfHeight: 20,
-  dir: dirFrom(210, 34),
+  halfWidth: 37,
+  halfHeight: 22,
+  dir: dirFrom(28, 26),
   label: 'The whole line',
 };
 

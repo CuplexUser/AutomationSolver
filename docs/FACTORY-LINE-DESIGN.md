@@ -367,7 +367,7 @@ close-up back into the overview shot we already have.
 
 | Preset | Looks at | Azimuth | Elev | halfWidth | maxDistance | The shot |
 |---|---|---|---|---|---|---|
-| **Overview** | plant centre `(0, 3, -2)` | 210° | 34° | 30 | — | High three-quarter down the length of the line. The only high shot. |
+| **Overview** | row B's front edge `(-0.5, 2, 3)` | 28° | 26° | 37 | — | Three-quarter from the open south-east corner, both walls behind the line. The only high shot. See *The overview was aimed at the back of the building* below. |
 | **Weld** | fixture `(-21, 1.7, -12)` | 350° | 10° | 6.5 | 15 | From open floor south-west of the bay, north-north-east up the shop, Z1-Z3 low in the near field. |
 | **Conveyor** | sort `(24, 1.4, 2)` | 260° | 14° | 7.0 | 16 | Down the spine foreshortened, so a queue reads as a queue. |
 | **Store** | rack `(-6, 2.0, -13)` | 320° | 6° | 7.5 | 15 | North-east *along* the four lanes rather than square at them, from far enough south to come in through the open face. |
@@ -515,6 +515,51 @@ Both are the same mistake and worth stating as a rule: **a box's `z0` is its nor
 The lanes also now draw with the spine's roller texture and a kerb down each side. The 6° tilt is
 correct and is the whole mechanism — nothing drives a gravity lane — but a bare tilted slab reads
 as a bench knocked askew, which is what it was reported as.
+
+### The overview was aimed at the back of the building
+
+The overview shipped as `dirFrom(210, 34)`, `halfWidth: 30`, `halfHeight: 20`, aimed at
+`(0, 3, -2)`, and it was wrong in both of the ways a preset can be wrong at once. It is also the
+default view of the whole category, which is how far a shot can be off and still ship.
+
+**The bearing stood behind the only two walls there are.** §7 gives the building a north wall at
+`z = FLOOR.z0` and a west wall at `x = FLOOR.x0` and no others, so the open corner is the
+south-east one. Azimuth 210 is north-west: the shot came in over both walls, the floor markings
+read mirrored because they were being seen from behind, and the two walls meant to be the backdrop
+were the foreground. `DoubleSide` on both is what makes orbiting behind them recoverable, not a
+licence to start there. The bearing is now 28°, which is the corner the building is open at.
+
+**The fit was too tight, independently of the bearing.** `halfWidth` and `halfHeight` are
+half-extents fitted at the *target plane*, and 55 x 38 m of floor at this elevation does not
+project into a 60 x 40 billboard. Measuring the building's real silhouette — the slab's four
+corners plus the top edges of the two walls that exist — as a fraction of the frame, where 1.0 is
+the edge:
+
+| Aspect | Old x | Old y | New x | New y |
+|---|---|---|---|---|
+| 1.10 | 1.15 | 0.90 | 0.91 | 0.52 |
+| 1.33 | 1.15 | 1.17 | 0.91 | 0.66 |
+| **1.48** (the plant workspace's own panel) | **1.15** | **1.37** | 0.90 | 0.77 |
+| 1.60 | 1.08 | 1.40 | 0.91 | 0.86 |
+| 1.78 | 0.97 | 1.40 | 0.86 | 0.92 |
+| 2.60 | 0.66 | 1.40 | 0.59 | 0.92 |
+
+It was off the frame at every aspect in the range §6 says the presets were solved against, and on
+the panel the plant workspace actually uses, 40 percent of the building's height was hanging off.
+`37 x 22` is the solved minimum that keeps every silhouette corner inside from 1.1 to 2.6 with the
+same 6 percent margin the station presets carry.
+
+Two smaller things came out of the same pass. The target is **not** the centroid of the slab: the
+frame centres on the target and the building is not symmetric about it, since 8.4 m of wall stands
+above the floor and nothing below, so aiming a little short and a little low is worth about five
+percent of the frame. And `START_POS`, where the canvas opens before `SectionCamera` resolves the
+overview, was on the far side of the building from the resolved eye, so the page opened on a swoop.
+
+**Why no test caught it:** `audit.ts`'s `dumpCameraEyes` skips `SUP`, which *is* the overview,
+because rule 1 above exempts it from the eye-height range. That single exemption drops it out of
+**both** camera checks in `tests/scene-audit.spec.ts`, so the default view of the category is the
+one preset with no coverage at all. A framing check — the silhouette arithmetic above, run at the
+same spread of aspects — is what would have caught this, and does not exist yet.
 
 ### Overview stays orbitable
 
