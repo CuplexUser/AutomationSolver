@@ -1,0 +1,18 @@
+# Real files in this directory are served ahead of the SPA catch-all rewrite in
+# vercel.json, which is the only reason this is reachable at all: every path
+# that is not a file on disk returns index.html.
+
+User-agent: *
+Allow: /
+
+# Nothing here renders anything a crawler can use, and several are one-shot
+# token links that should never be followed.
+Disallow: /login
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /settings
+Disallow: /api/
+Disallow: /dev/
+
+Sitemap: https://automation.cuplex.org/sitemap.xml
