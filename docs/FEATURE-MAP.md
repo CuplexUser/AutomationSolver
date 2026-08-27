@@ -584,7 +584,74 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
   - **Keyboard-first** — arrows move the selection (wrapping across rungs), a single letter
     places an instruction (`C` NO, `X` NC, `P`/`N` edge, `O`/`S`/`R` coils, `T`/`K`, `W` wire),
     `B` toggles a branch, `A` adds a rung, `Shift`+`→`/`↓` grows the rung, `Del` clears.
-    The palette shows each key; the full list is under "Shortcuts".
+    The palette shows each key on its button; the full list is the help sheet below.
+  - **Help sheet** (`LadderHelp.tsx`) — `?` or `F1`, or the `?` in the toolbar's prefs group.
+    This replaced a collapsed `<details>Shortcuts</details>` at the foot of the palette, and the
+    reason is worth keeping: "insert a column before this one" had been on the right-click menu
+    for as long as the menu had existed, and was reported as a missing feature. A list that is
+    folded away *and* scrolled away is not documentation. Grouped by intent (Selecting, Placing
+    and editing, Moving things, Rung structure, View) rather than by key, and the mouse gestures
+    carry the same weight as the keys. The `?` button lives beside the zoom controls
+    specifically because that row survives folding the palette.
+  - **Multi-cell selection** — `selected` stays the single **anchor** every existing read path
+    already used (the toolbar, the field row, instruction placement); `marks` is the additional
+    set, `null` whenever one cell is selected, so nothing downstream had to learn about it.
+    Ctrl+click toggles a cell, Shift+click sweeps a rectangle from the anchor, and a drag from an
+    *empty* cell rubber-bands one — empty cells are dead space, so that gesture steals nothing.
+    `Del`, `Ctrl`+`C`/`X`/`V`, a drag and a **field retype** all act on the whole selection, each
+    as a single undo step.
+    - Bulk retyping goes through `patchCells(positions, patch, applies)`, and the predicate is
+      the point: a `compare` stores `device: ''` — it addresses nothing — so `'device' in element`
+      would cheerfully give it a destination register. `applies` is built from `fieldsFor`, the
+      same table the toolbar renders from, so a bulk edit writes exactly the boxes that
+      instruction would have shown.
+  - **Direct manipulation** (`useGridGestures.ts`) — drag a filled cell to carry that block, or
+    the whole selection, to any cell in the section (`Ctrl` copies instead of moving); `Alt`+drag
+    carries the whole column, matching `Alt`+arrow, which already meant "move this column".
+    Three things this settled the hard way:
+    - **Pointer events, not HTML5 DnD** — a cell is an SVG-bearing `<button>`, where the native
+      drag image and drop targeting are unreliable. Nothing commits until `pointerup`, so a
+      gesture abandoned off the grid simply does not happen.
+    - **Cells are hit-tested with `elementFromPoint`** off a `data-cell` attribute, never by
+      arithmetic: the grid sits inside a scroller under a `transform: scale(...)` with rungs of
+      differing widths stacked in it, so geometry here would re-derive placement the browser has
+      already done, and get it wrong at every zoom but 100%.
+    - **Nothing may sit in `.grid-wrap`'s normal flow.** A first attempt put a strip of column
+      grips above `.cell-grid`; it pushed the cells down while the vlink handles — absolutely
+      positioned in the same wrapper — stayed put, and every branch wire came adrift of its rung.
+      Hence `Alt`+drag and no handle at all, and `.col-drop` (the drop indicator) being absolute.
+  - **Undo/redo** — `Ctrl`+`Z` / `Ctrl`+`Shift`+`Z` / `Ctrl`+`Y`, and visible ↶ ↷ buttons, because
+    a key nobody knows about does not make a destructive edit feel safe to try. Implemented as an
+    `undoable` zustand middleware wrapping `set` rather than as edits to twenty action bodies, so
+    a mutation added later is undoable by default instead of by remembering to be. Snapshots are
+    whole-`project` references, cheap because `updateRung` clones only the rung it touches.
+    Two rules this imposes on the actions:
+    - **An action that can decline must decline before calling `updateRung`**, which rebuilds the
+      project object whatever its callback does — a capped `addCol` that returned early from
+      *inside* the callback still handed the history a fresh identity and spent a step on nothing.
+    - **Consecutive edits carrying the same `coalesceHint` inside 600 ms are one entry**, or
+      typing `D101` into an address field costs four presses of Ctrl+Z to take back.
+  - **Reshaping a rung** — `insertCol`/`removeCol`, `removeRow`, `moveCol`/`moveRow` (adjacent
+    swap, the keyboard nudge) and `moveColTo` (splice-out/splice-in, so a dragged column travels
+    any distance). The whole surface turns on one fact from `ladder/types.ts`: **a `VLink`'s
+    `col` is a node boundary in `[0, cols]`, not a cell**, and its `row` is the upper row of the
+    joined pair. So:
+    - **Insert and delete remap links; moves do not.** Only the first two change the *number* of
+      boundaries. A branch is drawn on the grid, not attached to an element, so cells slide past
+      it — stated in the help sheet, because it is the one non-obvious behavior in the grid.
+    - **A delete must dedupe.** Closing column C merges the boundaries either side of it, so two
+      distinct links can land on one. `evaluateRung` does not care (a DSU union is idempotent)
+      but `toggleVlink` splices the first match only, so a survivor makes that branch handle look
+      dead to the click that should clear it.
+    - **Deleting a row drops the links at `row` and `row - 1`**, both of which lose an endpoint.
+    - Caps are `MAX_COLS` 12 / `MAX_ROWS` 6, stricter than the server's transport schema (16×12)
+      on purpose, and a refused grow now says so in the palette's note line rather than
+      swallowing the keystroke.
+  - **Tests** — `editorStore.test.ts` (vitest, `environment: 'node'`, no DOM) is the client's only
+    unit-test suite and covers exactly the index arithmetic above, because that is the code whose
+    mistakes are *silent*: `evaluateRung` skips an out-of-range vlink rather than throwing, so a
+    bad remap surfaces as a branch that quietly stopped conducting. Component and end-to-end
+    coverage stays Playwright's job under `tests/`, which the `src/**/*.test.ts` include misses.
   - **Density and zoom** — compact 72×52 cells, plus a 50–200% zoom (`Ctrl` +/−/0, or **Fit**,
     which sizes the program to the window — a two-rung tutorial scales up, an eight-rung sequence
     scales down). The zoom is remembered per puzzle, so the density suits the exercise.

@@ -193,42 +193,161 @@
   justify-content: space-between;
   gap: 12px;
 }
-.shortcuts {
-  font-size: 12px;
+/* --- Help --------------------------------------------------------------------
+   The key list used to live collapsed at the foot of the palette, where it was
+   folded away and scrolled away at the same time — so the right-click actions
+   were, in practice, undiscoverable. It is a real sheet now, and this is the
+   link to it. */
+.shortcuts-link {
   flex: 0 0 auto;
-}
-.shortcuts summary {
-  cursor: pointer;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
   color: var(--muted);
   font-family: var(--font-display);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   font-size: 11px;
+  cursor: pointer;
 }
-.shortcuts summary:hover {
+.shortcuts-link:hover {
   color: var(--live);
 }
-.shortcuts dl {
-  margin: 8px 0 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.shortcuts-link kbd {
+  margin-left: 4px;
 }
-.shortcuts dl > div {
-  display: flex;
-  gap: 10px;
-}
-.shortcuts dt {
+
+kbd {
+  display: inline-block;
+  min-width: 1.35em;
+  padding: 1px 5px;
+  border: 1px solid var(--edge-strong);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  background: var(--inset);
+  color: var(--ink);
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink);
-  min-width: 120px;
-  text-align: right;
+  line-height: 1.4;
+  text-align: center;
+  white-space: nowrap;
 }
-.shortcuts dd {
+
+.help-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(3px);
+}
+.help-sheet {
+  width: min(920px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+}
+.help-sheet:focus {
+  outline: none;
+}
+.help-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--edge);
+}
+.help-head h2 {
   margin: 0;
-  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink);
+}
+.help-body {
+  /* Two columns where there is room; the prose block spans both. The groups
+     are short enough that a single column would be all scrolling. */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 20px 28px;
+  padding: 16px;
+  overflow: auto;
+}
+.help-group h3 {
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--live);
+}
+.help-wide {
+  grid-column: 1 / -1;
+}
+.help-note {
+  margin: 0 0 8px;
+  color: var(--ink-dim);
   font-size: 12px;
+  line-height: 1.55;
+}
+.help-instr {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 4px 12px;
+}
+.help-instr li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-dim);
+}
+.help-glyph {
+  flex: 0 0 auto;
+  min-width: 34px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--sym-idle);
+}
+.help-instr-label {
+  flex: 1 1 auto;
+}
+.help-keys {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.help-keys > div {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+.help-keys dt {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  min-width: 108px;
+  justify-content: flex-end;
+}
+.help-keys dd {
+  margin: 0;
+  flex: 1 1 auto;
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: 1.5;
 }
 .instr-btn:hover:not(:disabled) {
   border-color: var(--live);
@@ -261,6 +380,19 @@
   color: var(--live);
 }
 
+.undo-ctl {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 8px;
+  border-right: 1px solid var(--edge);
+}
+.undo-ctl .icon-btn {
+  /* The arrows are the only glyphs in this row without a text baseline to sit
+     on, and they read a size small at the toolbar's font size. */
+  font-size: 15px;
+  line-height: 1;
+}
 .zoom-ctl {
   display: flex;
   align-items: center;
@@ -409,6 +541,40 @@
   border-color: var(--live);
   background: rgba(255, 176, 32, 0.08);
 }
+/* The rest of a multi-cell selection: the same hue as the anchor but a shade
+   quieter, because exactly one cell is the one the toolbar's fields are
+   editing and the difference has to stay visible. */
+.ladder-cell.is-marked:not(.is-selected) {
+  border-color: color-mix(in srgb, var(--live) 45%, transparent);
+  background: rgba(255, 176, 32, 0.04);
+}
+/* Being dragged out of. Left in place rather than hidden, so the block can be
+   seen to come from somewhere while the drop target shows where it lands. */
+.ladder-cell.is-lifted {
+  opacity: 0.32;
+}
+.ladder-cell.is-drop {
+  border-color: var(--info);
+  border-style: dashed;
+  background: rgba(74, 163, 255, 0.1);
+}
+/* Where an Alt-drag would drop the column, on the boundary it would land on. */
+.col-drop {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--info);
+  box-shadow: 0 0 6px rgba(74, 163, 255, 0.7);
+  pointer-events: none;
+  z-index: 3;
+}
+/* A drag would otherwise sweep a text selection across every address label it
+   crossed, which then paints over the grid for the rest of the gesture. */
+.cell-grid {
+  user-select: none;
+  -webkit-user-select: none;
+}
 .cell-addr {
   font-family: var(--font-mono);
   font-size: 11px;
@@ -526,10 +692,22 @@
   font-size: 12px;
   cursor: pointer;
 }
-.cell-menu-item:hover {
+.cell-menu-item:hover:not(:disabled) {
   background: color-mix(in srgb, var(--live) 14%, transparent);
 }
-.cell-menu-item.danger:hover {
+.cell-menu-item:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.cell-menu-sep {
+  /* Separates reshaping the grid from removing what is on it — two different
+     kinds of regret, and the destructive one should not be adjacent to a
+     routine one in muscle memory. */
+  margin: 4px 6px;
+  border: 0;
+  border-top: 1px solid var(--edge);
+}
+.cell-menu-item.danger:hover:not(:disabled) {
   background: color-mix(in srgb, var(--stop) 14%, transparent);
   color: var(--stop);
 }

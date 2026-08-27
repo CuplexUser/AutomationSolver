@@ -49,10 +49,24 @@ const IDLE_SYM = 'var(--sym-idle)';
 interface Props {
   element: LadderElement | null;
   selected: boolean;
+  /** Part of a multi-cell selection, but not the anchor the toolbar is editing. */
+  marked?: boolean;
+  /** Being dragged out of — drawn as a hole so the block reads as lifted. */
+  lifted?: boolean;
+  /** Where the drag would land if released now. */
+  dropTarget?: boolean;
   leftLive: boolean;
   rightLive: boolean;
   symbolLive: boolean;
-  onClick: () => void;
+  /**
+   * Identifies this cell to the drag hit-test, which finds cells with
+   * `elementFromPoint` rather than by arithmetic — the grid sits under a zoom
+   * transform inside a scroller, so the DOM knows where a cell is and geometry
+   * would only be recomputing what it already knows.
+   */
+  cellId: string;
+  onClick: (e: React.MouseEvent) => void;
+  onPointerDown?: (e: React.PointerEvent) => void;
   /** Jump straight to editing the cell's field, rather than just selecting it. */
   onDoubleClick?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
@@ -138,10 +152,15 @@ export function describeElement(element: LadderElement): string {
 export function CellView({
   element,
   selected,
+  marked,
+  lifted,
+  dropTarget,
   leftLive,
   rightLive,
   symbolLive,
+  cellId,
   onClick,
+  onPointerDown,
   onDoubleClick,
   onContextMenu,
 }: Props) {
@@ -154,10 +173,18 @@ export function CellView({
   return (
     <button
       type="button"
+      data-cell={cellId}
       onClick={onClick}
+      onPointerDown={onPointerDown}
       onDoubleClick={onDoubleClick}
       onContextMenu={onContextMenu}
-      className={`ladder-cell${selected ? ' is-selected' : ''}`}
+      className={
+        'ladder-cell' +
+        (selected ? ' is-selected' : '') +
+        (marked ? ' is-marked' : '') +
+        (lifted ? ' is-lifted' : '') +
+        (dropTarget ? ' is-drop' : '')
+      }
       aria-label={element ? describeElement(element) : 'empty cell'}
       title={element ? describeElement(element) : undefined}
     >

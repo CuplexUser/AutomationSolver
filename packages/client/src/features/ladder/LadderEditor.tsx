@@ -30,7 +30,17 @@ import {
 } from './CellFields';
 import type { SymbolChoice } from '@automationsolver/shared';
 import { CELL_H, CELL_W } from './CellView';
-import { pouRungs, useEditor } from './editorStore';
+import {
+  markKey,
+  MAX_COLS,
+  MAX_ROWS,
+  pouRungs,
+  selectedCells,
+  useEditor,
+  type PatchableFields,
+} from './editorStore';
+import { useGridGestures } from './useGridGestures';
+import { LadderHelp } from './LadderHelp';
 import { RungView } from './RungView';
 
 interface InstrMeta {
@@ -73,6 +83,30 @@ const DEFAULT_PID: PidParams = {
   outMin: 0,
   outMax: 4000,
 };
+
+/**
+ * Does this element actually use this field?
+ *
+ * `fieldsFor` is the same table the toolbar renders from, so a bulk retype
+ * writes exactly the boxes the toolbar would have shown for that instruction —
+ * and skips the rest instead of, say, handing a compare a destination register
+ * on the strength of its empty `device` string.
+ */
+function fieldApplies(element: LadderElement, field: keyof PatchableFields): boolean {
+  const f = fieldsFor(element.type);
+  switch (field) {
+    case 'device':
+      return !!f.address;
+    case 'preset':
+      return !!f.preset;
+    case 'operands':
+      return !!f.operands?.length;
+    case 'op':
+      return !!f.op;
+    case 'pid':
+      return element.type === 'pid';
+  }
+}
 
 /** "D0 ÷ K4 into D10" — the selected word instruction, spelled out in the hint. */
 function wordSummary(el: LadderElement): string {
@@ -188,8 +222,16 @@ export function LadderEditor({
     selected: rawSelected,
     select,
     placeSelected,
-    patchSelected,
+    patchSelected: patchSelectedIn,
+    patchCells,
     setCell,
+    marks,
+    setMarks,
+    clearCells,
+    copyCells,
+    pasteAt,
+    moveCells,
+    moveColTo: moveColToIn,
     toggleVlink,
     addRung: addRungTo,
     insertRung: insertRungIn,
@@ -198,8 +240,14 @@ export function LadderEditor({
     addRow: addRowIn,
     addCol: addColIn,
     insertCol: insertColIn,
+    removeCol: removeColIn,
+    removeRow: removeRowIn,
     moveCol: moveColIn,
     moveRow: moveRowIn,
+    undo,
+    redo,
+    past,
+    future,
   } = useEditor();
 
   // Everything below this line thinks in one POU's rungs, exactly as it did
@@ -209,6 +257,38 @@ export function LadderEditor({
   const rungs = pouRungs(project, pouId);
   const program = useMemo<LadderProgram>(() => ({ rungs }), [rungs]);
   const selected = rawSelected?.pou === pouId ? rawSelected : null;
+  // Every cell the bulk commands act on. `marks` is null whenever one cell is
+  // selected, which is nearly always, so this is `[selected]` almost always.
+  const selection = useMemo(
+    () => (!marks || marks.pou === pouId ? selectedCells({ selected, marks }) : []),
+    [selected, marks, pouId],
+  );
+  const multi = selection.length > 1;
+  /** This rung's marked cells as `row:col` keys, for the grid to paint. */
+  const markedIn = useCallback(
+    (rungIndex: number): ReadonlySet<string> | undefined => {
+      if (!marks || marks.pou !== pouId) return undefined;
+      const keys = new Set<string>();
+      for (const c of selection) if (c.rung === rungIndex) keys.add(`${c.row}:${c.col}`);
+      return keys;
+    },
+    [marks, pouId, selection],
+  );
+
+  /**
+   * A field edit lands on every selected cell that carries that field.
+   *
+   * Shadowing the store action rather than touching its six call sites: each of
+   * those reads as "retype the thing in hand", and *which* cells that means is a
+   * selection question rather than theirs.
+   */
+  const patchSelected = useCallback(
+    (patch: PatchableFields) => {
+      if (selection.length > 1) patchCells(selection, patch, fieldApplies);
+      else patchSelectedIn(patch);
+    },
+    [selection, patchCells, patchSelectedIn],
+  );
   const addRung = useCallback(() => addRungTo(pouId), [addRungTo, pouId]);
   const insertRung = useCallback((i: number) => insertRungIn(pouId, i), [insertRungIn, pouId]);
   const moveRung = useCallback(
@@ -230,6 +310,18 @@ export function LadderEditor({
     (rungIndex: number, row: number, d: -1 | 1) => moveRowIn(pouId, rungIndex, row, d),
     [moveRowIn, pouId],
   );
+  const removeCol = useCallback(
+    (rungIndex: number, col: number) => removeColIn(pouId, rungIndex, col),
+    [removeColIn, pouId],
+  );
+  const removeRow = useCallback(
+    (rungIndex: number, row: number) => removeRowIn(pouId, rungIndex, row),
+    [removeRowIn, pouId],
+  );
+  const moveColTo = useCallback(
+    (rungIndex: number, from: number, to: number) => moveColToIn(pouId, rungIndex, from, to),
+    [moveColToIn, pouId],
+  );
   const [address, setAddress] = useState('X0');
   const [preset, setPreset] = useState(10);
   // Word-instruction operands, primed for the next placement and retyped in
@@ -247,6 +339,7 @@ export function LadderEditor({
   // MOV's Source and then clicking D20 fills Source rather than the destination.
   const [focusSlot, setFocusSlot] = useState<FieldSlot | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [cellMenu, setCellMenu] = useState<{
     rung: number;
     row: number;
@@ -370,6 +463,63 @@ export function LadderEditor({
     [editable, selectCell],
   );
   const closeCellMenu = useCallback(() => setCellMenu(null), []);
+
+  const gestures = useGridGestures({
+    pouId,
+    editable,
+    selection,
+    select: useCallback((pos) => selectCell(pos), [selectCell]),
+    setMarks,
+    moveCells,
+    moveColTo,
+  });
+
+  /**
+   * A click on a cell, with the modifiers that turn it into a selection edit:
+   * Ctrl adds or removes one cell, Shift sweeps the rectangle from the anchor.
+   * Plain, it selects — and collapses whatever was selected before.
+   */
+  const clickCell = useCallback(
+    (rung: number, row: number, col: number, e: React.MouseEvent) => {
+      // The browser sends a click after every drag; that one is not a click.
+      if (gestures.consumeClick()) return;
+      if (editable && (e.ctrlKey || e.metaKey)) {
+        const key = markKey(rung, row, col);
+        const keys = new Set(selection.map((c) => markKey(c.rung, c.row, c.col)));
+        const removing = keys.has(key) && keys.size > 1;
+        if (removing) keys.delete(key);
+        else keys.add(key);
+        // The anchor has to end up inside the set, or the toolbar would be
+        // editing a cell the player has just taken out of it — but only move it
+        // when it was the anchor that went: removing some other cell should not
+        // relocate the one whose fields are on screen. Selecting is what clears
+        // the old marks, so the new marks go on afterwards.
+        const lostAnchor = removing && selected && markKey(selected.rung, selected.row, selected.col) === key;
+        const anchor = removing
+          ? lostAnchor
+            ? selection.find((c) => markKey(c.rung, c.row, c.col) !== key)
+            : selected
+          : { pou: pouId, rung, row, col };
+        if (anchor) select({ ...anchor, pou: pouId });
+        setMarks(pouId, keys);
+        return;
+      }
+      if (editable && e.shiftKey && selected && selected.rung === rung) {
+        // Rectangle from the anchor, which stays the anchor — Shift extends a
+        // selection, it does not start a new one somewhere else.
+        const keys: string[] = [];
+        for (let r = Math.min(selected.row, row); r <= Math.max(selected.row, row); r++) {
+          for (let c = Math.min(selected.col, col); c <= Math.max(selected.col, col); c++) {
+            keys.push(markKey(rung, r, c));
+          }
+        }
+        setMarks(pouId, keys);
+        return;
+      }
+      selectCell({ rung, row, col });
+    },
+    [gestures, editable, selected, selection, selectCell, select, setMarks, pouId],
+  );
 
   // Close the context menu on any click elsewhere, or Escape — a menu that
   // only closes via its own items is a menu that gets left open over the grid.
@@ -629,12 +779,38 @@ export function LadderEditor({
         } else if (editable && selected && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
           e.preventDefault();
           moveRung(selected.rung, e.key === 'ArrowUp' ? -1 : 1);
+        } else if (editable && !isTypingTarget(e.target)) {
+          // Everything below acts on the grid, and none of it may fire while a
+          // field has focus: there Ctrl+C and Ctrl+Z are the browser's, working
+          // on the text, and finer-grained than anything here.
+          const k = e.key.toLowerCase();
+          if (k === 'z' && !e.shiftKey) {
+            e.preventDefault();
+            undo();
+          } else if (k === 'y' || (k === 'z' && e.shiftKey)) {
+            e.preventDefault();
+            redo();
+          } else if ((k === 'c' || k === 'x') && selection.length > 0) {
+            e.preventDefault();
+            copyCells(selection);
+            if (k === 'x') clearCells(selection);
+            else {
+              setNote(
+                selection.length > 1
+                  ? `${selection.length} cells copied. Select where the top-left should go, then press Ctrl V.`
+                  : 'Cell copied. Select where it should go, then press Ctrl V.',
+              );
+            }
+          } else if (k === 'v' && selected) {
+            e.preventDefault();
+            pasteAt(selected);
+          }
         }
         return;
       }
       if (e.altKey) {
         // Alt+arrow reorders the selected cell within its rung — a column
-        // past its neighbour, a row past the one above/below — rather than
+        // past its neighbor, a row past the one above/below — rather than
         // retyping everything from the swap point on.
         if (editable && selected && !isTypingTarget(e.target)) {
           if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -647,7 +823,21 @@ export function LadderEditor({
         }
         return;
       }
-      if (!editable || isTypingTarget(e.target)) return;
+      if (isTypingTarget(e.target)) return;
+      // Ahead of the editable gate: the sheet is worth reading while the sim is
+      // running or a section is read-only, which is exactly when nothing else
+      // on this keyboard does anything.
+      if (e.key === '?' || e.key === 'F1') {
+        e.preventDefault();
+        setHelpOpen(true);
+        return;
+      }
+      if (!editable) return;
+
+      const grow = (can: boolean, run: () => void, limit: string) => {
+        if (can) run();
+        else setNote(limit);
+      };
 
       switch (e.key) {
         case 'ArrowUp':
@@ -656,8 +846,13 @@ export function LadderEditor({
           return;
         case 'ArrowDown':
           e.preventDefault();
-          if (e.shiftKey && selected) addRow(selected.rung);
-          else moveSelection(1, 0);
+          if (e.shiftKey && selected) {
+            grow(
+              (program.rungs[selected.rung]?.rows ?? 0) < MAX_ROWS,
+              () => addRow(selected.rung),
+              `This rung is already ${MAX_ROWS} branch rows deep — split the logic across two rungs instead.`,
+            );
+          } else moveSelection(1, 0);
           return;
         case 'ArrowLeft':
           e.preventDefault();
@@ -665,14 +860,20 @@ export function LadderEditor({
           return;
         case 'ArrowRight':
           e.preventDefault();
-          if (e.shiftKey && selected) addCol(selected.rung);
-          else moveSelection(0, 1);
+          if (e.shiftKey && selected) {
+            grow(
+              (program.rungs[selected.rung]?.cols ?? 0) < MAX_COLS,
+              () => addCol(selected.rung),
+              `This rung is already ${MAX_COLS} columns wide — the widest a rung is meant to read.`,
+            );
+          } else moveSelection(0, 1);
           return;
         case 'Delete':
         case 'Backspace':
-          if (selected) {
+          if (selection.length > 0) {
             e.preventDefault();
-            setCell(selected, null);
+            // One edit, so one Ctrl+Z brings the whole lot back.
+            clearCells(selection);
           }
           return;
         case 'Enter':
@@ -680,7 +881,10 @@ export function LadderEditor({
           addressRef.current?.select();
           return;
         case 'Escape':
-          selectCell(null);
+          // Two steps out: a multi-selection collapses to its anchor first, so
+          // an accidental sweep does not also cost the cell being worked on.
+          if (multi && selected) selectCell({ rung: selected.rung, row: selected.row, col: selected.col });
+          else selectCell(null);
           return;
       }
 
@@ -697,8 +901,13 @@ export function LadderEditor({
       }
       if (k === 'i') {
         e.preventDefault();
-        if (e.shiftKey && selected) insertCol(selected.rung, selected.col);
-        else insertRung(selected ? selected.rung + 1 : program.rungs.length);
+        if (e.shiftKey && selected) {
+          grow(
+            (program.rungs[selected.rung]?.cols ?? 0) < MAX_COLS,
+            () => insertCol(selected.rung, selected.col),
+            `No room to insert — this rung is already ${MAX_COLS} columns wide.`,
+          );
+        } else insertRung(selected ? selected.rung + 1 : program.rungs.length);
         return;
       }
       const meta = palette.find((i) => i.key === k);
@@ -728,7 +937,14 @@ export function LadderEditor({
     insertCol,
     moveCol,
     moveRow,
-    program.rungs.length,
+    undo,
+    redo,
+    program,
+    selection,
+    multi,
+    clearCells,
+    copyCells,
+    pasteAt,
   ]);
 
   // The toolbar as one value, because a floating window renders it *inside*
@@ -775,6 +991,29 @@ export function LadderEditor({
             ))}
           </div>
           <div className="palette-controls">
+            {/* Undo has to be visible, not only bound: it is what makes the
+                structural edits — insert a column, delete one, move a block —
+                safe to try at all, and a key nobody knows about does not. */}
+            <div className="undo-ctl" role="group" aria-label="Undo and redo">
+              <button
+                className="icon-btn"
+                onClick={undo}
+                disabled={!editable || past.length === 0}
+                title="Undo (Ctrl Z)"
+                aria-label="Undo"
+              >
+                ↶
+              </button>
+              <button
+                className="icon-btn"
+                onClick={redo}
+                disabled={!editable || future.length === 0}
+                title="Redo (Ctrl Shift Z)"
+                aria-label="Redo"
+              >
+                ↷
+              </button>
+            </div>
             <div className="zoom-ctl" role="group" aria-label="Ladder zoom">
               <button className="icon-btn" onClick={() => setZoom((z) => clampZoom(z - 0.1))} title="Zoom out (Ctrl −)">
                 −
@@ -791,6 +1030,14 @@ export function LadderEditor({
               </button>
             </div>
             <div className="editor-prefs" role="group" aria-label="Editor preferences">
+              <button
+                className="icon-btn pref-btn"
+                onClick={() => setHelpOpen(true)}
+                aria-label="Editor help"
+                title="What this editor can do — keys, the right-click menu, how a rung reads (?)"
+              >
+                ?
+              </button>
               <button
                 className={`icon-btn pref-btn pin-toggle${stickyPalette ? ' on' : ''}`}
                 onClick={() => setStickyPalette(!stickyPalette)}
@@ -875,71 +1122,9 @@ export function LadderEditor({
             ) : (
               <p className="palette-hint">Select a cell (or use the arrow keys), then press an instruction key.</p>
             )}
-            <details className="shortcuts">
-              <summary>Shortcuts</summary>
-              <dl>
-                <div>
-                  <dt>← ↑ → ↓</dt>
-                  <dd>move the selected cell (wraps between rungs)</dd>
-                </div>
-                <div>
-                  <dt>{palette.map((i) => i.key.toUpperCase()).join(' · ')}</dt>
-                  <dd>place {palette.map((i) => i.label).join(', ').toLowerCase()}</dd>
-                </div>
-                <div>
-                  <dt>Del</dt>
-                  <dd>clear the cell</dd>
-                </div>
-                <div>
-                  <dt>Double-click</dt>
-                  <dd>select a cell and jump straight to editing its field</dd>
-                </div>
-                <div>
-                  <dt>Right-click</dt>
-                  <dd>insert a column before/after, or delete the element</dd>
-                </div>
-                <div>
-                  <dt>B</dt>
-                  <dd>toggle a branch (vertical link) at the cell&apos;s left node</dd>
-                </div>
-                <div>
-                  <dt>A</dt>
-                  <dd>add a rung at the end</dd>
-                </div>
-                <div>
-                  <dt>I</dt>
-                  <dd>insert a rung after the selected one</dd>
-                </div>
-                <div>
-                  <dt>Shift + I</dt>
-                  <dd>insert a blank column before the selected cell, shifting the rest of the rung right</dd>
-                </div>
-                <div>
-                  <dt>Ctrl + ↑ / ↓</dt>
-                  <dd>move the selected rung up / down</dd>
-                </div>
-                <div>
-                  <dt>Shift + → / ↓</dt>
-                  <dd>add a column / a branch row to this rung</dd>
-                </div>
-                <div>
-                  <dt>Alt + ← → ↑ ↓</dt>
-                  <dd>swap the selected cell with its neighbouring column / row</dd>
-                </div>
-                <div>
-                  <dt>Enter</dt>
-                  <dd>jump to the address field</dd>
-                </div>
-                <div>
-                  <dt>Esc</dt>
-                  <dd>deselect</dd>
-                </div>
-                <div>
-                  <dt>Ctrl + / − / 0</dt>
-                  <dd>zoom in / out / reset — or press Fit to size the program to the window</dd>
-                </div>
-              </dl>
-            </details>
+            <button className="shortcuts-link" onClick={() => setHelpOpen(true)}>
+              Keys and mouse actions <kbd>?</kbd>
+            </button>
           </div>
         </>
       )}
@@ -986,13 +1171,23 @@ export function LadderEditor({
               running={running}
               editable={editable}
               evalResult={evalResults[i]}
+              pouId={pouId}
               selected={selected?.rung === i ? { row: selected.row, col: selected.col } : null}
-              onSelectCell={(row, col) => selectCell({ rung: i, row, col })}
+              marked={markedIn(i)}
+              drag={gestures.dragFor(i)}
+              onSelectCell={(row, col, e) => clickCell(i, row, col, e)}
+              onCellPointerDown={(row, col, e) =>
+                gestures.onCellPointerDown(i, row, col, !!rung.cells[row]?.[col], e)
+              }
               onCellDoubleClick={(row, col) => dblClickCell(i, row, col)}
               onCellContextMenu={(row, col, e) => openCellMenu(i, row, col, e)}
               onToggleVlink={(row, col) => toggleVlink(pouId, i, row, col)}
               onAddRow={() => addRow(i)}
               onAddCol={() => addCol(i)}
+              onRemoveRow={() => removeRow(i, program.rungs[i].rows - 1)}
+              onRemoveCol={() => removeCol(i, program.rungs[i].cols - 1)}
+              canAddRow={program.rungs[i].rows < MAX_ROWS}
+              canAddCol={program.rungs[i].cols < MAX_COLS}
               onMoveUp={() => moveRung(i, -1)}
               onMoveDown={() => moveRung(i, 1)}
               canMoveUp={i > 0}
@@ -1008,6 +1203,8 @@ export function LadderEditor({
           )}
         </div>
       </div>
+
+      {helpOpen && <LadderHelp instructions={palette} onClose={() => setHelpOpen(false)} />}
 
       {/* Rendered outside `.ladder-canvas`, whose `transform: scale(...)` would
           otherwise turn `position: fixed` into "fixed to the canvas" rather
@@ -1036,6 +1233,17 @@ export function LadderEditor({
           >
             Insert column after
           </button>
+          <button
+            className="cell-menu-item"
+            disabled={(program.rungs[cellMenu.rung]?.cols ?? 0) <= 1}
+            onClick={() => {
+              removeCol(cellMenu.rung, cellMenu.col);
+              closeCellMenu();
+            }}
+          >
+            Delete column
+          </button>
+          <hr className="cell-menu-sep" />
           <button
             className="cell-menu-item danger"
             onClick={() => {

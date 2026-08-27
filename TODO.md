@@ -248,6 +248,42 @@ None of this touches the simulation engine.
       adjacent-swap only, cell contents move but `vlinks` are left alone (a vlink's `row`/`col`
       names a boundary position, not the element occupying it, so a swap needs no vlink remap).
       Reachable via Alt+arrow on the selected cell. → `packages/client/src/features/ladder/editorStore.ts`
+- [x] **The grid edits existed but nobody could find them.** Raised live: "would it be possible to
+      insert a column after the compare and before the move" — which had been one right-click away
+      since the two boxes above shipped. Diagnosis was discoverability, so the collapsed
+      `<details>Shortcuts</details>` at the foot of the palette became a real help sheet,
+      `LadderHelp.tsx`, opened with `?`/`F1` or the `?` button in the toolbar's prefs group (which
+      stays on screen when the palette is folded away). Grouped by intent rather than by key, with
+      the mouse actions given equal weight to the keys. → `packages/client/src/features/ladder/LadderHelp.tsx`,
+      `LadderEditor.tsx`, `styles/ladder-editor.css`
+- [x] **Undo/redo for the ladder editor.** The structural edits are the ones most likely to go
+      wrong and were all one-way. `editorStore.ts` gained an `undoable` zustand middleware that
+      snapshots `{project, selected, marks}` before anything changes `project` — wrapping `set`
+      rather than editing twenty action bodies, so a mutation added later is undoable by default.
+      Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y, plus visible ↶ ↷ buttons in the toolbar. →
+      `packages/client/src/features/ladder/editorStore.ts` (`undoable`), `LadderEditor.tsx`
+- [x] **The inverses of the grid's grow operations.** `removeCol`, `removeRow` and `moveColTo`
+      (splice-out/splice-in, so a column can travel further than one place, unlike `moveCol`'s
+      swap). `insertCol` now also remaps `selected.col`, which it alone did not. Reachable from
+      the cell menu's new "Delete column", the rung header's `−row`/`−col`, and Alt+drag. →
+      `packages/client/src/features/ladder/editorStore.ts`, `RungView.tsx`, `LadderEditor.tsx`
+- [x] **Multi-select, and acting on the lot at once.** `marks` alongside `selected` (which stays
+      the anchor, so every existing read path is untouched): Ctrl+click toggles a cell,
+      Shift+click sweeps a rectangle, dragging from an empty cell rubber-bands one. Delete, cut,
+      copy, paste, drag and *field retyping* all act on the whole selection —
+      `patchCells(positions, patch, applies)` writes only the fields an instruction actually uses.
+      → `packages/client/src/features/ladder/editorStore.ts`, `LadderEditor.tsx`
+- [x] **Drag blocks and columns with the pointer.** `useGridGestures.ts`: drag a filled cell to
+      carry that block (or the whole selection) anywhere in the section, Ctrl to copy instead of
+      move; Alt+drag carries the whole column. Pointer events, not HTML5 DnD, and cells are
+      hit-tested with `elementFromPoint` off a `data-cell` attribute rather than by arithmetic,
+      because the grid sits under a zoom transform. →
+      `packages/client/src/features/ladder/useGridGestures.ts`, `CellView.tsx`, `RungView.tsx`
+- [x] **The client had no unit tests at all.** Added a vitest config and
+      `editorStore.test.ts` (42 tests) covering the rung index arithmetic, which is the kind that
+      fails silently — `evaluateRung` skips an out-of-range vlink rather than throwing. `npm test`
+      at the root now runs it after shared and server. →
+      `packages/client/vitest.config.ts`, `packages/client/src/features/ladder/editorStore.test.ts`
 
 ---
 

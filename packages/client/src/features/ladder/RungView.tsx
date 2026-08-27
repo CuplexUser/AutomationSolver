@@ -1,19 +1,40 @@
 import { isOutput, type RungEvalResult, type Rung } from '@automationsolver/shared';
 import { CellView, CELL_H, CELL_W, WIRE_Y } from './CellView';
 
+/** How the rung should paint the drag in progress, if one is over it. */
+export interface RungDrag {
+  /** Cells being carried, drawn as holes at their old positions. */
+  lifted: ReadonlySet<string>;
+  /** Cells the drop would fill. */
+  targets: ReadonlySet<string>;
+  /** Boundary a column drop would land on, in [0, cols]. Null when not a column drag. */
+  colDrop: number | null;
+}
+
 interface Props {
   rung: Rung;
   index: number;
+  /** Owning POU, so a drag can tell one section's cells from another's. */
+  pouId: string;
   selected: { row: number; col: number } | null;
+  /** `row:col` keys of the rest of a multi-cell selection. */
+  marked?: ReadonlySet<string>;
+  drag?: RungDrag;
   evalResult?: RungEvalResult;
   running: boolean;
   editable: boolean;
-  onSelectCell: (row: number, col: number) => void;
+  onSelectCell: (row: number, col: number, e: React.MouseEvent) => void;
+  onCellPointerDown?: (row: number, col: number, e: React.PointerEvent) => void;
   onCellDoubleClick?: (row: number, col: number) => void;
   onCellContextMenu?: (row: number, col: number, e: React.MouseEvent) => void;
   onToggleVlink: (row: number, col: number) => void;
   onAddRow: () => void;
   onAddCol: () => void;
+  /** Drop the last branch row / the last column — the inverses of the two above. */
+  onRemoveRow: () => void;
+  onRemoveCol: () => void;
+  canAddRow: boolean;
+  canAddCol: boolean;
   onMoveUp: () => void;
   onMoveDown: () => void;
   canMoveUp: boolean;
@@ -25,16 +46,24 @@ interface Props {
 export function RungView({
   rung,
   index,
+  pouId,
   selected,
+  marked,
+  drag,
   evalResult,
   running,
   editable,
   onSelectCell,
+  onCellPointerDown,
   onCellDoubleClick,
   onCellContextMenu,
   onToggleVlink,
   onAddRow,
   onAddCol,
+  onRemoveRow,
+  onRemoveCol,
+  canAddRow,
+  canAddCol,
   onMoveUp,
   onMoveDown,
   canMoveUp,
@@ -58,11 +87,40 @@ export function RungView({
         <span className="rung-num">{String(index + 1).padStart(2, '0')}</span>
         {editable && (
           <div className="rung-tools">
-            <button className="icon-btn" title="Add branch row" onClick={onAddRow}>
+            {/* Each grow button has its shrink beside it. Disabled rather than
+                absent at the limits, so a rung that will not grow says so
+                instead of swallowing the click. */}
+            <button
+              className="icon-btn"
+              title={canAddRow ? 'Add branch row (Shift ↓)' : 'This rung is at the branch-row limit'}
+              disabled={!canAddRow}
+              onClick={onAddRow}
+            >
               +row
             </button>
-            <button className="icon-btn" title="Add column" onClick={onAddCol}>
+            <button
+              className="icon-btn"
+              title="Remove the last branch row"
+              disabled={rung.rows <= 1}
+              onClick={onRemoveRow}
+            >
+              −row
+            </button>
+            <button
+              className="icon-btn"
+              title={canAddCol ? 'Add column (Shift →)' : 'This rung is at the column limit'}
+              disabled={!canAddCol}
+              onClick={onAddCol}
+            >
               +col
+            </button>
+            <button
+              className="icon-btn"
+              title="Remove the last column"
+              disabled={rung.cols <= 1}
+              onClick={onRemoveCol}
+            >
+              −col
             </button>
             <button className="icon-btn" title="Move rung up" disabled={!canMoveUp} onClick={onMoveUp}>
               ▲
@@ -82,6 +140,12 @@ export function RungView({
       <div className="rung-body">
         <div className={`rail rail-left${running ? ' live' : ''}`} style={{ height }} />
         <div className="grid-wrap" style={{ width, height, position: 'relative' }}>
+          {/* Where an Alt-drag would drop the column. Absolutely positioned,
+              like the branch handles below — nothing here may sit in the grid's
+              normal flow, or it displaces the cells out from under them. */}
+          {drag?.colDrop != null && (
+            <div className="col-drop" style={{ left: drag.colDrop * CELL_W, height }} />
+          )}
           <div
             className="cell-grid"
             style={{
@@ -103,15 +167,23 @@ export function RungView({
                     ? outputLive(r, c)
                     : (live?.has(`${r}:${c}`) ?? false);
                 }
+                const key = `${r}:${c}`;
                 return (
                   <CellView
-                    key={`${r}:${c}`}
+                    key={key}
                     element={cell}
+                    cellId={`${pouId}|${index}|${r}|${c}`}
                     selected={selected?.row === r && selected?.col === c}
+                    marked={marked?.has(key)}
+                    lifted={drag?.lifted.has(key)}
+                    dropTarget={drag?.targets.has(key)}
                     leftLive={leftLive}
                     rightLive={rightLive}
                     symbolLive={symbolLive}
-                    onClick={() => onSelectCell(r, c)}
+                    onClick={(e) => onSelectCell(r, c, e)}
+                    onPointerDown={
+                      onCellPointerDown ? (e) => onCellPointerDown(r, c, e) : undefined
+                    }
                     onDoubleClick={onCellDoubleClick ? () => onCellDoubleClick(r, c) : undefined}
                     onContextMenu={onCellContextMenu ? (e) => onCellContextMenu(r, c, e) : undefined}
                   />
