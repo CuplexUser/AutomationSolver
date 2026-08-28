@@ -320,6 +320,14 @@ units** and **tasks** over the existing model without touching it:
       (level 1 pick face, level 2 reserve); position 5 level 1 is line B. The two lines sit at
       opposite ends deliberately: distance from A is the bay number and from B it is `5 - bay`,
       so *the nearest slot holding a material differs depending on who asked for it*.
+    - **The distance registers belong to the two-ended aisle only.** `D61`–`D64` (distance to
+      each bay from the station being served) and a best-so-far register earn their keep in
+      `asrs-two-lines` and `asrs-dual-cycle`, where an order for line B inverts the ordering.
+      `asrs-replenish` collects and delivers both of its jobs at the aisle head, so distance
+      order *is* bay order there and the registers were pure ceremony — declared, and solvable
+      at 100% without ever writing one. They were removed from that spec, and its canonical
+      solution uses the first-match search for both of its two passes. The lesson generalizes:
+      a register list is a promise that the register is needed.
     - **Chaotic storage.** Materials are not assigned to bays. The WMS scatters them and
       publishes the whole table, one register per slot (`D101`–`D104` pick face, `D201`–`D204`
       reserve, `0` = empty), so finding stock is a search-and-minimize rather than a lookup —

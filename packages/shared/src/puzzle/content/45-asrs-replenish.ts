@@ -47,8 +47,13 @@ export const asrsReplenish: PuzzleSpec = {
     '- An empty slot is a slot whose register reads zero, so the search you already have',
     '  will find one without changing a rung: run the same eight tests a second time',
     '  against K=0, into their own registers, and the nearest free slot falls out.',
-    '- Whichever job is in hand, the crane collects somewhere and delivers somewhere. It',
-    '  is worth writing the target rung as those two ideas rather than as four cases.',
+    '- Line B is not on this shift, and both jobs start and finish at the aisle head, so',
+    '  the nearest slot is simply the lowest bay again. The distance registers the two-line',
+    '  job needed are not wanted here: work up the bays and take the first hit.',
+    '- Whichever job is in hand, the crane collects somewhere and delivers somewhere. Write',
+    '  the rung that sets the target - D52 and D53 - around those two ideas: which job it is',
+    '  says which pair of places, and whether the fork is loaded says which of the pair you',
+    '  are driving to now.',
     '- Put-aways are not free time. Every pallet you store now is a pallet that is there',
     '  to be picked later, and every one you leave on the conveyor is one closer to',
     '  stopping goods in.',
@@ -60,20 +65,35 @@ export const asrsReplenish: PuzzleSpec = {
     '  slot.',
   ].join('\n'),
   hints: [
-    'Add one relay for "this cycle is a put-away", decided at the same moment as the ' +
-      'rest of the cycle: set it when the line is not calling (or has nothing in stock) ' +
-      'and goods in is ready, clear it otherwise. Drive Y6 straight from it.',
-    'Run the search twice, with its own destination registers and its own found relay ' +
-      'each time: once against D10 to locate the order, and once against K=0 to locate a ' +
-      'free slot. Nothing inside the eight tests changes; only what they are compared ' +
-      'against does.',
-    'The target rung is four rows now, not two: collecting on a retrieval means the ' +
-      'chosen slot and collecting on a put-away means position 0 level 2, while ' +
-      'delivering on a retrieval means the station and delivering on a put-away means ' +
-      'the chosen slot.',
-    'If goods in backs up, the crane was probably waiting for a call it could have ' +
-      'served later. There is slack in a line\'s conveyor - two pallets - and none at ' +
-      'all in a decision to stand still with a pallet waiting upstairs.',
+    'Decide the job once, while the crane is still idle, and hold the decision for the ' +
+      'whole cycle. M6 is that decision: reset it when line A is calling for something the ' +
+      'order search found, and set it when the job in hand is a put-away instead - a pallet ' +
+      'at goods in, a free slot found, and either no call at all or a call for something the ' +
+      'rack has run out of. Latch it with SET and RST rather than reading X10 and X12 live, ' +
+      'because both of those move while the crane is out in the aisle. Y6 is then just M6.',
+    'The eight search rungs you already have run twice, unchanged in shape. Once against ' +
+      'D10, writing the order slot into D50 and D51 and setting M2 - "the rack has what the ' +
+      'line wants". Once against K=0, writing the free slot into D56 and D57 and setting M4 - ' +
+      '"there is room for an inbound pallet", because an empty slot is just a slot whose ' +
+      'register reads zero. Clear M2 and M4 on the same idle rung, so both searches see the ' +
+      'table as it is now rather than as it was before the last transfer.',
+    '"The target rung" is the one that writes D52 and D53 - where the crane is driving to. ' +
+      'It is not the M0 rung, which only reports that it got there. Every cycle is collect ' +
+      'somewhere, then deliver somewhere: M6 picks which pair of places this cycle uses, and ' +
+      'M3 (carrying) picks which of the pair you are heading for right now. So the rung is ' +
+      'four rows:\n\n' +
+      'M6 off, M3 off - collect the order:   MOV D50 D52, MOV D51 D53\n' +
+      'M6 off, M3 on  - deliver to line A:   MOV K0 D52, MOV K1 D53\n' +
+      'M6 on, M3 off  - collect at goods in: MOV K0 D52, MOV K2 D53\n' +
+      'M6 on, M3 on   - deliver to the slot: MOV D56 D52, MOV D57 D53\n\n' +
+      'Each row starts with M1 in series with its own M6 and M3 contacts, so exactly one row ' +
+      'conducts and only that row\'s MOVs write.',
+    'If the crane sets off and then changes its mind halfway, the target rung is not gated ' +
+      'on M1 and the searches are still revising D50 and D56 underneath it. If the fork comes ' +
+      'back empty from goods in, the put-away collect row is driving level 1 - that is line ' +
+      'A\'s handover conveyor; the inbound one is level 2. And if goods in backs up, the crane ' +
+      'stood still with a pallet waiting upstairs: a line conveyor holds two pallets and can ' +
+      'wait a cycle, an idle crane cannot give that time back.',
   ],
   devices: [
     { address: 'X4', label: 'Line A Running', io: 'input', widget: 'toggle' },
@@ -114,12 +134,6 @@ export const asrsReplenish: PuzzleSpec = {
     { address: 'D56', label: 'Empty slot bay', note: 'where the inbound pallet goes' },
     { address: 'D57', label: 'Empty slot level', note: 'where the inbound pallet goes' },
     ...TARGET_REGISTERS,
-    { address: 'D61', label: 'Distance to bay 1', note: 'from the aisle head' },
-    { address: 'D62', label: 'Distance to bay 2', note: 'from the aisle head' },
-    { address: 'D63', label: 'Distance to bay 3', note: 'from the aisle head' },
-    { address: 'D64', label: 'Distance to bay 4', note: 'from the aisle head' },
-    { address: 'D65', label: 'Best order distance', note: 'start it at K=99' },
-    { address: 'D66', label: 'Best empty distance', note: 'start it at K=99' },
     ...WMS_REGISTERS,
   ],
   allowedInstructions: [

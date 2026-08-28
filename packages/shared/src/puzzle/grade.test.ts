@@ -1219,15 +1219,14 @@ const solutions: Record<string, LadderProgram> = {
   },
   'asrs-replenish': {
     rungs: [
-      R('u1', 1, 5, {
-        '0,0': nc('M1'), '0,1': rst('M2'), '0,2': rst('M4'),
-        '0,3': mov('K99', 'D65'), '0,4': mov('K99', 'D66'),
-      }),
-      bayDistanceRungs('u2', undefined),
-      ...slotNearestRungs('u3_', 'D10', 'D50', 'D51', 'D65', 'M2', 'M1'),
+      R('u1', 1, 3, { '0,0': nc('M1'), '0,1': rst('M2'), '0,2': rst('M4') }),
+      // Line B is not on this shift: both jobs collect and deliver at the aisle
+      // head, so rung order is distance order again and the cheap search is the
+      // right one for both of them.
+      ...slotFirstMatchRungs('u2_', 'D10', 'D50', 'D51', 'M2', 'M1'),
       // The same eight tests find a home for an inbound pallet: an empty slot is
       // just a slot whose register reads zero.
-      ...slotNearestRungs('u4_', 'K0', 'D56', 'D57', 'D66', 'M4', 'M1'),
+      ...slotFirstMatchRungs('u3_', 'K0', 'D56', 'D57', 'M4', 'M1'),
       // Retrieval when the line is calling for something in stock; put-away when
       // it is not, and also when it is calling for something that has run out.
       R('u5', 3, 6, {

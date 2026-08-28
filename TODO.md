@@ -305,6 +305,17 @@ of the others and of P1. Reference: [`docs/ROADMAP.md`](docs/ROADMAP.md).
       of the mixer*, so the loops have real dead time and a naive high gain oscillates. Four
       puzzles ending in a batch of parts in different colors, with purge waste costing performance
       marks. → ROADMAP §"Next: the rest of the analog plan"
+- [ ] **A throughput-graded warehouse level.** Optimizing the crane's travel is the best idea in
+      the category and nothing currently measures it: every warehouse scenario grades on `until`
+      milestones and the three failure latches, so a program that always takes the furthest slot
+      scores the same 100 as one that never does. The distance registers were the stand-in for
+      that and have just been removed from `asrs-replenish` for being unused ceremony. What
+      replaces them is a `parMs` scenario on a level built for it — a rack seeded so the nearest
+      slot and the lowest bay disagree, both lines calling so the ordering inverts, and par set
+      from the optimized cycle so the 15 performance marks taper against a naive one that still
+      passes. The taper is what makes "optimized" and "simple" two visibly different results
+      instead of two greens. → FEATURE-MAP §`warehouse` (the distance-register note) and
+      §"Grading" for `parMs` / `PAR_SLACK`
 - [ ] **Packaging jam recovery.** `jam` latches forever today; a reset input plus scenarios that
       recover from a provoked jam is a fifth puzzle for that category. → ROADMAP §packaging
 

@@ -143,6 +143,12 @@
   color: var(--ink-dim);
   line-height: 1.5;
 }
+/* A hint that lays a handful of cases out as one line each reads far better as
+   a small table than as a sentence listing them. Ordinary single-paragraph
+   hints carry no newlines, so this changes nothing for them. */
+.hints li {
+  white-space: pre-line;
+}
 .hint-reveal {
   margin-top: 10px;
 }
