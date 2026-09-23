@@ -1,3 +1,4 @@
+import type { OpDiagnostics, OpErrorCode } from '../sim/scanCycle.js';
 import { scaleCounts, type AnalogBound, type ControlSpec, type PuzzleDevice } from './types.js';
 
 /**
@@ -54,6 +55,32 @@ export function describeJamFailure(onset?: JamOnset): string {
     ? `The machine jammed ${seconds(onset.tMs)} into the run`
     : `The machine jammed ${seconds(onset.tMs)} into the run, back in "${onset.stepLabel}"`;
   return onset.reason ? `${where}: ${onset.reason}. ${tail}` : `${where}. ${tail}`;
+}
+
+/** What each operation error means, in the words a player would use. */
+const OP_ERROR_TEXT: Record<OpErrorCode, string> = {
+  'index-range': 'an indexed operand pointed outside D0-D9999',
+  'queue-pointer': "a queue's pointer held a count its table cannot",
+  'queue-range': "a queue's table ran past D9999",
+  protected: 'an indexed or queue write would have landed on a register the plant drives',
+};
+
+/**
+ * An instruction that refused to run, said once at the end of a failing step.
+ *
+ * Operation errors never fail a step by themselves (an FX carries on past
+ * them), but a step that failed after one almost always failed *because* of
+ * one, and nothing else in the list would say so.
+ */
+export function describeOperationError(diag: OpDiagnostics, multi: boolean): string | undefined {
+  const first = diag.firstError;
+  if (!first || first.code === 'queue-full') return undefined;
+  const where = `${multi ? `${first.pouId} ` : ''}rung ${first.rungIndex + 1} @ r${first.row}c${first.col}`;
+  const more = diag.errors > 1 ? ` (${diag.errors} refusals in all)` : '';
+  return (
+    `An instruction at ${where} refused to run ${seconds(first.tMs)} into the run: ` +
+    `${OP_ERROR_TEXT[first.code]}${more}. A refused instruction writes nothing.`
+  );
 }
 
 /** Counters that describe output the machine has produced so far. */

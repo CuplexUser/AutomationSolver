@@ -128,3 +128,17 @@
   stroke-width: 0.5;
   opacity: 0.55;
 }
+
+/* An instruction refused to run: the FX's operation-error lamp, in words. */
+.hmi-op-error {
+  margin: 0 0 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--bad, #c0453c);
+  border-radius: 4px;
+  color: var(--bad, #c0453c);
+  background: color-mix(in srgb, var(--bad, #c0453c) 10%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+  -webkit-user-select: text;
+  user-select: text;
+}

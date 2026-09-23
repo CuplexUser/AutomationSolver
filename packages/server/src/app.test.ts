@@ -645,6 +645,34 @@ describe('save slots', () => {
     expect(savedPou.rungs[0].cells[0][0].device).toBe('AVeryLongDeclaredNameOverEightChars');
     expect(loaded.body.program.globals).toEqual(project.globals);
   });
+
+  it('round-trips the queue instructions and indexed operands', async () => {
+    // The transport schema is an allow-list of element types, so a new
+    // instruction the schema does not know is stripped or refused on save.
+    const program = {
+      rungs: [
+        {
+          id: 'r1',
+          rows: 1,
+          cols: 3,
+          cells: [
+            [
+              { type: 'contact-rising', device: 'X0' },
+              { type: 'sfwr', device: 'D200Z0', operands: ['D10'], preset: 5 },
+              { type: 'pop', device: 'D300', operands: ['D100Z1'], preset: 5 },
+            ],
+          ],
+          vlinks: [],
+        },
+      ],
+    };
+    const agent = request.agent(app);
+    await registerAndLogin(agent, 'queue-slots@example.com', 'password123');
+    const create = await agent.post('/api/puzzles/direct-control/slots').send({ program });
+    expect(create.status).toBe(201);
+    const loaded = await agent.get(`/api/puzzles/direct-control/slots/${create.body.id}`);
+    expect(loaded.body.program.rungs[0].cells[0]).toEqual(program.rungs[0].cells[0]);
+  });
 });
 
 describe('settings', () => {

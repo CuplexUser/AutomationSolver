@@ -6,6 +6,7 @@ import {
   MATH_OPS,
   parseAddress,
   parseValueOperand,
+  parseWordTarget,
   type CompareOp,
   type DeviceKind,
   type ElementType,
@@ -31,6 +32,10 @@ export interface FieldConfig {
   /** True when the device field is a destination register rather than a bit. */
   writesRegister?: boolean;
   preset?: boolean;
+  /** Label for the preset box when it is not a timer or counter's Preset K. */
+  presetLabel?: string;
+  /** Smallest preset the instruction accepts. */
+  presetMin?: number;
   /** Labels for the word operands, in order. */
   operands?: string[];
   op?: 'compare' | 'math';
@@ -49,6 +54,27 @@ export function fieldsFor(type: ElementType | null): FieldConfig {
       return { operands: ['A', 'B'], op: 'math', address: 'Dest', writesRegister: true };
     case 'pid':
       return { operands: ['Setpoint', 'Measured'], address: 'Output', writesRegister: true };
+    // A queue acts on its table, so the table's head is the address; the preset
+    // is its length, which counts the pointer (K5 holds four).
+    case 'sfwr':
+      return {
+        operands: ['Value'],
+        address: 'Queue',
+        writesRegister: true,
+        preset: true,
+        presetLabel: 'Length K',
+        presetMin: 2,
+      };
+    case 'sfrd':
+    case 'pop':
+      return {
+        operands: ['Into'],
+        address: 'Queue',
+        writesRegister: true,
+        preset: true,
+        presetLabel: 'Length K',
+        presetMin: 2,
+      };
     case 'hwire':
       return {};
     default:
@@ -78,12 +104,19 @@ export function slotsFor(fields: FieldConfig): FieldSlot[] {
 function resolveDeviceKind(address: string, choices: readonly SymbolChoice[]): DeviceKind | null {
   const ref = parseAddress(address);
   if (ref) return ref.kind;
+  // An indexed operand, D100Z0, is a data register wherever it lands.
+  if (parseWordTarget(address)?.kind === 'DZ') return 'D';
   const name = address.trim().toLowerCase();
   if (name === '') return null;
   return choices.find((c) => c.name.toLowerCase() === name)?.kind ?? null;
 }
 
-/** Can this address be typed into this slot? Word operands only ever take a D. */
+/**
+ * Can this address be typed into this slot? Word operands take a D (or, where a
+ * puzzle offers them, a Z); a destination takes whatever its instruction writes.
+ * Whether this puzzle offers index registers is the validator's call, so the
+ * editor lets a Z in and the validator says why it is not allowed here.
+ */
 export function slotAccepts(
   slot: FieldSlot,
   fields: FieldConfig,
@@ -93,8 +126,8 @@ export function slotAccepts(
 ): boolean {
   const kind = resolveDeviceKind(address, choices);
   if (!kind) return false;
-  if (slot !== 'device') return kind === 'D';
-  if (fields.writesRegister) return kind === 'D';
+  if (slot !== 'device') return kind === 'D' || kind === 'Z';
+  if (fields.writesRegister) return type ? allowedDeviceKinds(type).has(kind) : kind === 'D';
   return type ? allowedDeviceKinds(type).has(kind) : false;
 }
 
@@ -106,7 +139,8 @@ export function slotAccepts(
  */
 export function normalizeDeviceValue(v: string): string {
   const trimmed = v.trim();
-  return parseAddress(trimmed.toUpperCase()) ? trimmed.toUpperCase() : trimmed;
+  const upper = trimmed.toUpperCase();
+  return parseAddress(upper) || parseWordTarget(upper) ? upper : trimmed;
 }
 
 /**
@@ -146,6 +180,8 @@ export function chipTarget(
   return slots.find(takes) ?? null;
 }
 
+const OPERAND_TITLE = 'A register (D10), a constant (K500), or where offered an index register (Z0) or an indexed register (D100Z0)';
+
 /** Compact labels for the corner echo, where "Setpoint" would not fit. */
 const SHORT_LABEL: Record<string, string> = {
   Address: 'Addr',
@@ -154,6 +190,9 @@ const SHORT_LABEL: Record<string, string> = {
   Measured: 'PV',
   Dest: '→',
   Output: '→',
+  Queue: 'Q',
+  Value: 'Val',
+  Into: '→',
 };
 
 export interface FieldValues {
@@ -233,7 +272,7 @@ export function CellFields({
             choices={wordSymbols}
             disabled={!editable}
             ariaLabel={fields.operands[0]}
-            title="A register (D10) or a constant (K500)"
+            title={OPERAND_TITLE}
           />
         </span>
       )}
@@ -273,7 +312,7 @@ export function CellFields({
             choices={wordSymbols}
             disabled={!editable}
             ariaLabel={fields.operands[1]}
-            title="A register (D10) or a constant (K500)"
+            title={OPERAND_TITLE}
           />
         </span>
       )}
@@ -291,21 +330,27 @@ export function CellFields({
             choices={fields.writesRegister ? wordSymbols : symbols}
             disabled={!editable}
             ariaLabel={fields.address}
-            title={fields.writesRegister ? 'The data register this block writes' : undefined}
+            title={
+              fields.presetLabel
+                ? 'The data register the table starts at: it holds the count, the entries follow it'
+                : fields.writesRegister
+                  ? 'The data register this block writes'
+                  : undefined
+            }
           />
         </span>
       )}
       {fields.preset && (
         <span className="cf-slot">
-          <span className="eyebrow">{dense ? 'K' : 'Preset K'}</span>
+          <span className="eyebrow">{dense ? 'K' : (fields.presetLabel ?? 'Preset K')}</span>
           <input
             className="field mono compact preset"
             type="number"
-            min={1}
+            min={fields.presetMin ?? 1}
             value={values.preset}
-            onChange={(e) => handlers.onPreset(Math.max(1, Number(e.target.value)))}
+            onChange={(e) => handlers.onPreset(Math.max(fields.presetMin ?? 1, Number(e.target.value)))}
             disabled={!editable}
-            aria-label="Timer/counter preset"
+            aria-label={fields.presetLabel ? 'Queue length, pointer included' : 'Timer/counter preset'}
           />
         </span>
       )}

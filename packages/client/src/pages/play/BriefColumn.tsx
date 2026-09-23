@@ -265,7 +265,7 @@ function RegisterRow({
   // A working D register is scratch space the player chose the meaning of, so
   // there is no range to scale it by — show the raw word, which is exactly what
   // the program is reading.
-  const word = kind === 'D' && runner ? (runner.registers?.[r.address] ?? 0) : undefined;
+  const word = (kind === 'D' || kind === 'Z') && runner ? (runner.registers?.[r.address] ?? 0) : undefined;
   return (
     <tr key={r.address}>
       <td>

@@ -163,7 +163,7 @@ export interface DeviceRange {
   to: number;
 }
 
-const RANGE_RE = /^([XYMTCD])(\d{1,4})(?:\s*-\s*(?:[XYMTCD])?(\d{1,4}))?$/;
+const RANGE_RE = /^([XYMTCDZ])(\d{1,4})(?:\s*-\s*(?:[XYMTCDZ])?(\d{1,4}))?$/;
 
 /**
  * Parse `M120-M139`, `M120-139` or a bare `M16`.

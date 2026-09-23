@@ -26,6 +26,7 @@ import {
   traceScenario,
 } from './grade.js';
 import { validateProgram } from './validate.js';
+import { RIPEN_PROGRAM, storeProgram } from './content/dc-sections.js';
 import type { LadderPuzzleSpec } from './types.js';
 
 /** Every puzzle in this file is a ladder puzzle; fail loudly if that changes. */
@@ -95,6 +96,124 @@ function R(
     Array.from({ length: cols }, (_, c) => map[`${r},${c}`] ?? null),
   );
   return { id, rows, cols, cells, vlinks };
+}
+
+/** A queue instruction: head, the value in or the register out, and n. */
+const queueOp = (type: 'sfwr' | 'sfrd' | 'pop', head: string, operand: string, n: number): LadderElement => ({
+  type,
+  device: head,
+  operands: [operand],
+  preset: n,
+});
+
+/**
+ * The Cold Chain Hub's flow-lane program. Three FIFO lanes, one table each
+ * (D300, D310, D320, four pallets and the pointer: K5), and the call on OUT1
+ * served from whichever lane has the called product at its front with the
+ * lowest code. Every move books its lane until the lane's count changes, so a
+ * table is never read for a pallet that has not arrived, or written for one that
+ * has not left.
+ */
+function flowLaneRungs(): Rung[] {
+  const lanes = [1, 2, 3].map((k) => ({
+    k,
+    code: 30 + k,
+    head: 300 + (k - 1) * 10,
+    booked: `M2${k}`,
+    front: `D29${k}`,
+    back: `D28${k}`,
+    seen: `D25${k}`,
+    z: `Z${k}`,
+  }));
+  const rungs: Rung[] = [
+    // What is at the front and the back of every lane, and what QA is holding.
+    R('f1', 7, 2, {
+      '0,0': math('div', 'D301', 'K100', 'D291'),
+      '1,0': math('div', 'D311', 'K100', 'D292'),
+      '2,0': math('div', 'D321', 'K100', 'D293'),
+      '3,0': math('div', 'D5', 'K100', 'D280'),
+      '4,0': mov('D300', 'Z1'), '4,1': math('div', 'D300Z1', 'K100', 'D281'),
+      '5,0': mov('D310', 'Z2'), '5,1': math('div', 'D310Z2', 'K100', 'D282'),
+      '6,0': mov('D320', 'Z3'), '6,1': math('div', 'D320Z3', 'K100', 'D283'),
+    }),
+    // The lane to serve the call from: lowest front code of the called product,
+    // busy or not. If the lowest is in a busy lane the answer is to wait for it;
+    // shipping the next lowest from another lane is exactly what FEFO forbids.
+    R('f2', 1, 2, { '0,0': mov('K0', 'D29'), '0,1': mov('K9999', 'D28') }),
+    ...lanes.map((l) =>
+      R(`f3${l.k}`, 1, 5, {
+        '0,0': cmp('>', `D${l.head}`, 'K0'), '0,1': cmp('=', l.front, 'D13'),
+        '0,2': cmp('<', `D${l.head + 1}`, 'D28'), '0,3': mov(`D${l.head + 1}`, 'D28'),
+        '0,4': mov(`K${l.code}`, 'D29'),
+      }),
+    ),
+    R('f35', 3, 3, Object.fromEntries(
+      lanes.flatMap((l, row) => [
+        [`${row},0`, cmp('=', 'D29', `K${l.code}`)], [`${row},1`, no(l.booked)],
+        ...(row === 0 ? [['0,2', out('M16')]] : []),
+      ]),
+    ), [
+      { row: 0, col: 2 },
+      { row: 1, col: 2 },
+    ]),
+    // Ship: pop the chosen lane straight into the shipping notice, and book it.
+    R('f4', 1, 14, {
+      '0,0': cmp('>', 'D13', 'K0'), '0,1': nc('M4'), '0,2': nc('M10'), '0,3': nc('M11'),
+      '0,4': nc('M12'), '0,5': cmp('>', 'D29', 'K0'), '0,6': nc('M16'), '0,7': set('M12'),
+      '0,8': set('M4'),
+      '0,9': out('M15'), '0,10': mov('D29', 'D27'), '0,11': math('sub', 'D29', 'K31', 'Z0'),
+      '0,12': math('mul', 'Z0', 'K10', 'Z0'), '0,13': queueOp('sfrd', 'D300Z0', 'D3', 5),
+    }),
+    R('f5', 3, 4, Object.fromEntries(
+      lanes.flatMap((l, row) => [
+        [`${row},0`, no('M15')], [`${row},1`, cmp('=', 'D27', `K${l.code}`)],
+        [`${row},2`, set(l.booked)], [`${row},3`, mov(`D${l.code}`, l.seen)],
+      ]),
+    )),
+    // Put away: the first lane that is empty or already ends in this product.
+    ...lanes.map((l) =>
+      R(`f6${l.k}`, 2, 14, {
+        '0,0': no('X6'), '0,1': nc('M1'), '0,2': nc('M10'), '0,3': nc('M11'), '0,4': nc('M12'),
+        '0,5': cmp('<', `D${l.head}`, 'K4'), '0,6': nc(l.booked), '0,7': cmp('=', `D${l.head}`, 'K0'),
+        '1,7': cmp('=', l.back, 'D280'),
+        '0,8': set('M11'), '0,9': set('M1'), '0,10': rst('M0'), '0,11': set(l.booked),
+        '0,12': mov(`K${l.code}`, 'D26'), '0,13': mov(`D${l.code}`, l.seen),
+      }, [
+        { row: 0, col: 7 },
+        { row: 0, col: 8 },
+      ]),
+    ),
+    // ...and into its table, the scan it was chosen.
+    R('f7', 1, 4, {
+      '0,0': rise('M11'), '0,1': math('sub', 'D26', 'K31', 'Z4'), '0,2': math('mul', 'Z4', 'K10', 'Z4'),
+      '0,3': queueOp('sfwr', 'D300Z4', 'D5', 5),
+    }),
+    // Bring the next pallet in.
+    R('f8', 1, 7, {
+      '0,0': no('X3'), '0,1': nc('M0'), '0,2': nc('M10'), '0,3': nc('M11'), '0,4': nc('M12'),
+      '0,5': set('M10'), '0,6': set('M0'),
+    }),
+    R('f9', 3, 3, {
+      '0,0': no('M10'), '0,1': mov('K1', 'D0'), '0,2': mov('K10', 'D1'),
+      '1,0': no('M11'), '1,1': mov('K10', 'D0'), '1,2': mov('D26', 'D1'),
+      '2,0': no('M12'), '2,1': mov('D27', 'D0'), '2,2': mov('K61', 'D1'),
+    }),
+    R('f10', 3, 3, {
+      '0,0': no('M10'), '0,1': nc('X0'), '0,2': out('Y0'), '1,0': no('M11'), '2,0': no('M12'),
+    }, [
+      { row: 0, col: 1 },
+      { row: 1, col: 1 },
+    ]),
+    R('f11', 1, 4, { '0,0': rise('X0'), '0,1': rst('M10'), '0,2': rst('M11'), '0,3': rst('M12') }),
+    R('f12', 5, 2, {
+      '0,0': nc('X5'), '0,1': rst('M1'),
+      '1,0': cmp('=', 'D13', 'K0'), '1,1': rst('M4'),
+      '2,0': cmp('<>', 'D31', 'D251'), '2,1': rst('M21'),
+      '3,0': cmp('<>', 'D32', 'D252'), '3,1': rst('M22'),
+      '4,0': cmp('<>', 'D33', 'D253'), '4,1': rst('M23'),
+    }),
+  ];
+  return rungs;
 }
 
 // 5-floor call-dispatch core shared by every elevator5 puzzle: latches each
@@ -1368,6 +1487,93 @@ const solutions: Record<string, LadderProgram> = {
       R('v22', 1, 2, { '0,0': no('M1'), '0,1': out('Y7') }),
     ],
   },
+  // --- Cold Chain Hub --------------------------------------------------------
+  // An order is chosen (one pending relay at a time), posted (MOVs and the
+  // request) and booked on the rising edge of the manager's answer. The two
+  // bookings are what the puzzle is for: QA is promised from the moment an
+  // order to it is accepted, not from the moment a pallet lands on it.
+  'dc-dispatch': {
+    rungs: [
+      R('h1', 1, 5, {
+        '0,0': no('X6'), '0,1': nc('M1'), '0,2': nc('M10'), '0,3': nc('M11'), '0,4': set('M11'),
+      }),
+      R('h2', 1, 5, {
+        '0,0': no('X3'), '0,1': nc('M0'), '0,2': nc('M10'), '0,3': nc('M11'), '0,4': set('M10'),
+      }),
+      R('h3', 3, 4, {
+        '0,0': no('M10'), '0,1': wire, '0,2': mov('K1', 'D0'), '0,3': mov('K10', 'D1'),
+        '1,0': no('M11'), '1,1': no('X7'), '1,2': mov('K10', 'D0'), '1,3': mov('K61', 'D1'),
+        '2,0': no('M11'), '2,1': nc('X7'), '2,2': mov('K10', 'D0'), '2,3': mov('K11', 'D1'),
+      }),
+      R('h4', 2, 3, { '0,0': no('M10'), '0,1': nc('X0'), '0,2': out('Y0'), '1,0': no('M11') }, [
+        { row: 0, col: 1 },
+      ]),
+      R('h5', 2, 5, {
+        '0,0': rise('X0'), '0,1': no('M10'), '0,2': set('M0'), '0,3': rst('M10'),
+        '1,0': rise('X0'), '1,1': no('M11'), '1,2': set('M1'), '1,3': rst('M0'), '1,4': rst('M11'),
+      }),
+      R('h6', 1, 2, { '0,0': nc('X5'), '0,1': rst('M1') }),
+    ],
+  },
+  // The same shape with a third order (outfeed to its dock) and a table. The
+  // push rides on the booking row of the order that puts a pallet on the line;
+  // the pop, the shift and the door lookup ride on a one-scan pulse at the
+  // labeler. The table is the FX layout, count at D200 and codes from D201,
+  // which is exactly what SFWR/SFRD will keep for the player one puzzle later.
+  'dc-label': {
+    rungs: [
+      R('l1', 1, 6, {
+        '0,0': no('X12'), '0,1': nc('M3'), '0,2': nc('M10'), '0,3': nc('M11'), '0,4': nc('M12'),
+        '0,5': set('M12'),
+      }),
+      R('l2', 1, 8, {
+        '0,0': no('X6'), '0,1': nc('M1'), '0,2': nc('M2'), '0,3': no('X10'), '0,4': nc('M10'),
+        '0,5': nc('M11'), '0,6': nc('M12'), '0,7': set('M11'),
+      }),
+      R('l3', 1, 6, {
+        '0,0': no('X3'), '0,1': nc('M0'), '0,2': nc('M10'), '0,3': nc('M11'), '0,4': nc('M12'),
+        '0,5': set('M10'),
+      }),
+      R('l4', 3, 3, {
+        '0,0': no('M10'), '0,1': mov('K1', 'D0'), '0,2': mov('K10', 'D1'),
+        '1,0': no('M11'), '1,1': mov('K10', 'D0'), '1,2': mov('K50', 'D1'),
+        '2,0': no('M12'), '2,1': mov('K51', 'D0'), '2,2': mov('D22', 'D1'),
+      }),
+      R('l5', 3, 3, {
+        '0,0': no('M10'), '0,1': nc('X0'), '0,2': out('Y0'), '1,0': no('M11'), '2,0': no('M12'),
+      }, [
+        { row: 0, col: 1 },
+        { row: 1, col: 1 },
+      ]),
+      R('l6', 3, 9, {
+        '0,0': rise('X0'), '0,1': no('M10'), '0,2': set('M0'), '0,3': rst('M10'),
+        '1,0': rise('X0'), '1,1': no('M11'), '1,2': set('M1'), '1,3': set('M2'), '1,4': rst('M0'),
+        '1,5': rst('M11'), '1,6': mov('D200', 'Z0'), '1,7': mov('D5', 'D201Z0'),
+        '1,8': math('add', 'D200', 'K1', 'D200'),
+        '2,0': rise('X0'), '2,1': no('M12'), '2,2': set('M3'), '2,3': rst('M12'),
+      }),
+      R('l7', 4, 2, {
+        '0,0': nc('X5'), '0,1': rst('M1'),
+        '1,0': { type: 'contact-falling', device: 'X10' }, '1,1': rst('M2'),
+        '2,0': nc('X12'), '2,1': rst('M3'),
+        '3,0': nc('X11'), '3,1': rst('M13'),
+      }),
+      R('l8', 1, 6, {
+        '0,0': no('X11'), '0,1': nc('X12'), '0,2': nc('M3'), '0,3': nc('M13'), '0,4': out('M14'),
+        '0,5': set('M13'),
+      }),
+      R('l9', 1, 8, {
+        '0,0': no('M14'), '0,1': mov('D201', 'D20'), '0,2': mov('D202', 'D201'),
+        '0,3': mov('D203', 'D202'), '0,4': mov('D204', 'D203'), '0,5': mov('D205', 'D204'),
+        '0,6': mov('D206', 'D205'), '0,7': math('sub', 'D200', 'K1', 'D200'),
+      }),
+      R('l10', 1, 5, {
+        '0,0': no('M14'), '0,1': math('div', 'D20', 'K100', 'Z1'), '0,2': mov('D100Z1', 'D2'),
+        '0,3': mov('D2', 'D22'), '0,4': out('Y1'),
+      }),
+    ],
+  },
+  'dc-flow-lanes': { rungs: flowLaneRungs() },
 };
 
 /**
@@ -1470,6 +1676,28 @@ const projectSolutions: Record<string, LadderProject> = {
   // plant run properly. The supervisor is left out on purpose — it is editable
   // here, so `assembleProject` takes it from the slot's own seed, which proves
   // a partial submission is merged the way the client posts one.
+  // The first Cold Chain Hub puzzle in sections: the rooms, submitted alone,
+  // and merged over RECEIVE and FLEET the way the client posts it.
+  'dc-ripening': {
+    pous: [{ id: 'RIPEN', name: 'RIPEN', rungs: RIPEN_PROGRAM }],
+    tasks: [],
+  },
+  'dc-drive-in': {
+    pous: [
+      {
+        id: 'STORE',
+        name: 'STORE',
+        rungs: storeProgram({
+          lanes: [31, 32, 41, 42, 43],
+          docks: [
+            { code: 61, call: 'D13' },
+            { code: 62, call: 'D14' },
+          ],
+        }),
+      },
+    ],
+    tasks: [],
+  },
   'factory-line': {
     pous: [
       lineSolution('WELD', 'SEC1_WELD', WELD_TUNED),
@@ -2403,6 +2631,132 @@ describe('gradeProgram — warehouse puzzles reject the plausible wrong answer',
     );
     const result = gradeProgram(spec, ordersOnly);
     expect(result.solved).toBe(false);
+  });
+});
+
+describe('gradeProgram — Cold Chain Hub puzzles reject the plausible wrong answer', () => {
+  function variant(slug: string, patch: (rungs: Rung[]) => Rung[]): LadderProgram {
+    return { rungs: patch(structuredClone(solutions[slug]!).rungs) };
+  }
+
+  const failureText = (result: ReturnType<typeof gradeProgram>): string =>
+    result.scenarios.flatMap((s) => s.steps).flatMap((s) => s.failures).join(' ');
+
+  /**
+   * The two bookings, each left out on its own. Both are the same mistake: taking
+   * the plant's word for what is true as though it were a record of what has been
+   * promised. X5 only comes on once a pallet lands, and X6 stays on until one is
+   * lifted, so neither can stand in for the program's own relay.
+   */
+  it('dc-dispatch: without booking QA, a second pallet is sent to a full table', () => {
+    const spec = getLadderPuzzle('dc-dispatch')!;
+    const unbooked = variant('dc-dispatch', (rungs) =>
+      rungs.map((r) =>
+        r.id === 'h2'
+          ? R('h2', 1, 4, { '0,0': no('X3'), '0,1': nc('M10'), '0,2': nc('M11'), '0,3': set('M10') })
+          : r,
+      ),
+    );
+    const result = gradeProgram(spec, unbooked);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('waiting to set down at QA');
+  });
+
+  it('dc-dispatch: without booking the pickup, a second vehicle is sent for it', () => {
+    const spec = getLadderPuzzle('dc-dispatch')!;
+    const unbooked = variant('dc-dispatch', (rungs) =>
+      rungs.map((r) =>
+        r.id === 'h1'
+          ? R('h1', 1, 4, { '0,0': no('X6'), '0,1': nc('M10'), '0,2': nc('M11'), '0,3': set('M11') })
+          : r,
+      ),
+    );
+    const result = gradeProgram(spec, unbooked);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('nothing was there');
+  });
+
+  /**
+   * The table read but never shifted: the first code on it is taken to be the
+   * pallet at the labeler every time. Right once, and wrong at the second
+   * pallet the night shift left, whose product ships from the other dock.
+   */
+  it('dc-label: a table that is read but never shifted mislabels the second pallet', () => {
+    const spec = getLadderPuzzle('dc-label')!;
+    const noShift = variant('dc-label', (rungs) =>
+      rungs.map((r) =>
+        r.id === 'l9'
+          ? R('l9', 1, 3, {
+              '0,0': no('M14'), '0,1': mov('D201', 'D20'), '0,2': math('sub', 'D200', 'K1', 'D200'),
+            })
+          : r,
+      ),
+    );
+    const result = gradeProgram(spec, noShift);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('was labeled for');
+  });
+
+  /**
+   * First fit instead of oldest first: the first lane with the called product at
+   * its front wins. Right while each product lives in one lane, and wrong the
+   * moment tomatoes are in two and the older ones are further down the rack.
+   */
+  it('dc-flow-lanes: taking the first lane with the product ships a newer lot first', () => {
+    const spec = getLadderPuzzle('dc-flow-lanes')!;
+    const firstFit = variant('dc-flow-lanes', (rungs) =>
+      rungs.map((r) => {
+        if (!r.id.startsWith('f3')) return r;
+        const next = structuredClone(r);
+        next.cells[0][2] = cmp('=', 'D29', 'K0');
+        return next;
+      }),
+    );
+    const result = gradeProgram(spec, firstFit);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('the oldest lot ships first');
+  });
+
+  /** RIPEN swapped for a patched copy, submitted the way the client posts a section. */
+  function ripenVariant(patch: (rungs: Rung[]) => Rung[]): LadderProject {
+    return { pous: [{ id: 'RIPEN', name: 'RIPEN', rungs: patch(structuredClone(RIPEN_PROGRAM)) }], tasks: [] };
+  }
+
+  /**
+   * The door dropped the moment a room decides to close, without waiting for the
+   * light curtain: the vehicle that set the last pallet down is still backing
+   * out of the doorway.
+   */
+  it('dc-ripening: a door that closes without waiting for the doorway closes on a vehicle', () => {
+    const spec = getLadderPuzzle('dc-ripening')!;
+    const noCurtain = ripenVariant((rungs) =>
+      rungs.map((r) =>
+        r.id.startsWith('ripen-door-')
+          ? { ...r, rows: 2, cells: r.cells.slice(0, 2), vlinks: [{ row: 0, col: 2 }] }
+          : r,
+      ),
+    );
+    const result = gradeProgram(spec, noCurtain);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('closed on a vehicle');
+  });
+
+  /**
+   * A room read as though it were a lane: SFRDP takes the first pallet in, but
+   * the one in the doorway is the last. The notice names a pallet at the back
+   * of the room.
+   */
+  it('dc-ripening: reading a room first-in first-out ships under the wrong notice', () => {
+    const spec = getLadderPuzzle('dc-ripening')!;
+    const asQueue = ripenVariant((rungs) =>
+      rungs.map((r) => ({
+        ...r,
+        cells: r.cells.map((row) => row.map((el) => (el?.type === 'pop' ? { ...el, type: 'sfrd' as const } : el))),
+      })),
+    );
+    const result = gradeProgram(spec, asQueue);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('shipping notice');
   });
 });
 

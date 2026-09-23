@@ -1,0 +1,173 @@
+import type { PuzzleSpec } from '../types.js';
+import { DC_INBOUND_1, DC_MAILBOX, DC_QA, DC_QA_CODE, DC_ROUTES, DC_WRAPPER } from './dc-plant.js';
+
+/** The wrapper line as the night shift left it: three pallets on, none labeled. */
+const NIGHT_SHIFT = { w3: '305pn0', w2: '102pn0', w1: '404pn0', w0: '' };
+
+export const dcLabel: PuzzleSpec = {
+  kind: 'ladder',
+  slug: 'dc-label',
+  title: 'Cold Chain Hub: Label What You Wrap',
+  difficulty: 'easy',
+  order: 55,
+  category: 'distribution',
+  summary: 'Nothing scans a pallet after QA: keep a table of what is on the wrapper line, and label each one as it comes out.',
+  briefing: [
+    'Every pallet that leaves the hub is stretch-wrapped and labeled with the dock it',
+    'ships from, and the label is how the loaders know which truck it goes on. The wrapper',
+    'line takes pallets in at one end, wraps them, stops each one at the labeler and lets',
+    'it out onto the outfeed once it has a label.',
+    '',
+    'Nothing on that line can read a pallet. The film is opaque and the labeler only',
+    'prints. The one place a pallet is identified is QA, so the program has to remember',
+    'what went onto the line, in order, and work out at the labeler which pallet has just',
+    'arrived. That record is a table, and keeping it is today\'s job.',
+    '',
+    '## Equipment',
+    '- Everything from commissioning: the mailbox (D0, D1, Y0, X0, X1, X2), IN1 (location',
+    '  1, X3) and QA (location 10, X5, X6). Every pallet today passes QA.',
+    '- D5 QA PALLET CODE: what QA read, as product x 100 + lot, valid while X6 is on. The',
+    '  only scan in the building.',
+    '- The wrapper line, location 50 at its infeed and 51 at its outfeed. X10 WRAPPER',
+    '  INFEED CLEAR, X11 PALLET AT LABELER, X12 OUTFEED PALLET READY.',
+    '- The labeler: put a door number in D2 LABEL DOOR, then pulse Y1 PRINT LABEL. The',
+    '  pallet moves on to the outfeed once it is labeled.',
+    '- D101 to D104: the WMS routing table, the door each product ships from, 61 for OUT1',
+    '  or 62 for OUT2. Product 1 is in D101, product 4 in D104.',
+    '- Two outbound docks, OUT1 (61) and OUT2 (62).',
+    '',
+    '## The line table',
+    '- D200 is the number of pallets on the line waiting for a label, and D201 onward',
+    '  hold their codes, the one nearest the labeler in D201.',
+    '- At the start of every run the WMS has written the pallets already on the line into',
+    '  the table. From then on it is yours: nothing writes it but your program.',
+    '- Index registers are available on this job. Z0 to Z7 are words you write like any',
+    '  register, and an operand like D201Z0 means the register 201 + Z0.',
+    '',
+    '## Sequence of operation',
+    '1. Clear the outfeed first: a labeled pallet waiting there goes to the dock on its',
+    '   label.',
+    '2. Then collect from QA: when a checked pallet is on QA and the wrapper infeed is',
+    '   clear, send it from QA to the line (location 50), and add its code to the table.',
+    '3. Otherwise bring the next pallet in from IN1 to QA.',
+    '4. When a pallet stops at the labeler and the outfeed is clear, take the first code',
+    '   off the table, look up the door for its product, and print the label.',
+    '',
+    '## Interlocks and safety',
+    '- A label for the wrong dock is a fault, and so is a pallet loaded at a dock its label',
+    '  does not name. The labeler checks the pallet in front of it, not your table.',
+    '- The bookings from commissioning still apply, and the wrapper infeed needs one too:',
+    '  X10 only goes off once a pallet lands on it.',
+    '',
+    '## Field notes',
+    '- Adding a code: move D200 into Z0, move D5 into D201Z0, then add 1 to D200. With',
+    '  two pallets in the table, Z0 is 2 and the new code lands in D203.',
+    '- Taking one off: D201 is the code, then every entry moves down one (D202 into D201,',
+    '  D203 into D202, and so on to the end of the table), and D200 goes down by 1. Moves',
+    '  on one row run left to right, so the order you place them in is the order they run.',
+    '- The product is the code divided by 100. Divide it into Z1 and D100Z1 is the door.',
+    '- Do the table work on one scan only. A rising edge, or a relay set in the same rung',
+    '  that fires it, makes sure an entry is added or removed once and not twenty times a',
+    '  second.',
+    '- Print only while the outfeed is clear, and keep the door you printed. It is the',
+    '  destination of the next outfeed order.',
+    '',
+    '## Acceptance',
+    '- The pallets the night shift left on the line, and every new one after them, are',
+    '  labeled for the right dock and loaded there.',
+    '- Nothing is sent where it cannot go, and the loop never stalls.',
+  ].join('\n'),
+  hints: [
+    'Build on the commissioning program: a pending relay per kind of order (IN1 to QA, QA ' +
+      'to 50, and 51 to the door), MOVs into D0 and D1, one request, and bookings on the ' +
+      'rising edge of X0. The outfeed order moves D22 into D1, where D22 is the door you ' +
+      'printed.',
+    'The push goes on the booking row for the QA to 50 order, after the relays: MOV D200 ' +
+      'Z0, then MOV D5 D201Z0, then ADD D200 K1 D200.',
+    'The print is three rungs. One sets a pulse relay M14 (and a latch M13 so it only fires ' +
+      'once) when X11 is on and X12 and the outfeed booking are off. The next, on M14, moves ' +
+      'D201 into D20 and shifts the table down, then subtracts 1 from D200. The last, on ' +
+      'M14, divides D20 by K100 into Z1, moves D100Z1 into D2 and into D22, and drives Y1.',
+    'If the first label is wrong, check the order of the shift: D202 into D201 has to come ' +
+      'after D201 into D20, not before. If a label is right but the one after it is not, the ' +
+      'table was written twice for one pallet: the push is not on a single scan.',
+  ],
+  devices: [...DC_MAILBOX, ...DC_INBOUND_1, ...DC_QA.slice(0, 2), ...DC_QA_CODE, ...DC_WRAPPER, ...DC_ROUTES],
+  registers: [
+    { address: 'D200', label: 'Line table: pallets', note: 'written by the WMS at the start, then yours' },
+    { address: 'D201', label: 'Line table: first code', note: 'D201 onward, nearest the labeler first' },
+    { address: 'D20', label: 'Code being labeled' },
+    { address: 'D22', label: 'Door on the outfeed pallet' },
+    { address: 'Z0', label: 'Index: where to add' },
+    { address: 'Z1', label: 'Index: the product' },
+  ],
+  allowedInstructions: [
+    'contact-no',
+    'contact-nc',
+    'contact-rising',
+    'contact-falling',
+    'compare',
+    'mov',
+    'math',
+    'hwire',
+    'coil-out',
+    'coil-set',
+    'coil-reset',
+  ],
+  indexRegisters: true,
+  maxRungs: 24,
+  processId: 'distribution',
+  plantConfig: {
+    locs: '1,10,50,51,61,62',
+    fleet: 1,
+    routes: '61,62,62,61',
+    ...NIGHT_SHIFT,
+    stocktake: 'D200:50',
+    in1: '306P,203P,107P',
+    inFirst: 3000,
+    inEvery: 25_000,
+  },
+  scenarios: [
+    {
+      name: 'The night shift\'s pallets',
+      steps: [
+        {
+          label: 'The three pallets left on the line are labeled and loaded',
+          holdMs: 150_000,
+          until: { machine: { shipped: 3 } },
+          expectMachine: { jam: false, stalled: false, blocked: false },
+        },
+        {
+          label: 'The three that come in after them follow through QA and the wrapper',
+          holdMs: 250_000,
+          until: { machine: { shipped: 6 } },
+          expectMachine: { jam: false, stalled: false, blocked: false },
+        },
+      ],
+    },
+    {
+      name: 'A different line',
+      initialMachine: { w3: '401pn0', w2: '', w1: '208pn0', w0: '', in1: '309P,110P' },
+      steps: [
+        {
+          label: 'Two pallets on the line, two more to come, four different doors to get right',
+          holdMs: 220_000,
+          until: { machine: { shipped: 4 } },
+          expectMachine: { jam: false, stalled: false, blocked: false },
+        },
+      ],
+    },
+    {
+      name: 'An empty line',
+      initialMachine: { w3: '', w2: '', w1: '', w0: '', in1: '302P,403P' },
+      steps: [
+        {
+          label: 'Nothing is on the line, so the table starts empty and fills as pallets arrive',
+          holdMs: 180_000,
+          until: { machine: { shipped: 2 } },
+          expectMachine: { jam: false, stalled: false, blocked: false },
+        },
+      ],
+    },
+  ],
+};

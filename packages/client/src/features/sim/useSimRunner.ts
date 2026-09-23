@@ -4,10 +4,12 @@ import {
   getProcess,
   GRADE_DT,
   primeProcess,
-  runnableProject,
-  SimEngine,
+  engineFor,
+  plantAtStart,
+  type SimEngine,
   type LadderPuzzleSpec,
   type MachineState,
+  type OpDiagnostics,
   type ProgramDoc,
   type RungEvalResult,
   type SimSnapshot,
@@ -44,12 +46,16 @@ export interface HmiRunner {
   registers?: Record<string, number>;
   /** Scan history, for the analog trend. Absent where nothing is recorded. */
   history?: TraceHistorySample[];
+  /** Instructions that refused to run since the last reset. Absent where the engine is not a ladder one. */
+  diagnostics?: OpDiagnostics;
   start: () => void;
   stop: () => void;
   step: () => void;
   reset: () => void;
   setInput: (address: string, value: boolean) => void;
 }
+
+const NO_DIAGNOSTICS: OpDiagnostics = { errors: 0, notices: 0 };
 
 /** The scan interval the panel reports, so the header cannot drift from the engine. */
 export const SCAN_INTERVAL_MS = DT;
@@ -77,7 +83,7 @@ export interface SimRunner extends HmiRunner {
  * the puzzle ships pre-written runs here exactly as it will run on the server.
  */
 export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRunner {
-  const engineRef = useRef<SimEngine>(new SimEngine(runnableProject(spec, program)));
+  const engineRef = useRef<SimEngine>(engineFor(spec, program));
   const processRef = useRef(getProcess(spec.processId));
   const machineRef = useRef<MachineState>({});
   const derivedRef = useRef<Record<string, boolean>>({});
@@ -95,12 +101,13 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
   const [machine, setMachine] = useState<MachineState>({});
   const [evalResults, setEvalResults] = useState<Record<string, RungEvalResult[]>>({});
   const [history, setHistory] = useState<TraceHistorySample[]>([]);
+  const [diagnostics, setDiagnostics] = useState<OpDiagnostics>(NO_DIAGNOSTICS);
 
   const resetInternal = useCallback(
     (nextProgram: ProgramDoc) => {
-      engineRef.current = new SimEngine(runnableProject(spec, nextProgram));
+      engineRef.current = engineFor(spec, nextProgram);
       processRef.current = getProcess(spec.processId);
-      machineRef.current = processRef.current.init(spec.devices);
+      machineRef.current = plantAtStart(spec, processRef.current);
       inputsRef.current = defaultInputs(spec.devices);
       // Same priming the grader does, for the same reason and at the same
       // point: the panel has to show the machine that is standing there before
@@ -123,6 +130,7 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
       setMachine(machineRef.current);
       setEvalResults({});
       setHistory([]);
+      setDiagnostics(NO_DIAGNOSTICS);
     },
     [spec],
   );
@@ -175,6 +183,12 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
     setCounters(snap.counters);
     setMachine({ ...machineRef.current });
     setHistory(historyRef.current);
+    // Only a changed count re-renders: the diagnostics are almost always zero,
+    // and a fresh object every scan would redraw the panel twenty times a second.
+    const diag = engine.opDiagnostics;
+    setDiagnostics((prev) =>
+      prev.errors === diag.errors && prev.notices === diag.notices ? prev : { ...diag },
+    );
   }, [spec.devices]);
 
   useEffect(() => {
@@ -202,6 +216,7 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
     machine,
     evalResults,
     history,
+    diagnostics,
     start: () => setRunning(true),
     stop: () => setRunning(false),
     step: () => stepOnce(),

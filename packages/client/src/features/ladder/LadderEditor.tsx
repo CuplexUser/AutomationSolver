@@ -3,9 +3,11 @@ import {
   COMPARE_OPS,
   DEFAULT_POU_ID,
   formatValueOperand,
+  isQueueInstruction,
   isWordInstruction,
   MATH_SYMBOL,
   parseValueOperand,
+  QUEUE_MNEMONIC,
   type CompareOp,
   type ElementType,
   type LadderElement,
@@ -57,6 +59,8 @@ interface InstrMeta {
 
 // Every shortcut is a letter from the instruction's own name, and the three the
 // editor itself has claimed (A add rung, I insert rung, B branch) are avoided.
+// The queue reads are the exception: every letter of SFRD and POP was already
+// taken, so they get Q (queue) and L (LIFO).
 const INSTRUCTIONS: InstrMeta[] = [
   { type: 'contact-no', label: 'NO Contact', glyph: '┤ ├', key: 'c', needsDevice: true },
   { type: 'contact-nc', label: 'NC Contact', glyph: '┤/├', key: 'x', needsDevice: true },
@@ -71,6 +75,25 @@ const INSTRUCTIONS: InstrMeta[] = [
   { type: 'mov', label: 'Move', glyph: 'MOV', key: 'm', needsDevice: true, word: true },
   { type: 'math', label: 'Math', glyph: '+−×÷', key: 'h', needsDevice: true, word: true },
   { type: 'pid', label: 'PID Loop', glyph: 'PID', key: 'd', needsDevice: true, word: true },
+  {
+    type: 'sfwr',
+    label: 'FIFO Write',
+    glyph: 'SFWR',
+    key: 'f',
+    needsDevice: true,
+    needsPreset: true,
+    word: true,
+  },
+  {
+    type: 'sfrd',
+    label: 'FIFO Read',
+    glyph: 'SFRD',
+    key: 'q',
+    needsDevice: true,
+    needsPreset: true,
+    word: true,
+  },
+  { type: 'pop', label: 'LIFO Read', glyph: 'POP', key: 'l', needsDevice: true, needsPreset: true, word: true },
   { type: 'hwire', label: 'Wire', glyph: '──', key: 'w', needsDevice: false },
 ];
 
@@ -121,6 +144,12 @@ function wordSummary(el: LadderElement): string {
       return `${a} ${MATH_SYMBOL[(el.op as MathOp) ?? 'add']} ${b} into ${el.device}`;
     case 'pid':
       return `PID, setpoint ${a}, measured ${b}, output ${el.device}`;
+    case 'sfwr':
+      return `${QUEUE_MNEMONIC.sfwr}: store ${a} in the table at ${el.device} (K${el.preset ?? '?'})`;
+    case 'sfrd':
+      return `${QUEUE_MNEMONIC.sfrd}: oldest of the table at ${el.device} into ${a}`;
+    case 'pop':
+      return `${QUEUE_MNEMONIC.pop}: newest of the table at ${el.device} into ${a}`;
     default:
       return el.device;
   }
@@ -660,7 +689,7 @@ export function LadderEditor({
         case 'pid':
           return { operands: [a, b], pid: tuning };
         default:
-          return {};
+          return isQueueInstruction(type) ? { operands: [a] } : {};
       }
     },
     [opA, opB, cmpOp, mathOp, tuning, symbols],

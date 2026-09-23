@@ -15,7 +15,8 @@ export type PuzzleCategory =
   | 'process-control'
   | 'motion'
   | 'warehouse'
-  | 'factory';
+  | 'factory'
+  | 'distribution';
 
 /** Display order of category sections on the puzzle list. */
 export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
@@ -31,6 +32,7 @@ export const CATEGORY_ORDER: readonly PuzzleCategory[] = [
   'motion',
   'warehouse',
   'factory',
+  'distribution',
 ];
 
 export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
@@ -46,6 +48,7 @@ export const CATEGORY_TITLES: Record<PuzzleCategory, string> = {
   motion: 'Motion Control',
   warehouse: 'Automated Warehouse',
   factory: 'Excavator Plant',
+  distribution: 'Cold Chain Hub',
 };
 
 /** One-line blurb per category for the puzzle-list section headers / nav. */
@@ -66,6 +69,8 @@ export const CATEGORY_BLURBS: Record<PuzzleCategory, string> = {
     'One stacker crane, eight rack slots and two production lines that both want feeding.',
   factory:
     'A whole plant in seven programs: weld, store, paint, assembly, test and the conveyor between them.',
+  distribution:
+    'A food distribution center run by a fleet of automated forklifts: you own the flows and the queues.',
 };
 
 /**
@@ -125,6 +130,7 @@ export const CATEGORY_TRACK: Record<PuzzleCategory, PuzzleTrack> = {
   motion: 'process',
   warehouse: 'plants',
   factory: 'plants',
+  distribution: 'plants',
 };
 
 /** The categories in a track, in `CATEGORY_ORDER`. */
@@ -457,8 +463,26 @@ export interface LadderPuzzleSpec extends PuzzleSpecBase {
   registers?: PuzzleRegister[];
   allowedInstructions: ElementType[];
   maxRungs?: number;
+  /**
+   * Whether this puzzle hands over the index registers `Z0`..`Z7` and indexed
+   * operands (`D100Z0`). Off by default, and every puzzle written before they
+   * existed leaves it off, so a `Z` anywhere in those is a validation error
+   * rather than a new way to write an old answer.
+   */
+  indexRegisters?: boolean;
   /** Key into the process registry. Use 'passthrough' when no dynamics are needed. */
   processId: string;
+  /**
+   * Settings this puzzle hands its plant: how many vehicles, what arrives when,
+   * which lanes exist. Merged over the model's `init` and under a scenario's
+   * `initialMachine`, by the grader and the live runner alike (`plantAtStart`),
+   * so the plant a player watches is the plant they are graded on.
+   *
+   * A scenario can already reshape the plant through `initialMachine`, but live
+   * play has no scenario, which is why a setting that defines the *puzzle*
+   * belongs here rather than being repeated in every scenario.
+   */
+  plantConfig?: Record<string, number | boolean | string>;
   /** A run of the machine the player can watch before starting. */
   demo?: PuzzleDemo;
   /**

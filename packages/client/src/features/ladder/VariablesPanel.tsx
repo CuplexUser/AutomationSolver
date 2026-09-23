@@ -78,7 +78,7 @@ export function VariablesPanel({
   const problem = (): string | null => {
     if (trimmed === '') return null;
     if (!isValidVarName(trimmed)) {
-      return /^[XYMTCD]\d+$/i.test(trimmed)
+      return /^(?:[XYMTCDZ]\d+|D\d+Z\d+)$/i.test(trimmed)
         ? `${trimmed} is an address, not a name. Give it one that says what it does.`
         : 'Start with a letter or underscore, then letters, digits or underscores.';
     }

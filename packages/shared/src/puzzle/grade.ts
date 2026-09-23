@@ -1,7 +1,7 @@
-import { SimEngine } from '../sim/scanCycle.js';
+import { engineFor, plantAtStart } from './engine.js';
+import { isMultiPou } from './project.js';
 import type { RungEvalResult } from '../sim/rungSolver.js';
 import type { ProgramDoc } from '../ladder/types.js';
-import { runnableProject } from './symbols.js';
 import { getProcess, primeProcess, type MachineState } from './processes/index.js';
 import {
   describeAnalogFailure,
@@ -12,6 +12,7 @@ import {
   describeJamFailure,
   describeMachineFailure,
   describeMachineWait,
+  describeOperationError,
   describeTimeout,
   type ControlOutcome,
   type JamOnset,
@@ -146,10 +147,10 @@ function simulateScenario(
   // with the puzzle, and every name in both is resolved to an address before the
   // engine sees it. Doing that here (rather than at the route) is what keeps the
   // client's live run and the server's grade the same run.
-  const engine = new SimEngine(runnableProject(spec, program));
+  const engine = engineFor(spec, program);
   engine.reset();
   const process = getProcess(spec.processId);
-  let machine: MachineState = { ...process.init(spec.devices), ...scenario.initialMachine };
+  let machine: MachineState = { ...plantAtStart(spec, process), ...scenario.initialMachine };
   const outDevs = outputDevices(spec);
   const analogDevs = analogDevices(spec);
 
@@ -321,6 +322,12 @@ function simulateScenario(
     // hint as to why nothing moved. Say it once, at the end of the list.
     if (failures.length > 0 && onset && !('jam' in (step.expectMachine ?? {}))) {
       failures.push(describeJamFailure(onset));
+    }
+    // Same idea for an instruction that refused to run: never a failure by
+    // itself, but the likeliest reason for the ones above it.
+    if (failures.length > 0) {
+      const refused = describeOperationError(engine.opDiagnostics, isMultiPou(spec));
+      if (refused) failures.push(refused);
     }
     stepResults.push({
       label: step.label,

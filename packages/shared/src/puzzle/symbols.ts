@@ -10,6 +10,7 @@ import {
   type VarDecl,
   type VarKind,
 } from '../ladder/types.js';
+import { parseWordTarget } from '../ladder/value.js';
 import { assembleProject, parseDeviceRange, playerPouIds, type DeviceRange } from './project.js';
 import type { LadderPuzzleSpec, MemoryPools, PuzzleDevice } from './types.js';
 
@@ -61,8 +62,13 @@ export interface Resolution {
 /** Names are matched case-insensitively, the way every real PLC tool matches them. */
 const key = (name: string): string => name.trim().toLowerCase();
 
-/** A name that would be ambiguous with the literal-address fallback. */
-const LOOKS_LIKE_ADDRESS = /^[XYMTCD]\d{1,4}$/i;
+/**
+ * A name that would be ambiguous with the literal-address fallback. Index
+ * registers and indexed operands count too, whether or not the puzzle offers
+ * them: a variable named `Z0` would otherwise shadow the device in the one
+ * puzzle that does.
+ */
+const LOOKS_LIKE_ADDRESS = /^(?:[XYMTCDZ]\d{1,4}|D\d{1,4}Z\d{1,4})$/i;
 
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]{0,23}$/;
 
@@ -146,7 +152,7 @@ export function resolveName(
   if (device) return { address: device.address, origin: 'plant' };
 
   const trimmed = name.trim().toUpperCase();
-  if (parseAddress(trimmed)) return { address: trimmed, origin: 'literal' };
+  if (parseAddress(trimmed) || parseWordTarget(trimmed)) return { address: trimmed, origin: 'literal' };
   return null;
 }
 
@@ -315,6 +321,9 @@ function guessKind(el: LadderElement, name: string): VarKind {
     case 'mov':
     case 'math':
     case 'pid':
+    case 'sfwr':
+    case 'sfrd':
+    case 'pop':
       return 'int';
     default:
       return 'bool';

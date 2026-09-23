@@ -8,13 +8,36 @@ import { axis } from './axis.js';
 import { warehouse } from './warehouse.js';
 import { factory } from './factory.js';
 import { factoryLine } from './factoryLine.js';
+import { distribution } from './distribution.js';
 
 /** Arbitrary per-puzzle machine state (positions, speeds, flags). */
 export type MachineState = Record<string, number | boolean | string>;
 
-export { tank, axis, warehouse, factory, factoryLine };
+export { tank, axis, warehouse, factory, factoryLine, distribution };
 export { FACTORY_LIMITS, FACTORY_SECTIONS } from './factory.js';
 export { LINE_LIMITS, LINE_SECTIONS, LINE_ZONES, type ZoneDef } from './factoryLine.js';
+// The hub's floor plan and pallet tokens are what the scene draws from, so they
+// travel with the model the way the warehouse's rack layout does.
+export {
+  DC_CMD,
+  DC_IN,
+  DC_LOCATIONS,
+  DC_OUT,
+  DC_PRODUCTS,
+  DC_REG,
+  DEPOT_STOPS,
+  LOOP_CORNERS,
+  LOOP_MM,
+  builtLocations,
+  locationByCode,
+  loopPoint,
+  outward,
+  palletCode,
+  parsePallet,
+  type LocationDef,
+  type LocationKind,
+  type Pallet,
+} from './distribution.js';
 // The rack layout and the inbound sequence are content the machine view reads
 // to place and colour pallets, so they travel with the model.
 export {
@@ -1023,6 +1046,7 @@ const registry = new Map<string, ProcessModel>([
   [warehouse.id, warehouse],
   [factory.id, factory],
   [factoryLine.id, factoryLine],
+  [distribution.id, distribution],
   [conveyor.id, conveyor],
   [drill.id, drill],
   [press.id, press],

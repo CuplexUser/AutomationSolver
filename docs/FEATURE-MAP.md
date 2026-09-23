@@ -41,6 +41,19 @@ never wall-clock time. Everything else in the system is arranged around keeping 
   - `pid` — a loop block: setpoint and process-value operands, a destination, and `PidParams`
     (gain in hundredths, integral/derivative times in ms, sample time, output clamp, error-sign
     flip). `ti`/`td` of 0 disable their term, so one block is a P, a PI or a full PID.
+- **Index registers and queues** (added for the Cold Chain Hub; the full account is
+  [COLD-CHAIN.md](./COLD-CHAIN.md) §"Two engine additions"):
+  - `Z0`–`Z7` are a seventh device family, words stored in the same register file. An operand
+    `D100Z0` is the register at `100 + Z0`. `ValueRef` gained `Z` and `DZ` variants beside the
+    untouched `D` and `K`; `parseWordTarget` is the no-constant form for destinations and queue
+    heads, `effectiveAddress` resolves an index at run time, `staticBase` gives validators the
+    base. Allowed everywhere a word is read or written except a PID, whose state is keyed on
+    its destination.
+  - `sfwr` / `sfrd` / `pop` are the FX's SFWR, SFRD and POP, **always edge-triggered** and drawn
+    `SFWRP`/`SFRDP`/`POPP`. `device` is the table's head (the pointer), `preset` is `n` and counts
+    the pointer, `operands[0]` is the value stored or the register read into.
+  - A puzzle opts in with `indexRegisters: true`. Off, a `Z` anywhere is a validation error, and
+    every message about plain operands reads exactly as it did.
 - Registers **saturate** at ±32767 rather than wrapping (`saturate16`), and integer arithmetic
   is the point: it is bit-exact on every platform, so the client/server agreement is absolute
   rather than merely likely. Expressions evaluate at full precision and saturate on the *store*,
@@ -69,6 +82,23 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 - **One cadence.** The client's live scan dt *is* `GRADE_DT` (50 ms). Booleans survived the old
   60/50 mismatch because every process model's timings are exact multiples of both; an
   integrator does not, so this is now a single constant with the client importing it.
+
+- **Operation errors, not exceptions.** An indexed operand that lands outside `D0`–`D9999`, a
+  queue pointer no table of its length can hold, a table off the end of the register file, or an
+  indexed/queue write onto a register the plant drives: the instruction does **nothing at all**
+  (every address is checked before any is written, and a compare does not conduct), and the
+  engine records it in `opDiagnostics` with the POU, rung and cell. That is the FX's continuation
+  error, M8067 without the relay. It never fails a step by itself; the grader appends one sentence
+  to a step that failed after one, and the operator panel shows it live. Plain `D`/`K` operands
+  cannot raise one, which is half of why the 53 earlier puzzles trace byte-identically.
+- **Pulse memory.** The queue instructions keep a per-instance "energized last execution" bit,
+  keyed by POU, rung and cell, the same memory the counter keeps in `prevInput`. Cleared on
+  `reset()`, so a powered block fires on the first scan like an FX pulse instruction after STOP
+  to RUN. This is execution-edge memory, not contact-edge memory, so the warning under POUs and
+  tasks about per-instance LDP does not apply.
+- **`engineFor(spec, doc)`** (`puzzle/engine.ts`) is how both the grader and the client runner
+  build an engine: `runnableProject` plus a write fence of the plant's analog inputs, so the two
+  refuse exactly the same indexed writes.
 
 #### POUs and tasks
 
@@ -589,6 +619,14 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     instructions and a naked number hides it. A `compare` renders as a contact with its
     operator between the bars; `mov`/`math`/`pid` render as function blocks showing their
     operands as an expression (`D0÷K4`) with an arrow-prefixed destination underneath.
+  - **Queue blocks** (`F` SFWRP, `Q` SFRDP, `L` POPP; every letter of SFRD and POP was taken)
+    show `Value`/`Into`, `Queue` and `Length K`. The block is wider than a MOV so its five-letter
+    mnemonic stays at 10px, and the pill underneath carries head and length together
+    (`D200Z0 K5`), since neither means anything alone. Address boxes accept `Z0` and `D100Z0`
+    everywhere and leave the puzzle's `indexRegisters` to the validator, which says why; `Z`
+    chips share the `D` color, being words.
+  - **Operation-error lamp** — `HmiPanel` shows the engine's first refused instruction under its
+    header, in the same sentence the grader uses.
   - **Keyboard-first** — arrows move the selection (wrapping across rungs), a single letter
     places an instruction (`C` NO, `X` NC, `P`/`N` edge, `O`/`S`/`R` coils, `T`/`K`, `W` wire),
     `B` toggles a branch, `A` adds a rung, `Shift`+`→`/`↓` grows the rung, `Del` clears.

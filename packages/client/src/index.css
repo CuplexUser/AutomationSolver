@@ -268,6 +268,8 @@ button.pin-toggle.on:hover {
 .dev-T { color: var(--dev-t); }
 .dev-C { color: var(--dev-c); }
 .dev-D { color: var(--dev-d); }
+/* An index register is a word like D, and reads as one. */
+.dev-Z { color: var(--dev-d); }
 .dev-chip.on {
   background: color-mix(in srgb, currentColor 45%, transparent);
   box-shadow: 0 0 6px currentColor;

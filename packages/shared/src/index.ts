@@ -19,6 +19,8 @@ export * from './puzzle/types.js';
 export * from './puzzle/project.js';
 export * from './puzzle/symbols.js';
 export * from './puzzle/symbolChoices.js';
+export * from './puzzle/engine.js';
+export { describeOperationError } from './puzzle/failureText.js';
 export * from './puzzle/processes/index.js';
 export * from './puzzle/grade.js';
 export * from './puzzle/validate.js';

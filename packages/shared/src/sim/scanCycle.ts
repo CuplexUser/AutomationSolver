@@ -1,5 +1,6 @@
 import { parseAddress } from '../ladder/address.js';
 import {
+  isQueueInstruction,
   saturate16,
   tasksInScanOrder,
   toProject,
@@ -10,10 +11,76 @@ import {
   type PidParams,
   type Pou,
   type ProgramDoc,
+  type QueueType,
   type TaskDef,
 } from '../ladder/types.js';
-import { parseValueOperand, readValue, type ValueRef } from '../ladder/value.js';
+import {
+  D_MAX,
+  effectiveAddress,
+  parseValueOperand,
+  parseWordTarget,
+  readValue,
+  type ValueRef,
+} from '../ladder/value.js';
 import { evaluateRung, type RungEvalResult } from './rungSolver.js';
+
+/**
+ * Why an instruction refused to run.
+ *
+ * - `index-range`: an indexed operand landed outside `D0`..`D9999`.
+ * - `queue-pointer`: a queue's pointer held something no table of its length can.
+ * - `queue-range`: a queue's table ran off the end of the register file.
+ * - `protected`: an indexed or queue write would have landed on a register the
+ *   plant owns (see `EngineOptions.protectedRegisters`).
+ */
+export type OpErrorCode = 'index-range' | 'queue-pointer' | 'queue-range' | 'protected';
+
+/** Where and when an instruction first refused, or first hit a full queue. */
+export interface OpEvent {
+  code: OpErrorCode | 'queue-full';
+  pouId: string;
+  rungIndex: number;
+  row: number;
+  col: number;
+  tMs: number;
+}
+
+/**
+ * The FX's operation errors, kept as a record rather than as special relays.
+ *
+ * A real FX raises M8067 and carries on: an operation error is a *continuation*
+ * error, the instruction simply does not execute. So does this engine, and
+ * nothing here fails a scenario by itself — the plant judges what the program
+ * did as a result. What this is for is telling the player it happened, which on
+ * a real controller means reading D8067 off a monitor. Plain `D` and `K`
+ * operands can never raise one, which is part of why every program written
+ * before index registers existed runs exactly as it did.
+ */
+export interface OpDiagnostics {
+  errors: number;
+  /** Writes to a full queue: not an error on the FX (it sets carry), but worth knowing. */
+  notices: number;
+  firstError?: OpEvent;
+  firstNotice?: OpEvent;
+}
+
+export interface EngineOptions {
+  /**
+   * Registers an *indexed* or *queue* write may not land on, typically the
+   * plant's transmitters. A plain destination is already held to its owner by
+   * the validator; an indexed one can only be checked when it runs, and this is
+   * that check, applied identically by the client and the grader.
+   */
+  protectedRegisters?: ReadonlySet<string>;
+}
+
+/** Location of the instruction being executed, for diagnostics and pulse memory. */
+interface ExecSite {
+  pouId: string;
+  rungIndex: number;
+  row: number;
+  col: number;
+}
 
 /** Timer preset base: K units of 100ms (FX standard, K10 = 1.0s). */
 export const TIMER_BASE_MS = 100;
@@ -85,9 +152,20 @@ export class SimEngine {
   lastResults: Record<string, RungEvalResult[]> = {};
   /** POU lookup for the task loop; rebuilt only when the program changes. */
   private pouById = new Map<string, Pou>();
+  /**
+   * Whether each edge-triggered instruction was energized on its last
+   * execution, keyed by where it sits. The counter keeps the same memory in its
+   * `prevInput`; this is that, for blocks that have no device of their own to
+   * hang it on. Starts empty, so a block that is powered on its first execution
+   * fires, as an FX pulse instruction does after STOP to RUN.
+   */
+  private pulses = new Map<string, boolean>();
+  private diagnostics: OpDiagnostics = { errors: 0, notices: 0 };
+  private readonly protectedRegisters: ReadonlySet<string>;
 
-  constructor(program: ProgramDoc) {
+  constructor(program: ProgramDoc, options: EngineOptions = {}) {
     this.project = toProject(program);
+    this.protectedRegisters = options.protectedRegisters ?? new Set();
     this.indexPous();
   }
 
@@ -105,6 +183,13 @@ export class SimEngine {
     this.tMs = 0;
     this.taskDue.clear();
     this.lastResults = {};
+    this.pulses.clear();
+    this.diagnostics = { errors: 0, notices: 0 };
+  }
+
+  /** Operation errors and full-queue notices since the last reset. */
+  get opDiagnostics(): OpDiagnostics {
+    return this.diagnostics;
   }
 
   setProgram(program: ProgramDoc): void {
@@ -154,6 +239,55 @@ export class SimEngine {
     return ref === null ? 0 : readValue(ref, this.registers);
   }
 
+  /**
+   * Operand `i`, or `null` when it is indexed and the index points outside the
+   * register file. Anything that does not parse still reads as 0, exactly as
+   * `operand` always has; only an indexed operand can make this return null.
+   */
+  private checkedOperand(el: LadderElement, i: number): number | null {
+    const raw = el.operands?.[i];
+    if (raw === undefined) return 0;
+    const ref = parseValueOperand(raw);
+    if (ref === null) return 0;
+    if (ref.kind === 'DZ' && effectiveAddress(ref, this.registers) === null) return null;
+    return readValue(ref, this.registers);
+  }
+
+  /**
+   * The register a word instruction stores into, or `null` (with the error
+   * recorded) when it cannot. A plain `D` destination is used exactly as written
+   * — the key it has always been stored under — so nothing that predates index
+   * registers moves.
+   */
+  private destination(device: string): string | null {
+    const ref = parseWordTarget(device);
+    if (ref === null || ref.kind === 'D') return device;
+    const address = effectiveAddress(ref, this.registers);
+    if (address === null) {
+      this.opEvent('index-range');
+      return null;
+    }
+    if (ref.kind === 'DZ' && this.protectedRegisters.has(address)) {
+      this.opEvent('protected');
+      return null;
+    }
+    return address;
+  }
+
+  /** Where the instruction being executed sits. */
+  private site: ExecSite = { pouId: '', rungIndex: 0, row: 0, col: 0 };
+
+  private opEvent(code: OpEvent['code']): void {
+    const event: OpEvent = { code, ...this.site, tMs: this.tMs };
+    if (code === 'queue-full') {
+      this.diagnostics.notices += 1;
+      this.diagnostics.firstNotice ??= event;
+    } else {
+      this.diagnostics.errors += 1;
+      this.diagnostics.firstError ??= event;
+    }
+  }
+
   private compare(op: CompareOp, a: number, b: number): boolean {
     switch (op) {
       case '=':
@@ -173,7 +307,14 @@ export class SimEngine {
 
   private conducts(el: LadderElement): boolean {
     if (el.type === 'compare') {
-      return this.compare((el.op as CompareOp) ?? '=', this.operand(el, 0), this.operand(el, 1));
+      const a = this.checkedOperand(el, 0);
+      const b = this.checkedOperand(el, 1);
+      // An operation error: the comparison is not made, so it does not conduct.
+      if (a === null || b === null) {
+        this.opEvent('index-range');
+        return false;
+      }
+      return this.compare((el.op as CompareOp) ?? '=', a, b);
     }
     const cur = this.bits.get(el.device) === true;
     const prev = this.currentPrev?.get(el.device) === true;
@@ -297,6 +438,7 @@ export class SimEngine {
           this.bits.set(el.device, false);
           const ref = parseAddress(el.device);
           if (ref?.kind === 'D') this.registers.set(el.device, 0);
+          if (ref?.kind === 'Z') this.registers.set(`Z${ref.index}`, 0);
           if (ref?.kind === 'T') {
             const t = this.timers.get(el.device);
             this.timers.set(el.device, { elapsed: 0, preset: t?.preset ?? 0 });
@@ -330,22 +472,114 @@ export class SimEngine {
         this.bits.set(el.device, done);
         return;
       }
-      case 'mov':
-        if (energized) this.setRegister(el.device, this.operand(el, 0));
-        return;
-      case 'math':
-        if (energized) {
-          this.math(
-            (el.op as MathOp) ?? 'add',
-            this.operand(el, 0),
-            this.operand(el, 1),
-            el.device,
-          );
+      case 'mov': {
+        if (!energized) return;
+        // All or nothing: every operand is resolved before anything is written.
+        const value = this.checkedOperand(el, 0);
+        if (value === null) {
+          this.opEvent('index-range');
+          return;
         }
+        const dest = this.destination(el.device);
+        if (dest !== null) this.setRegister(dest, value);
         return;
+      }
+      case 'math': {
+        if (!energized) return;
+        const a = this.checkedOperand(el, 0);
+        const b = this.checkedOperand(el, 1);
+        if (a === null || b === null) {
+          this.opEvent('index-range');
+          return;
+        }
+        const dest = this.destination(el.device);
+        if (dest !== null) this.math((el.op as MathOp) ?? 'add', a, b, dest);
+        return;
+      }
       case 'pid':
         this.runPid(el, energized);
+        return;
+      default:
+        if (isQueueInstruction(el.type)) this.runQueue(el.type, el, energized);
     }
+  }
+
+  /**
+   * One queue instruction, on its rising edge only (see `QUEUE_TYPES`).
+   *
+   * FX semantics throughout. The head holds the pointer and `n` counts it, so
+   * the entries are `head+1..head+n-1`. SFWR appends after the last entry; SFRD
+   * takes the first and shifts the rest down one, leaving the last word as it
+   * was; POP takes the last. Reading an empty queue does nothing, and writing a
+   * full one writes nothing — that one is a notice rather than an error, since
+   * the FX only sets its carry flag.
+   *
+   * Every address the instruction could touch is checked before any is written,
+   * so a refused instruction leaves the table exactly as it found it.
+   */
+  private runQueue(type: QueueType, el: LadderElement, energized: boolean): void {
+    const key = `${this.site.pouId}|${this.site.rungIndex}|${this.site.row}|${this.site.col}`;
+    const was = this.pulses.get(key) === true;
+    this.pulses.set(key, energized);
+    if (!energized || was) return;
+
+    const headRef = parseWordTarget(el.device);
+    // A Z or unparseable head never passes the validator; there is no table to act on.
+    if (headRef === null || headRef.kind === 'Z') return;
+    const head = effectiveAddress(headRef, this.registers);
+    if (head === null) {
+      this.opEvent('index-range');
+      return;
+    }
+    const h = Number.parseInt(head.slice(1), 10);
+    const n = el.preset ?? 0;
+    if (n < 2 || h + n - 1 > D_MAX) {
+      this.opEvent('queue-range');
+      return;
+    }
+    for (let i = 0; i < n; i++) {
+      if (this.protectedRegisters.has(`D${h + i}`)) {
+        this.opEvent('protected');
+        return;
+      }
+    }
+    const pointer = this.getRegister(head);
+    if (pointer < 0 || pointer > n - 1) {
+      this.opEvent('queue-pointer');
+      return;
+    }
+
+    if (type === 'sfwr') {
+      const value = this.checkedOperand(el, 0);
+      if (value === null) {
+        this.opEvent('index-range');
+        return;
+      }
+      if (pointer >= n - 1) {
+        this.opEvent('queue-full');
+        return;
+      }
+      this.setRegister(head, pointer + 1);
+      this.setRegister(`D${h + pointer + 1}`, value);
+      return;
+    }
+
+    if (pointer === 0) return;
+    const dest = this.destination(el.operands?.[0] ?? '');
+    if (dest === null) return;
+    let taken: number;
+    if (type === 'sfrd') {
+      taken = this.getRegister(`D${h + 1}`);
+      for (let i = 1; i <= n - 2; i++) {
+        this.setRegister(`D${h + i}`, this.getRegister(`D${h + i + 1}`));
+      }
+    } else {
+      taken = this.getRegister(`D${h + pointer}`);
+    }
+    this.setRegister(head, pointer - 1);
+    // Written last, so a destination inside the table (which the validator
+    // refuses when it can see it) still behaves predictably.
+    this.setRegister(dest, taken);
   }
 
   private currentDt = 0;
@@ -364,9 +598,18 @@ export class SimEngine {
       const pou = this.pouById.get(pouId);
       if (!pou) continue;
       const results: RungEvalResult[] = [];
-      for (const rung of pou.rungs) {
-        const result = evaluateRung(rung, (el) => this.conducts(el));
+      for (const [rungIndex, rung] of pou.rungs.entries()) {
+        const site = this.site;
+        site.pouId = pouId;
+        site.rungIndex = rungIndex;
+        const result = evaluateRung(rung, (el, row, col) => {
+          site.row = row;
+          site.col = col;
+          return this.conducts(el);
+        });
         for (const out of result.outputs) {
+          site.row = out.row;
+          site.col = out.col;
           this.applyOutput(out.element, out.energized);
         }
         results.push(result);

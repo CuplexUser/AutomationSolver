@@ -52,6 +52,11 @@ import { factoryHandling } from './50-factory-handling.js';
 import { factoryPaint } from './51-factory-paint.js';
 import { factoryAssembly } from './52-factory-assembly.js';
 import { factoryLineCapstone } from './53-factory-line.js';
+import { dcDispatch } from './54-dc-dispatch.js';
+import { dcLabel } from './55-dc-label.js';
+import { dcFlowLanes } from './56-dc-flow-lanes.js';
+import { dcRipening } from './57-dc-ripening.js';
+import { dcDriveIn } from './58-dc-drive-in.js';
 
 /**
  * The excavator line's plant definition, ahead of the puzzles that use it.
@@ -142,6 +147,11 @@ export const PUZZLES: PuzzleSpec[] = [
   factoryPaint,
   factoryAssembly,
   factoryLineCapstone,
+  dcDispatch,
+  dcLabel,
+  dcFlowLanes,
+  dcRipening,
+  dcDriveIn,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

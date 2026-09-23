@@ -13,8 +13,13 @@
  * *word*. It never appears on a contact or a coil — only as an operand of the
  * word instructions (compare / mov / math / pid) — which is why every element
  * that touches one carries `operands` rather than just a `device`.
+ *
+ * `Z0`..`Z7` are the FX's **index registers**: words too, and what they are for
+ * is offsetting another operand. `D100Z0` is the data register at `100 + Z0`,
+ * which is how a table is walked without one compare per entry. Only puzzles
+ * that set `indexRegisters` may use them.
  */
-export type DeviceKind = 'X' | 'Y' | 'M' | 'T' | 'C' | 'D';
+export type DeviceKind = 'X' | 'Y' | 'M' | 'T' | 'C' | 'D' | 'Z';
 
 /** All element kinds a cell can hold. */
 export type ElementType =
@@ -31,7 +36,10 @@ export type ElementType =
   | 'counter' // counter         --(C Kn)--
   | 'mov' // move            --[MOV S D]--
   | 'math' // + - * /         --[ADD S1 S2 D]--
-  | 'pid'; // PID loop        --[PID SV PV MV]--
+  | 'pid' // PID loop        --[PID SV PV MV]--
+  | 'sfwr' // FIFO write      --[SFWRP S D n]--
+  | 'sfrd' // FIFO read       --[SFRDP D S n]--
+  | 'pop'; // LIFO read       --[POPP D S n]--
 
 /** Comparison performed by a `compare` contact, on its two word operands. */
 export type CompareOp = '=' | '<>' | '>' | '<' | '>=' | '<=';
@@ -102,6 +110,9 @@ export const OUTPUT_TYPES: ReadonlySet<ElementType> = new Set<ElementType>([
   'mov',
   'math',
   'pid',
+  'sfwr',
+  'sfrd',
+  'pop',
 ]);
 
 /** Element kinds whose operands are words, not bits. */
@@ -110,7 +121,42 @@ export const WORD_TYPES: ReadonlySet<ElementType> = new Set<ElementType>([
   'mov',
   'math',
   'pid',
+  'sfwr',
+  'sfrd',
+  'pop',
 ]);
+
+/** The three queue instructions, after the FX's SFWR / SFRD / POP. */
+export type QueueType = 'sfwr' | 'sfrd' | 'pop';
+
+/**
+ * The queue instructions keep a table the FX way: `device` is the **head**,
+ * holding the pointer (how many entries are stored), and the entries follow it,
+ * so a queue of `n` (the element's `preset`, which counts the pointer) occupies
+ * `head..head+n-1`. `sfwr` appends, `sfrd` takes the oldest and shifts the rest
+ * down, `pop` takes the newest.
+ *
+ * All three are always **edge-triggered**, and the block face says so. A plain
+ * SFWR runs on every scan its rung conducts, so at a 50 ms scan it fills a table
+ * in a fraction of a second with nothing visible happening, which is why FX
+ * programs use the pulse forms. Offering only the pulse form removes a trap that
+ * teaches nothing.
+ */
+export const QUEUE_TYPES: ReadonlySet<ElementType> = new Set<ElementType>(['sfwr', 'sfrd', 'pop']);
+
+/** Mnemonic on a queue block's face. The trailing P is the pulse form. */
+export const QUEUE_MNEMONIC: Record<QueueType, string> = {
+  sfwr: 'SFWRP',
+  sfrd: 'SFRDP',
+  pop: 'POPP',
+};
+
+/** Longest table an FX queue instruction accepts, pointer included. */
+export const QUEUE_MAX_N = 512;
+
+export function isQueueInstruction(type: ElementType): type is QueueType {
+  return QUEUE_TYPES.has(type);
+}
 
 export function isWordInstruction(type: ElementType): boolean {
   return WORD_TYPES.has(type);
@@ -138,14 +184,18 @@ export function allowedDeviceKinds(type: ElementType): ReadonlySet<DeviceKind> {
     case 'coil-set':
       return new Set<DeviceKind>(['Y', 'M']);
     case 'coil-reset':
-      return new Set<DeviceKind>(['Y', 'M', 'T', 'C', 'D']);
+      return new Set<DeviceKind>(['Y', 'M', 'T', 'C', 'D', 'Z']);
     case 'timer':
       return new Set<DeviceKind>(['T']);
     case 'counter':
       return new Set<DeviceKind>(['C']);
     case 'mov':
     case 'math':
+      return new Set<DeviceKind>(['D', 'Z']);
     case 'pid':
+    case 'sfwr':
+    case 'sfrd':
+    case 'pop':
       return new Set<DeviceKind>(['D']);
     case 'compare':
     case 'hwire':
@@ -159,20 +209,29 @@ export function allowedDeviceKinds(type: ElementType): ReadonlySet<DeviceKind> {
  * A single placed element.
  *
  * `device` is the address the element *acts on*: the bit a contact reads, the
- * coil/timer/counter it drives, or the destination register of a word
- * instruction. `compare` acts on nothing, so it leaves `device` empty and puts
- * both sides in `operands`.
+ * coil/timer/counter it drives, the destination register of a word
+ * instruction, or the head of a queue table. `compare` acts on nothing, so it
+ * leaves `device` empty and puts both sides in `operands`.
+ *
+ * A word destination or a queue head may be indexed (`D100Z0`) in a puzzle that
+ * offers index registers. A `pid` destination never is, because the loop's
+ * state is keyed on it.
  */
 export interface LadderElement {
   type: ElementType;
   /** Device address. Empty string allowed only for `hwire` and `compare`. */
   device: string;
-  /** Preset (K value) for timer/counter. Timer units are 100ms (K10 = 1.0s). */
+  /**
+   * Preset (K value) for timer/counter. Timer units are 100ms (K10 = 1.0s).
+   * On a queue instruction it is `n`, the table length including the pointer.
+   */
   preset?: number;
   /**
-   * Word operands, as source strings: a register (`"D10"`) or a constant
-   * (`"K500"`, `"K-20"`). `compare`/`math` take two, `mov` one, `pid` two
-   * (setpoint then process value).
+   * Word operands, as source strings: a register (`"D10"`), an index register
+   * (`"Z0"`), an indexed register (`"D100Z0"`) or a constant (`"K500"`,
+   * `"K-20"`). `compare`/`math` take two, `mov` one, `pid` two (setpoint then
+   * process value). The queue instructions take one: the data `sfwr` stores, or
+   * the register `sfrd`/`pop` read into.
    */
   operands?: string[];
   /** Which comparison / which arithmetic. Only on `compare` and `math`. */

@@ -107,6 +107,16 @@ describe('symbols — what makes a usable name', () => {
     expect(isValidVarName('Y0')).toBe(false);
   });
 
+  it('rejects index registers and indexed operands too, but not names that merely start with Z', () => {
+    // A variable named Z0 would shadow the index register in the one puzzle
+    // that offers it, so the rule does not depend on whether this one does.
+    expect(isValidVarName('Z0')).toBe(false);
+    expect(isValidVarName('z12')).toBe(false);
+    expect(isValidVarName('D100Z0')).toBe(false);
+    expect(isValidVarName('Z1Held')).toBe(true);
+    expect(isValidVarName('Zone')).toBe(true);
+  });
+
   it('rejects names that are not identifiers at all', () => {
     expect(isValidVarName('2fast')).toBe(false);
     expect(isValidVarName('has space')).toBe(false);
@@ -150,6 +160,12 @@ describe('symbols — scope resolution', () => {
 
   it('reaches the plant by the device symbol', () => {
     expect(resolveName('FrameBlankReady', 'A', table)).toEqual({ address: 'X1', origin: 'plant' });
+  });
+
+  it('falls back to index registers and indexed operands as literal addresses', () => {
+    expect(resolveName('z3', 'A', table)).toEqual({ address: 'Z3', origin: 'literal' });
+    expect(resolveName('D200Z1', 'A', table)).toEqual({ address: 'D200Z1', origin: 'literal' });
+    expect(resolveName('Z9', 'A', table)).toBeNull();
   });
 
   it('matches case-insensitively, the way a real tool does', () => {

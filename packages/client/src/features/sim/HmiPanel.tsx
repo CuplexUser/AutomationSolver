@@ -1,5 +1,12 @@
 import { useEffect, useMemo, type ReactNode } from 'react';
-import { isAnalog, scaleCounts, type AnalogRange, type PuzzleDevice } from '@automationsolver/shared';
+import {
+  DEFAULT_POU_ID,
+  describeOperationError,
+  isAnalog,
+  scaleCounts,
+  type AnalogRange,
+  type PuzzleDevice,
+} from '@automationsolver/shared';
 import { SCAN_INTERVAL_MS, type HmiRunner } from './useSimRunner';
 
 // A latching widget flips on keydown; anything else is a spring-return button
@@ -93,6 +100,12 @@ export function HmiPanel({
   );
   const hotkeys = new Map(keyed.map((d, i) => [d.address, String(i + 1)]));
   useInputHotkeys(keyed, runner);
+  // An FX shows an operation error on its front panel and carries on; this is
+  // that lamp. The same sentence the grader adds to a failed step.
+  const diag = runner.diagnostics;
+  const opError = diag
+    ? describeOperationError(diag, diag.firstError !== undefined && diag.firstError.pouId !== DEFAULT_POU_ID)
+    : undefined;
 
   return (
     <div className="hmi panel">
@@ -102,6 +115,12 @@ export function HmiPanel({
           {runner.running ? 'SCANNING' : 'HALTED'} · {SCAN_INTERVAL_MS}ms
         </span>
       </div>
+
+      {opError && (
+        <p className="hmi-op-error" role="status">
+          {opError}
+        </p>
+      )}
 
       {machineSlot}
 

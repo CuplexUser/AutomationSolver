@@ -15,6 +15,9 @@ export const elementTypeSchema = z.enum([
   'mov',
   'math',
   'pid',
+  'sfwr',
+  'sfrd',
+  'pop',
 ]);
 
 /**

@@ -26,6 +26,7 @@ Reference docs, and what each is for:
 | [`docs/VARIABLES-AND-POUS.md`](docs/VARIABLES-AND-POUS.md) | The symbol table, scopes and player-authored POUs. |
 | [`docs/FACTORY.md`](docs/FACTORY.md) | The excavator plant: vision, two process models, what each puzzle settled. |
 | [`docs/FACTORY-LINE-DESIGN.md`](docs/FACTORY-LINE-DESIGN.md) | The line's floor plan, spine, timings and measured levers. |
+| [`docs/COLD-CHAIN.md`](docs/COLD-CHAIN.md) | The AGV distribution center: the plant, index registers and queues, the six puzzles. |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | The historical record of how the phases landed. **Not a queue.** |
 
 ---
@@ -321,6 +322,46 @@ of the others and of P1. Reference: [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
+## P3b — Cold Chain Hub (the warehouse sequel)
+
+A food distribution center run by a fleet of AGVs: the player posts transport orders and owns the
+flows and the FIFO/LIFO storage policy, never the vehicles. Six puzzles, 54 to 59. In dependency
+order. Reference: [`docs/COLD-CHAIN.md`](docs/COLD-CHAIN.md), which records every decision below
+and gets what each step measures.
+
+- [x] **Index registers, grammar.** `Z0`–`Z7` as a `DeviceKind`, `D100Z0` operands, `ValueRef`'s
+      `Z`/`DZ` variants and `parseWordTarget`/`effectiveAddress`/`staticBase`.
+      → COLD-CHAIN §"Index registers"; `ladder/types.ts`, `address.ts`, `value.ts`
+- [x] **Index registers and `SFWRP`/`SFRDP`/`POPP` in the engine.** All-or-nothing operation
+      errors, the per-instance pulse memory, `opDiagnostics`, the runtime write fence and
+      `engineFor`. The 53 shipped puzzles must trace byte-identically before and after (a
+      scratchpad digest of every canonical solution, demo and validation result).
+      → COLD-CHAIN §"Two engine additions"; `sim/scanCycle.ts`
+- [x] **Validator, symbols and grader for both.** The `indexRegisters` gate, operand roles, queue
+      heads and `n`, static overlap checks, `writtenAddresses` feeding both ownership checks,
+      Z-shaped names banned, the operation-error sentence on failing steps. Same byte-identity bar.
+      → COLD-CHAIN §"Two engine additions"; `puzzle/validate.ts`, `symbols.ts`, `project.ts`, `grade.ts`
+- [x] **Server schema** accepts the three queue types; round-trip test. → `server/src/validation.ts`
+- [x] **Editor support.** Fields, glyphs, palette entries, help sheet, `Z` chips and rows, the
+      live operation-error banner. → `client/src/features/ladder/`, FEATURE-MAP §1 and §5
+- [x] **The `distribution` plant.** Locations, the fleet manager's mailbox, AGV kinematics on the
+      loop, the latches, the stocktake download. Sub-step invariance test first.
+      → COLD-CHAIN §"The plant"; `puzzle/processes/distribution.ts`
+- [x] **54 `dc-dispatch`** (tutorial, with demo). → COLD-CHAIN §"The puzzles"
+- [x] **55 `dc-label`.** → COLD-CHAIN §"The puzzles"
+- [x] **56 `dc-flow-lanes`.** → COLD-CHAIN §"The puzzles"
+- [x] **57 `dc-ripening`**, the first sectioned one. → COLD-CHAIN §"The puzzles"
+- [x] **58 `dc-drive-in`.** → COLD-CHAIN §"The puzzles"
+- [ ] **59 `dc-hub`**, the capstone, `parMs`-graded. → COLD-CHAIN §"The puzzles"
+- [ ] **The Blender kit** `DcKit.blend` → `dc-kit.glb`, build script saved beside it.
+      → COLD-CHAIN §"The 3D view"
+- [ ] **`Distribution3D`** and its `MachineView` branch, panel and plant-workspace layouts.
+      → COLD-CHAIN §"The 3D view"
+- [ ] **Tell the outside world.** FEATURE-MAP's content table and category ranges, `README.md`
+      and `site/index.html` counts. → FEATURE-MAP §"Puzzle content"
+
+---
+
 ## P4 — Craft and competition
 
 Nothing here is blocked and nothing here is urgent. It is the original Phase 4, and it only pays
@@ -342,11 +383,13 @@ than a drift.
 - **`FUNCTION_BLOCK` / `FUNCTION`.** A reusable instantiable block is a good lesson and a much
   larger change: instance data, a call element in the rung grid, and a second scope kind. It is the
   obvious step *after* P1, not part of it. → VARIABLES-AND-POUS §"Where this sits against IEC"
-- **Purely symbolic variables, arrays, structs, `VAR_INPUT`/`VAR_OUTPUT`.** Every variable here
-  stays located and shows its address, because the game teaches a platform where `M40` is a real
-  thing an engineer reads off a monitor.
-- **A fourth transport mechanism on the line** (AGVs, overhead monorail), **a second parallel
-  machine**, and **a roof with trusses**. → FACTORY-LINE-DESIGN §9
+- **Purely symbolic variables, symbolic arrays, structs, `VAR_INPUT`/`VAR_OUTPUT`.** Every
+  variable here stays located and shows its address, because the game teaches a platform where
+  `M40` is a real thing an engineer reads off a monitor. Mitsubishi index registers (`D100Z0`,
+  P3b) are not an exception: they are located addressing, and `ARRAY[1..4] OF INT` stays out.
+- **A fourth transport mechanism on the excavator line** (AGVs, overhead monorail), **a second
+  parallel machine**, and **a roof with trusses**. → FACTORY-LINE-DESIGN §9. AGVs belong to the
+  Cold Chain Hub (P3b), a separate plant; this entry is about the line.
 - **Feature-flagging one factory process model instead of two.** Tried, worked, and was wrong: the
   flow differs rather than the fittings, and splitting is what leaves puzzle 47 provably untouched.
   → FACTORY.md §"Two plants, deliberately"

@@ -293,7 +293,10 @@ Four things the standard has that this deliberately does not:
   teaching a platform where `M40` is a real thing an engineer reads off a monitor screen. The
   address stays visible as secondary text everywhere the name appears.
 - **No derived types, arrays or structs.** `Z1Held … Z12Held` rather than `ZoneHeld : ARRAY[1..12]`.
-  Arrays need indexed addressing in the rung model, which the engine has no notion of.
+  The Cold Chain Hub adds Mitsubishi index registers (`D100Z0`, see [COLD-CHAIN.md](./COLD-CHAIN.md)),
+  and they are deliberately not arrays: an indexed operand names a real base address and a real
+  `Z` device, so the player still reads located addresses off the monitor. A declared name cannot
+  be indexed yet (`NameZ0`), and a declaration can never sit on a `Z`.
 - **No `VAR_INPUT` / `VAR_OUTPUT` on a POU.** With no callable blocks there is no call to pass
   parameters through; globals are the interface.
 

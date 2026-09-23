@@ -1,6 +1,8 @@
 import {
+  isQueueInstruction,
   MATH_MNEMONIC,
   MATH_SYMBOL,
+  QUEUE_MNEMONIC,
   type LadderElement,
   type MathOp,
 } from '@automationsolver/shared';
@@ -23,8 +25,11 @@ const DEST_BASE = 57;
 /** JetBrains Mono advances 0.6em, so a 10px label is 6px a character. */
 const DEST_CHAR_W = 6;
 
-/** A `D` operand is a register (a value that moves); anything else is a constant. */
-const REGISTER_RE = /^D\d+$/i;
+/**
+ * A `D` operand is a register (a value that moves); so are an index register
+ * and an indexed register. Anything else is a constant.
+ */
+const REGISTER_RE = /^(?:D\d+(?:Z\d)?|Z\d)$/i;
 
 /**
  * Shrink the top line's font to keep a long declared name on one line instead
@@ -117,6 +122,14 @@ function cellText(element: LadderElement): CellText {
     case 'pid':
       // Setpoint over measurement; the block face already says which is which.
       return { top: [a, '/', b], dest };
+    // A queue's pill is its table, head and length together, because the two
+    // only mean anything as a pair. The top line is the value going in, or the
+    // register the entry comes out into.
+    case 'sfwr':
+      return { top: [a, '→'], dest: `${dest} K${element.preset ?? '?'}` };
+    case 'sfrd':
+    case 'pop':
+      return { top: ['→', a], dest: `${dest} K${element.preset ?? '?'}` };
     default:
       return {
         top: [element.device || '?'],
@@ -144,6 +157,12 @@ export function describeElement(element: LadderElement): string {
       return `${MATH_MNEMONIC[(element.op as MathOp) ?? 'add']} ${a} and ${b} into ${dest}`;
     case 'pid':
       return `PID loop, setpoint ${a}, measured ${b}, output ${dest}`;
+    case 'sfwr':
+      return `FIFO write ${a} into the table at ${dest}, length K${element.preset ?? '?'}`;
+    case 'sfrd':
+      return `FIFO read the oldest of the table at ${dest} into ${a}`;
+    case 'pop':
+      return `LIFO read the newest of the table at ${dest} into ${a}`;
     default:
       return `${element.type} ${dest}`;
   }
@@ -323,6 +342,29 @@ function Symbol({ element, color, live }: { element: LadderElement; color: strin
           style={{ fill: color }}
         >
           {mnemonic}
+        </text>
+      </g>
+    );
+  }
+
+  // Queue blocks: the same function block, wider, because the pulse forms'
+  // mnemonics are five letters and the label must stay at a legible 10px.
+  if (isQueueInstruction(t)) {
+    return (
+      <g strokeWidth={sw} style={s} fill="none">
+        <rect x={12} y={WIRE_Y - 11} width={48} height={22} rx={3} />
+        <line x1={6} y1={WIRE_Y} x2={12} y2={WIRE_Y} />
+        <line x1={60} y1={WIRE_Y} x2={66} y2={WIRE_Y} />
+        <text
+          x={36}
+          y={WIRE_Y + 4}
+          textAnchor="middle"
+          fontSize={10}
+          fontWeight={700}
+          stroke="none"
+          style={{ fill: color }}
+        >
+          {QUEUE_MNEMONIC[t]}
         </text>
       </g>
     );
