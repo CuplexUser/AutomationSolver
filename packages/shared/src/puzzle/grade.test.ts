@@ -2813,17 +2813,17 @@ describe('gradeProgram — Cold Chain Hub puzzles reject the plausible wrong ans
     expect(failureText(result)).toContain('battery flat');
   }, HUB_MS);
 
-  /** Too late: below 10% a vehicle cannot finish the job it is on and still reach the charger. */
-  it('dc-hub: charging below 10% runs a vehicle flat on its way', () => {
+  /** Too late: below 3% a vehicle cannot finish the job it is on and still reach the charger. */
+  it('dc-hub: charging below 3% runs a vehicle flat on its way', () => {
     const spec = getLadderPuzzle('dc-hub')!;
-    const result = gradeProgram(spec, hub({ fleet: fleetProgram({ chargeBelow: 10 }) }));
+    const result = gradeProgram(spec, hub({ fleet: fleetProgram({ chargeBelow: 3 }) }));
     expect(result.solved).toBe(false);
     expect(failureText(result)).toContain('battery flat');
   }, HUB_MS);
 
   /**
    * Too early: every charge fills the battery, so a vehicle sent at 25% or 70%
-   * is off the floor longer, and sooner, than one sent at 15%. It works, and it
+   * is off the floor longer, and sooner, than one sent at 10%. It works, and it
    * is the program most players will write first.
    */
   for (const below of [25, 70]) {

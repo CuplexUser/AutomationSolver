@@ -353,11 +353,12 @@ and gets what each step measures.
 - [x] **57 `dc-ripening`**, the first sectioned one. → COLD-CHAIN §"The puzzles"
 - [x] **58 `dc-drive-in`.** → COLD-CHAIN §"The puzzles"
 - [x] **59 `dc-hub`**, the capstone, `parMs`-graded. → COLD-CHAIN §"The puzzles"
-- [ ] **Grade the capstone without holding the server up.** `dc-hub` still takes about 2.4 s to
-      grade on the request thread (down from 4.7 s; the engine and plant work is done). Grading in
-      a `worker_threads` worker would stop the thread blocking, but the API is a Vercel function,
-      so it needs the worker file bundled into it: decide that, then build it.
-      → COLD-CHAIN §"What was measured"; `server/src/routes/puzzles.ts`
+- [ ] **Grade the capstone without holding the server up.** `dc-hub` still takes about 3.4 s to
+      grade on the request thread (4.7 s at first, 2.4 s on the old loop; the engine and plant
+      work is done). Grading in a `worker_threads` worker would stop the thread blocking, but the
+      API is a Vercel function, so it needs the worker file bundled into it: decide that, then
+      build it.
+      → COLD-CHAIN §"What the roads measured"; `server/src/routes/puzzles.ts`
 - [x] **The Blender kit** `Automation-cold-storage-assets.blend` → `dc-kit.glb`, build script saved
       beside it.
       → COLD-CHAIN §"The 3D view"
@@ -365,6 +366,14 @@ and gets what each step measures.
       → COLD-CHAIN §"The 3D view"
 - [x] **Tell the outside world.** FEATURE-MAP's content table and category ranges, `README.md`
       and `site/index.html` counts. → FEATURE-MAP §"Puzzle content"
+- [x] **Two-way roads for the fleet.** The one-way loop replaced by two-lane aisles, junctions
+      and bays entered fork first from either lane, traffic-aware Dijkstra routing, and the
+      traffic rules the gridlock fuzz test earned; every puzzle re-measured and retuned, the
+      capstone's slot and par included. → COLD-CHAIN §"The roads", §"What the roads measured";
+      `processes/dcRoads.ts`
+- [x] **A cold store's look.** The kit's palette, the flickering wall foot, floor-painted codes
+      that cannot overlap, per-vehicle route lines, the `coldStore` light, and a Scania-style
+      tractor and reefer trailer. → COLD-CHAIN §"The 3D view"
 
 ---
 

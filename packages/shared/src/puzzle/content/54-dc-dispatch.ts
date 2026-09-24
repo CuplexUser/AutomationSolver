@@ -58,8 +58,8 @@ export const dcDispatch: PuzzleSpec = {
   summary: 'Order a forklift you never drive: every pallet from the dock through QA and out.',
   briefing: [
     'The Cold Chain Hub takes fresh produce off trucks, checks it, stores it and ships it,',
-    'and nothing in it is carried by hand. A fleet of automated forklifts runs a one-way loop',
-    'round the building, and the fleet manager that drives them takes orders from this PLC.',
+    'and nothing in it is carried by hand. A fleet of automated forklifts drives its two-way',
+    'aisles, and the fleet manager that drives them takes orders from this PLC.',
     'You never turn a wheel. You say where a pallet is and where it should go, and a vehicle',
     'goes and does it.',
     '',
@@ -73,8 +73,8 @@ export const dcDispatch: PuzzleSpec = {
     '- X3 IN1 PALLET WAITING: at least one pallet is standing on the inbound dock.',
     '- X5 QA OCCUPIED: a pallet is on the QA table. X6 QA DONE: its check has finished.',
     '  X7 QA PASS: it passed, which only means something once X6 is on.',
-    '- One vehicle. It drives the loop clockwise, and after a job it stays where it is',
-    '  until the next one, or until another vehicle needs that spot.',
+    '- One vehicle. The manager sends it the quickest way along the aisles, and after a job',
+    '  it stays where it is until the next one, or until another vehicle needs that spot.',
     '',
     '## The fleet manager',
     '- An order is two numbers and a request: the location to collect from in D0 ORDER',
@@ -96,7 +96,7 @@ export const dcDispatch: PuzzleSpec = {
     '## Interlocks and safety',
     '- A vehicle sent to collect from a place with nothing in it is a fault. So is a',
     '  second pallet arriving at QA while the first is still on the table: the vehicle',
-    '  stands there holding it, and after 20 s the whole loop is stalled.',
+    '  stands there holding it, and after 20 s the whole hub is stalled.',
     '- Nothing goes anywhere but QA before it has been checked, and a pallet that failed',
     '  goes to quarantine and nowhere else.',
     '',
@@ -116,7 +116,7 @@ export const dcDispatch: PuzzleSpec = {
     '## Acceptance',
     '- Every pallet that passes QA ends up on the truck, and every one that fails ends up',
     '  in quarantine.',
-    '- No vehicle is ever sent for a pallet that is not there, and the loop never stalls.',
+    '- No vehicle is ever sent for a pallet that is not there, and the hub never stalls.',
     '- With nothing on the dock, nothing is ordered.',
   ].join('\n'),
   hints: [
@@ -129,7 +129,7 @@ export const dcDispatch: PuzzleSpec = {
     'Bookings: on the rising edge of X0, a pending M10 becomes SET M0 "QA is promised". A ' +
       'pending M11 becomes SET M1 "pickup is promised" and RST M0. Reset M1 once X5 goes ' +
       'off. Then only choose M10 while M0 is off, and M11 while M1 is off.',
-    'If a vehicle stands at QA holding a pallet until the loop stalls, a second pallet was ' +
+    'If a vehicle stands at QA holding a pallet until the hub stalls, a second pallet was ' +
       'sent there before the first left: M0 is missing from the IN1 rung. If one is sent to ' +
       'QA and finds nothing, the pickup was ordered twice: M1 is missing from the QA rung.',
   ],

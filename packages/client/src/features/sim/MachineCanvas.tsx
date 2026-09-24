@@ -32,7 +32,7 @@ export function enableShadows(root: THREE.Object3D) {
  * to download). Without an environment map, metallic PBR materials have
  * nothing to reflect and render as flat dark shapes.
  */
-function SceneEnvironment() {
+function SceneEnvironment({ intensity }: { intensity: number }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
   useEffect(() => {
@@ -42,14 +42,14 @@ function SceneEnvironment() {
     scene.environment = envTex;
     // Kept low so the shadow-casting key light dominates and surfaces shade
     // directionally instead of being evenly washed by the environment.
-    scene.environmentIntensity = 0.45;
+    scene.environmentIntensity = intensity;
     return () => {
       scene.environment = null;
       /* eslint-enable react-hooks/immutability */
       envTex.dispose();
       pmrem.dispose();
     };
-  }, [gl, scene]);
+  }, [gl, scene, intensity]);
   return null;
 }
 
@@ -97,6 +97,30 @@ function FitCamera({ extent, target }: { extent: FitExtent; target: [number, num
   return null;
 }
 
+/**
+ * How a scene is lit. `workshop` is the warm raking light every machine scene
+ * was tuned under; `coldStore` is a refrigerated hall under high-bay lamps:
+ * a cool key from high over the north-east corner that throws real shadows
+ * across the floor, little bounce light, and a dim hall fading into the haze,
+ * so the pale panels read against something instead of washing into it.
+ */
+export type Mood = 'workshop' | 'coldStore';
+
+const MOODS = {
+  workshop: {
+    sky: '#dbe8ff', ground: '#8a7a6a', hemi: 0.5,
+    key: '#ffffff', keyI: 2.2, keyAt: [10, 16, 9],
+    fill: 0.25, fillAt: [-6, 4, -4],
+    env: 0.45, shadowMap: 2048,
+  },
+  coldStore: {
+    sky: '#b8c7d6', ground: '#39424c', hemi: 0.32,
+    key: '#e8f0f8', keyI: 2.9, keyAt: [16, 22, -10],
+    fill: 0.14, fillAt: [-10, 6, 14],
+    env: 0.28, shadowMap: 4096,
+  },
+} as const;
+
 /** Scene-space box the view center is confined to while panning. */
 export interface PanBounds {
   x: [min: number, max: number];
@@ -136,6 +160,8 @@ export function MachineCanvas({
   panBounds,
   fitExtent,
   shadowExtent = 16,
+  mood = 'workshop',
+  background,
   children,
 }: {
   /** A CSS length: the single-machine panels want a fixed 300, the plant
@@ -172,8 +198,13 @@ export function MachineCanvas({
    * map and its shadows simply stop at a line across the floor.
    */
   shadowExtent?: number;
+  /** The light the scene is shown under. */
+  mood?: Mood;
+  /** A solid background color, with a haze of the same color toward the far distance. */
+  background?: string;
   children: ReactNode;
 }) {
+  const look = MOODS[mood];
   const showControls = interactive || zoomable || !!panBounds;
 
   // Clamp the pan target and shift the camera by the same delta so the view
@@ -211,16 +242,19 @@ export function MachineCanvas({
         gl={{ toneMapping: THREE.NeutralToneMapping }}
         onCreated={({ camera }) => camera.lookAt(...target)}
       >
-        <SceneEnvironment />
+        <SceneEnvironment intensity={look.env} />
+        {background && <color attach="background" args={[background]} />}
+        {background && <fog attach="fog" args={[background, 60, 150]} />}
         {fitExtent && <FitCamera extent={fitExtent} target={target} />}
         {/* Sky/ground hemisphere instead of flat ambient, plus one shadow-casting
             key light — the raking sun is what gives walls their nuance. */}
-        <hemisphereLight color="#dbe8ff" groundColor="#8a7a6a" intensity={0.5} />
+        <hemisphereLight color={look.sky} groundColor={look.ground} intensity={look.hemi} />
         <directionalLight
-          position={[10, 16, 9]}
-          intensity={2.2}
+          position={look.keyAt}
+          color={look.key}
+          intensity={look.keyI}
           castShadow
-          shadow-mapSize={[2048, 2048]}
+          shadow-mapSize={[look.shadowMap, look.shadowMap]}
           shadow-camera-left={-shadowExtent}
           shadow-camera-right={shadowExtent}
           shadow-camera-top={shadowExtent}
@@ -229,7 +263,7 @@ export function MachineCanvas({
           shadow-camera-far={shadowExtent * 4 + 20}
           shadow-normalBias={0.04}
         />
-        <directionalLight position={[-6, 4, -4]} intensity={0.25} />
+        <directionalLight position={look.fillAt} intensity={look.fill} />
         <Suspense fallback={null}>{children}</Suspense>
         {showControls && (
           <OrbitControls

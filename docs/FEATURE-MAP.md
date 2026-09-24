@@ -914,10 +914,14 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     section cameras (keyed on the plant's `DC_SECTIONS`) in the plant workspace. It is a **kit**
     scene: `dc-kit.glb` holds one named root per asset, and `distribution/plant.ts` clones them
     per station, per vehicle and per pallet and stands each where `distribution/layout.ts` says
-    the plant has it, derived from `DC_LOCATIONS` and `loopPoint`, so the floor plan exists
-    once. Pallets come from a pool reparented to slot empties every frame and are drawn from the
-    plant's *true* tokens; the room and truck roofs are lifted off so a batch and a trailer's
-    load order can be read. `plant.test.ts` rebuilds the GLB's node tree from its JSON chunk
+    the plant has it, derived from the plant's roads (`DC_BAYS`, `DC_EDGES`, `edgePoint`), so the
+    floor plan exists once. Vehicles drive two-way aisles on routes the plant plans, and each
+    one's route ahead is drawn on the floor in its color; location codes are painted on the
+    floor rather than hung as signs, so none can overlap another. The scene uses
+    `MachineCanvas`'s cool `coldStore` mood over a light background, so it does not read as the
+    excavator plant. Pallets come from a pool reparented to slot empties every frame and are
+    drawn from the plant's *true* tokens; the room and truck roofs are lifted off so a batch and
+    a trailer's load order can be read. `plant.test.ts` rebuilds the GLB's node tree from its JSON chunk
     (no decoder, no GPU) and poses a real state against it, which is how a renamed slot or a
     pallet on the wrong anchor fails a test instead of a demo. The model URL is base-relative.
 - **Resizable workspace** (`features/layout/Resizable.tsx`) — the play view is a full-height

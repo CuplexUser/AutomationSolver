@@ -85,7 +85,7 @@ export const dcFlowLanes: PuzzleSpec = {
     '## Acceptance',
     '- Every call is filled with the right product, oldest lot first, under a shipping notice',
     '  that names it.',
-    '- Everything that arrives is checked and stored, and the loop never stalls.',
+    '- Everything that arrives is checked and stored, and the hub never stalls.',
   ].join('\n'),
   hints: [
     'Keep the shape: pending relays for three orders (IN1 to QA, QA to a lane, a lane to ' +

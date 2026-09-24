@@ -125,8 +125,8 @@ function anyBatteryBelow(lead: LadderElement[], k: number, tail: LadderElement[]
  * posting one never waits for a vehicle to be free.
  *
  * `chargeBelow` is the whole policy, and the capstone's answer is the one that
- * measured fastest: 15%. Earlier is slower, because every charge takes a vehicle
- * off the floor, and 10% runs one flat (docs/COLD-CHAIN.md). Left out, nothing
+ * measured fastest: 10%. Earlier is slower, because every charge takes a vehicle
+ * off the floor, and 3% runs one flat (docs/COLD-CHAIN.md). Left out, nothing
  * ever charges.
  */
 export function fleetProgram(opts: { chargeBelow?: number }): Rung[] {
@@ -152,7 +152,7 @@ export function fleetProgram(opts: { chargeBelow?: number }): Rung[] {
 }
 
 /** The capstone's canonical dispatcher. */
-export const HUB_FLEET_PROGRAM: Rung[] = fleetProgram({ chargeBelow: 15 });
+export const HUB_FLEET_PROGRAM: Rung[] = fleetProgram({ chargeBelow: 10 });
 
 // --- SHIP: the outbound trucks -----------------------------------------------------------
 
@@ -165,7 +165,7 @@ export const HUB_FLEET_PROGRAM: Rung[] = fleetProgram({ chargeBelow: 15 });
  * SHIP moves nothing itself. It publishes what each dock wants next, and the
  * section that holds that product (RIPEN for fruit, STORE for the rest) ships it
  * under its own slot. SHIP watches for the order that claims its request, and
- * keeps one pallet on its way to each dock at a time: two on the loop at once
+ * keeps one pallet on its way to each dock at a time: two on the road at once
  * could arrive in either order, and a trailer is loaded in sequence.
  */
 export const SHIP_PROGRAM: Rung[] = [
@@ -702,7 +702,7 @@ const SECTIONS: Record<HubSectionId, SectionDef> = {
       '## Field notes',
       '- A trailer is loaded from the front, so its last stop goes on first. The lines arrive',
       '  in drop order, and a stack gives them back the other way round.',
-      '- Two pallets on the loop to one dock can arrive in either order. One at a time.',
+      '- Two pallets on their way to one dock can arrive in either order. One at a time.',
     ].join('\n'),
   },
 };

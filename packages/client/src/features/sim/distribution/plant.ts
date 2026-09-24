@@ -1,8 +1,7 @@
 import * as THREE from 'three';
 import {
-  DEPOT_STOPS,
+  DEPOT_BAYS,
   DOOR_MS,
-  LOOP_CORNERS,
   MAX_FLEET,
   TRUCK_GAP_MS,
   WRAP_MS,
@@ -13,19 +12,29 @@ import {
 } from '@automationsolver/shared';
 import { enableShadows } from '../MachineCanvas';
 import {
+  BAY_M,
+  DEPOT_NAMES,
   HALL,
+  NORTH_BACK_Z,
   NORTH_DOCK_Z,
   NORTH_STEP_X,
   TRUCK_M,
-  VEHICLE_POCKET_M,
   WALL_H,
+  WEST_WALL_X,
   YARD,
-  pocketFrame,
+  aisleLines,
+  aisleSurfaces,
+  apron,
+  bayFrameAt,
+  laneArrows,
+  routeAhead,
   signText,
+  stationBays,
   stationYaw,
   stationsFor,
   vehiclePose,
   wallSegments,
+  type FloorRect,
   type StationDef,
 } from './layout';
 
@@ -34,9 +43,14 @@ import {
  * plant's state.
  *
  * Nothing here keeps a clock of its own except the beacons' flash: vehicles,
- * doors, trucks, the turntable and every pallet are placed from `machine`, so a
- * replay draws exactly what the live run drew. The kit's roots are cloned by
- * name and put where `layout.ts` says the plant has them.
+ * doors, trucks, the turntable, every pallet and every planned route are drawn
+ * from `machine`, so a replay draws exactly what the live run drew. The kit's
+ * roots are cloned by name and put where `layout.ts` says the plant has them.
+ *
+ * The look is a cold store's, not the excavator plant's: a grey epoxy floor,
+ * blue markings, pale grey insulated panels and a cool light, with the
+ * forklifts the one warm color on the floor. Every location's code is painted
+ * on the floor in front of it, so no label can hang in front of another.
  *
  * Pallets are drawn from the plant's **true** tokens, not from anything the
  * player's program believes. A lane the program thinks holds tomatoes and that
@@ -49,6 +63,27 @@ const list = (s: string): string[] => (s === '' ? [] : s.split(','));
 
 /** Label stripe colors: the dock a pallet was labeled for. */
 const DOCK_COLOR: Record<number, string> = { 1: '#2563eb', 2: '#ea580c' };
+
+/** Each vehicle's own color: its roof panel and the route it is driving. */
+export const VEHICLE_COLORS = ['#2563eb', '#16a34a', '#a21caf'];
+
+/**
+ * The floor's palette: a mid-grey epoxy slab with darker drive lanes, so the
+ * markings, the pallets and every shadow read against it. Nothing on the floor is
+ * pure white; under the hall's key light a near-white surface simply blows out.
+ */
+const FLOOR = {
+  slab: '#9aa3ab',
+  yard: '#474d55',
+  aisle: '#828c96',
+  edge: '#1d56b8',
+  dash: '#c3cad1',
+  arrow: '#2f6fd8',
+  apron: '#a7b8ca',
+  bay: '#18a07e',
+  plate: '#1d4ed8',
+  plateText: '#e4e9ee',
+};
 
 // --- lamps ------------------------------------------------------------------------
 
@@ -74,37 +109,156 @@ function light(l: Lamp | undefined, color: string | null): void {
   l.mat.emissiveIntensity = color ? 1.3 : 0.15;
 }
 
-// --- signs ------------------------------------------------------------------------
+// --- floor paint ------------------------------------------------------------------------
 
 /**
- * A location's name and code over it, the numbers a program uses. Painted into a
- * canvas rather than set in a font file, the way the other plant scenes do it.
+ * Floor paint sits on the slab in layers a centimeter apart and pushed toward the
+ * camera in the depth buffer as well: two coplanar surfaces flicker, and a few
+ * millimeters is not enough apart at the distance the whole floor is seen from.
  */
-function sign(text: string): THREE.Sprite {
-  const w = 512;
-  const h = 128;
+const LAYER = { yard: 0, aisle: 0.01, apron: 0.012, line: 0.02, plate: 0.024 } as const;
+
+function paint(color: string, layer: number, rough = 0.5): THREE.MeshStandardMaterial {
+  const m = new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0 });
+  m.polygonOffset = true;
+  m.polygonOffsetFactor = -1 - layer * 100;
+  m.polygonOffsetUnits = -1 - layer * 100;
+  return m;
+}
+
+function floorRect(r: FloorRect, material: THREE.Material, y: number): THREE.Mesh {
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.d), material);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(r.x, y, r.z);
+  mesh.receiveShadow = true;
+  mesh.userData.own = true;
+  return mesh;
+}
+
+/**
+ * A location's code painted on the floor: white on a blue plate, reading the
+ * right way up from the south, where the camera starts. Painted into a canvas
+ * rather than set in a font file, the way the other plant scenes do it.
+ */
+function floorPlate(text: string, maxW: number, owned: THREE.Material[]): THREE.Mesh {
+  const h = 0.42;
+  const w = Math.min(maxW, Math.max(0.7, 0.19 * text.length + 0.2));
+  const px = 256;
   const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
+  canvas.width = Math.round((px * w) / h);
+  canvas.height = px;
   const ctx = canvas.getContext('2d');
   if (ctx) {
-    ctx.fillStyle = 'rgba(15, 23, 42, 0.86)';
-    ctx.fillRect(0, 0, w, h);
-    ctx.strokeStyle = '#fbbf24';
-    ctx.lineWidth = 6;
-    ctx.strokeRect(3, 3, w - 6, h - 6);
-    ctx.fillStyle = '#f8fafc';
-    ctx.font = 'bold 64px "JetBrains Mono", ui-monospace, monospace';
+    ctx.fillStyle = FLOOR.plate;
+    ctx.beginPath();
+    ctx.roundRect(4, 4, canvas.width - 8, canvas.height - 8, 36);
+    ctx.fill();
+    ctx.fillStyle = FLOOR.plateText;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(text, w / 2, h / 2 + 4);
+    let size = 150;
+    ctx.font = `bold ${size}px "JetBrains Mono", ui-monospace, monospace`;
+    while (size > 40 && ctx.measureText(text).width > canvas.width - 50) {
+      size -= 6;
+      ctx.font = `bold ${size}px "JetBrains Mono", ui-monospace, monospace`;
+    }
+    ctx.fillText(text, canvas.width / 2, canvas.height / 2 + 8);
   }
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthWrite: false }));
-  sprite.scale.set(1.9, 0.475, 1);
-  return sprite;
+  tex.anisotropy = 8;
+  const mat = paint('#e6e9ec', LAYER.plate, 0.6);
+  mat.map = tex;
+  mat.transparent = true;
+  owned.push(mat);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.receiveShadow = true;
+  mesh.userData.own = true;
+  return mesh;
+}
+
+/** The slab, the yard, the aisles and their markings, every apron and its code, and the parking bays. */
+function buildFloor(group: THREE.Group, stations: StationDef[], owned: THREE.Material[]): void {
+  const slab = new THREE.MeshStandardMaterial({ color: FLOOR.slab, roughness: 0.42, metalness: 0.05 });
+  const yard = paint(FLOOR.yard, LAYER.yard, 0.9);
+  const aisle = paint(FLOOR.aisle, LAYER.aisle, 0.4);
+  const edge = paint(FLOOR.edge, LAYER.line, 0.45);
+  const dash = paint(FLOOR.dash, LAYER.line, 0.5);
+  const arrow = paint(FLOOR.arrow, LAYER.line, 0.45);
+  const apronMat = paint(FLOOR.apron, LAYER.apron, 0.4);
+  const bayLine = paint(FLOOR.bay, LAYER.line, 0.5);
+  owned.push(slab, yard, aisle, edge, dash, arrow, apronMat, bayLine);
+
+  const [hx0, hx1] = HALL.x;
+  const [hz0, hz1] = HALL.z;
+  group.add(floorRect({ x: (hx0 + hx1) / 2, z: (hz0 + hz1) / 2, w: hx1 - hx0, d: hz1 - hz0 }, slab, 0));
+  group.add(
+    floorRect(
+      { x: (YARD.x[0] + YARD.x[1]) / 2, z: (YARD.z[0] + YARD.z[1]) / 2, w: YARD.x[1] - YARD.x[0], d: YARD.z[1] - YARD.z[0] },
+      yard,
+      -0.01,
+    ),
+  );
+
+  for (const r of aisleSurfaces()) group.add(floorRect(r, aisle, LAYER.aisle));
+  const lines = aisleLines();
+  for (const r of lines.edges) group.add(floorRect(r, edge, LAYER.line));
+  for (const r of lines.dashes) group.add(floorRect(r, dash, LAYER.line));
+
+  const shape = new THREE.Shape();
+  shape.moveTo(0.32, 0);
+  shape.lineTo(-0.22, 0.26);
+  shape.lineTo(-0.08, 0);
+  shape.lineTo(-0.22, -0.26);
+  shape.closePath();
+  const chevron = new THREE.ShapeGeometry(shape);
+  for (const a of laneArrows()) {
+    const mesh = new THREE.Mesh(chevron, arrow);
+    mesh.rotation.x = -Math.PI / 2;
+    // Plan headings turn toward +z (south); a shape's +x turned by -heading about the floor's normal.
+    mesh.rotation.z = -a.heading;
+    mesh.position.set(a.x, LAYER.line, a.z);
+    mesh.userData.own = true;
+    group.add(mesh);
+  }
+
+  // Aprons, and each location's code painted on its own.
+  for (const b of stationBays(stations)) {
+    const a = apron(b.bay, b.width - 0.1, b.depth);
+    group.add(floorRect(a.rect, apronMat, LAYER.apron));
+    // Codes read along x. An apron too narrow that way (a bay off a north-south
+    // aisle) gets its code on the floor just beyond the station instead.
+    const fits = a.rect.w >= 1.0;
+    const plate = floorPlate(signText(b.code), fits ? a.rect.w - 0.08 : 1.8, owned);
+    const at = fits ? { x: a.center[0], z: a.center[1] } : bayFrameAt(b.bay, b.reach + 0.6);
+    plate.position.set(at.x, LAYER.plate, at.z);
+    group.add(plate);
+  }
+
+  // Parking bays: an outline each, open to the aisle, and its name beyond it.
+  DEPOT_BAYS.forEach((bay, i) => {
+    const f = bayFrameAt(bay, BAY_M + 0.1);
+    const across = Math.abs(f.dir[0]) > 0.5;
+    const bw = 1.1;
+    const bd = 1.8;
+    const sides: FloorRect[] = across
+      ? [
+          { x: f.x, z: f.z - bw / 2, w: bd, d: 0.06 },
+          { x: f.x, z: f.z + bw / 2, w: bd, d: 0.06 },
+          { x: f.x + (f.dir[0] * bd) / 2, z: f.z, w: 0.06, d: bw },
+        ]
+      : [
+          { x: f.x - bw / 2, z: f.z, w: 0.06, d: bd },
+          { x: f.x + bw / 2, z: f.z, w: 0.06, d: bd },
+          { x: f.x, z: f.z + (f.dir[1] * bd) / 2, w: bw, d: 0.06 },
+        ];
+    for (const r of sides) group.add(floorRect(r, bayLine, LAYER.line));
+    const tag = bayFrameAt(bay, BAY_M + 1.55);
+    const plate = floorPlate(DEPOT_NAMES[i], 0.8, owned);
+    plate.position.set(tag.x, LAYER.plate, tag.z);
+    group.add(plate);
+  });
 }
 
 // --- pallets ------------------------------------------------------------------------
@@ -244,6 +398,8 @@ interface Vehicle {
   forks?: THREE.Object3D;
   anchor?: THREE.Object3D;
   beacon?: Lamp;
+  path: THREE.Line;
+  positions: Float32Array;
 }
 
 export interface HubPlant {
@@ -253,96 +409,16 @@ export interface HubPlant {
   dispose: () => void;
 }
 
-function mat(color: string, rough = 0.85): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color, roughness: rough, metalness: 0 });
-}
-
-/** A flat rectangle on the floor, centered on (x, z), a hair above the slab so it never flickers. */
-function floorRect(w: number, d: number, x: number, z: number, material: THREE.Material, y = 0.004): THREE.Mesh {
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), material);
-  mesh.rotation.x = -Math.PI / 2;
-  mesh.position.set(x, y, z);
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-/** The slab, the yard, and the loop painted on the floor with its direction of travel. */
-function buildFloor(group: THREE.Group, owned: THREE.Material[]): void {
-  const slab = mat('#59616b');
-  const yard = mat('#2f343b');
-  const lane = mat('#434a54');
-  const edge = mat('#e5b913', 0.6);
-  const arrow = mat('#cbd5e1', 0.6);
-  owned.push(slab, yard, lane, edge, arrow);
-
-  const [hx0, hx1] = HALL.x;
-  const [hz0, hz1] = HALL.z;
-  group.add(floorRect(hx1 - hx0, hz1 - hz0, (hx0 + hx1) / 2, (hz0 + hz1) / 2, slab, 0));
-  group.add(floorRect(YARD.x[1] - YARD.x[0], YARD.z[1] - YARD.z[0], (YARD.x[0] + YARD.x[1]) / 2, (YARD.z[0] + YARD.z[1]) / 2, yard, 0));
-
-  // The loop: four legs, 1.3 m wide, yellow edges, a chevron every four meters.
-  const W = 1.3;
-  const corners = LOOP_CORNERS.map(([x, y]) => [x / 1000, y / 1000] as [number, number]);
-  for (let i = 0; i < corners.length; i++) {
-    const [x0, z0] = corners[i];
-    const [x1, z1] = corners[(i + 1) % corners.length];
-    const len = Math.hypot(x1 - x0, z1 - z0);
-    const horizontal = z0 === z1;
-    const w = horizontal ? len + W : W;
-    const d = horizontal ? W : len + W;
-    group.add(floorRect(w, d, (x0 + x1) / 2, (z0 + z1) / 2, lane, 0.003));
-    for (const side of [-1, 1]) {
-      const off = (side * W) / 2;
-      group.add(
-        floorRect(
-          horizontal ? len + W : 0.06,
-          horizontal ? 0.06 : len + W,
-          (x0 + x1) / 2 + (horizontal ? 0 : off),
-          (z0 + z1) / 2 + (horizontal ? off : 0),
-          edge,
-          0.005,
-        ),
-      );
-    }
-    const dx = (x1 - x0) / len;
-    const dz = (z1 - z0) / len;
-    const shape = new THREE.Shape();
-    shape.moveTo(0.35, 0);
-    shape.lineTo(-0.25, 0.3);
-    shape.lineTo(-0.1, 0);
-    shape.lineTo(-0.25, -0.3);
-    shape.closePath();
-    const geo = new THREE.ShapeGeometry(shape);
-    for (let s = 2; s < len - 1; s += 4) {
-      const chevron = new THREE.Mesh(geo, arrow);
-      chevron.rotation.x = -Math.PI / 2;
-      chevron.rotation.z = Math.atan2(-dz, dx);
-      chevron.position.set(x0 + dx * s, 0.006, z0 + dz * s);
-      group.add(chevron);
-    }
-  }
-
-  // Parking bays south of the loop: one outline per vehicle.
-  for (const stop of DEPOT_STOPS) {
-    const f = pocketFrame(stop, 'out', VEHICLE_POCKET_M);
-    const bw = 1.05;
-    const bd = 1.8;
-    for (const [w, d, ox, oz] of [
-      [bw, 0.06, 0, -bd / 2],
-      [bw, 0.06, 0, bd / 2],
-      [0.06, bd, -bw / 2, 0],
-      [0.06, bd, bw / 2, 0],
-    ] as [number, number, number, number][]) {
-      group.add(floorRect(w, d, f.x + ox, f.z + oz, edge, 0.005));
-    }
-  }
-}
+/** How far a truck drives off across the yard before it is out of sight. */
+const TRUCK_LEAVES_M = 18;
+/** Most points a planned route is drawn with. */
+const PATH_POINTS = 256;
 
 /**
  * The two walls the camera looks toward, with the dock doors a puzzle built cut
- * into them: west for the trucks, north for the goods-in doors and, stepped back
- * behind the rooms, the rest of the north side. East and south stay open so the
- * floor can be seen; a row of columns says the hall carries on.
+ * into them: west for the trucks, and north for the goods-in doors, stepping back
+ * behind QA to clear quarantine and the rooms. East and south stay open so the
+ * floor can be seen; columns along the walls say the hall carries on.
  */
 function buildWalls(group: THREE.Group, kit: THREE.Object3D, stations: StationDef[]): void {
   const panel = (at: [number, number], yaw: number, width: number) => {
@@ -361,28 +437,22 @@ function buildWalls(group: THREE.Group, kit: THREE.Object3D, stations: StationDe
   };
   // West: panels face east into the hall. Outbound docks are 2.9 m wide.
   const west = stations.filter((s) => s.loc.kind === 'dock-out').map((s): [number, number] => [s.frame.z - 1.45, s.frame.z + 1.45]);
-  const wx = HALL.x[0] + 0.25;
-  run(NORTH_DOCK_Z, HALL.z[1], west, (z, w) => panel([wx, z], Math.PI / 2, w));
+  run(NORTH_DOCK_Z, HALL.z[1], west, (z, w) => panel([WEST_WALL_X, z], Math.PI / 2, w));
   // North, flush with the goods-in doors (1.9 m wide) as far as the step.
   const north = stations.filter((s) => s.loc.kind === 'dock-in').map((s): [number, number] => [s.frame.x - 0.95, s.frame.x + 0.95]);
-  run(HALL.x[0], NORTH_STEP_X, north, (x, w) => panel([x, NORTH_DOCK_Z], 0, w));
-  // The step back, and the north wall behind the rooms.
-  run(HALL.z[0], NORTH_DOCK_Z, [], (z, w) => panel([NORTH_STEP_X, z], -Math.PI / 2, w));
-  run(NORTH_STEP_X, HALL.x[1], [], (x, w) => panel([x, HALL.z[0]], 0, w));
+  run(WEST_WALL_X, NORTH_STEP_X, north, (x, w) => panel([x, NORTH_DOCK_Z], 0, w));
+  // The step back, and the north wall behind quarantine and the rooms.
+  run(NORTH_BACK_Z, NORTH_DOCK_Z, [], (z, w) => panel([NORTH_STEP_X, z], -Math.PI / 2, w));
+  run(NORTH_STEP_X, HALL.x[1], [], (x, w) => panel([x, NORTH_BACK_Z], 0, w));
 
-  for (let x = NORTH_STEP_X + 6; x <= HALL.x[1]; x += 6) {
+  for (let x = NORTH_STEP_X + 3; x <= HALL.x[1]; x += 6) {
     const c = cloneRoot(kit, 'Column');
-    c.position.set(x, 0, HALL.z[0] + 0.2);
+    c.position.set(x, 0, NORTH_BACK_Z + 0.3);
     group.add(c);
   }
-  for (let z = HALL.z[0] + 6; z <= HALL.z[1]; z += 6) {
+  for (let z = 12; z <= HALL.z[1]; z += 6) {
     const c = cloneRoot(kit, 'Column');
-    c.position.set(HALL.x[1], 0, z);
-    group.add(c);
-  }
-  for (let x = HALL.x[0] + 6; x < HALL.x[1]; x += 6) {
-    const c = cloneRoot(kit, 'Column');
-    c.position.set(x, 0, HALL.z[1]);
+    c.position.set(WEST_WALL_X + 0.3, 0, z);
     group.add(c);
   }
 }
@@ -450,11 +520,6 @@ function buildStation(kit: THREE.Object3D, def: StationDef, group: THREE.Group):
     default:
       break;
   }
-  const s = sign(signText(def.code));
-  // Over the station's front edge for most, over the middle of a long lane or room.
-  const inset = def.loc.kind === 'dock-out' ? -0.6 : Math.min(def.depth / 2, 1.2);
-  s.position.set(def.frame.x + def.frame.dir[0] * inset, 3.4, def.frame.z + def.frame.dir[1] * inset);
-  group.add(s);
   return st;
 }
 
@@ -464,7 +529,7 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
   const built = builtLocations({ locs });
   const defs = stationsFor(built);
 
-  buildFloor(group, owned);
+  buildFloor(group, defs, owned);
   buildWalls(group, kit, defs);
   const stations = defs.map((d) => buildStation(kit, d, group));
 
@@ -472,11 +537,31 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
   for (let i = 0; i < Math.min(MAX_FLEET, Math.max(1, fleet)); i++) {
     const root = cloneRoot(kit, 'AGV');
     group.add(root);
+    // Each vehicle's roof panel in its own color, the color its route is drawn in.
+    const top = root.getObjectByName('AgvTopPanel') as THREE.Mesh | undefined;
+    if (top) {
+      const m = (top.material as THREE.MeshStandardMaterial).clone();
+      m.color.set(VEHICLE_COLORS[i]);
+      top.material = m;
+      owned.push(m);
+    }
+    const positions = new Float32Array(PATH_POINTS * 3);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setDrawRange(0, 0);
+    const pathMat = new THREE.LineBasicMaterial({ color: VEHICLE_COLORS[i], transparent: true, opacity: 0.85 });
+    owned.push(pathMat);
+    const path = new THREE.Line(geo, pathMat);
+    path.frustumCulled = false;
+    path.userData.own = true;
+    group.add(path);
     vehicles.push({
       root,
       forks: root.getObjectByName('AgvForks') ?? undefined,
       anchor: root.getObjectByName('AgvPalletAnchor') ?? undefined,
       beacon: lamp(root.getObjectByName('AgvBeacon') ?? undefined, '#3a2a00'),
+      path,
+      positions,
     });
   }
 
@@ -491,6 +576,7 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
     vehicles.forEach((v, i) => {
       const p = vehiclePose(m, i);
       v.root.visible = p.visible;
+      v.path.visible = p.visible;
       if (!p.visible) return;
       v.root.position.set(p.x, 0, p.z);
       v.root.rotation.y = p.yaw;
@@ -500,6 +586,17 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
         p.mode === 'charging' ? '#3b82f6' : p.mode === 'stuck' ? (blink ? '#ef4444' : null) : p.mode === 'moving' && blink ? '#f59e0b' : null,
       );
       pool.place(v.anchor, str(m, `v${i}Load`));
+      // The route the fleet manager planned, from here to the bay it is going to.
+      const pts = routeAhead(m, i);
+      const n = Math.min(PATH_POINTS, pts.length);
+      for (let k = 0; k < n; k++) {
+        v.positions[k * 3] = pts[k][0];
+        v.positions[k * 3 + 1] = 0.06;
+        v.positions[k * 3 + 2] = pts[k][1];
+      }
+      const geo = v.path.geometry;
+      geo.setDrawRange(0, n);
+      (geo.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     });
 
     for (const st of stations) {
@@ -540,7 +637,9 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
           if (state === 'away') {
             const t = num(m, `t${code}T`);
             const leaving = t > TRUCK_GAP_MS / 2 && str(m, `o${code}`) !== '';
-            away = leaving ? ((TRUCK_GAP_MS - t) / (TRUCK_GAP_MS / 2)) * 14 : (t / (TRUCK_GAP_MS / 2)) * 14;
+            away = leaving
+              ? ((TRUCK_GAP_MS - t) / (TRUCK_GAP_MS / 2)) * TRUCK_LEAVES_M
+              : (t / (TRUCK_GAP_MS / 2)) * TRUCK_LEAVES_M;
             shown = leaving || t <= TRUCK_GAP_MS / 2;
           }
           if (st.truck && st.truckBase) {
@@ -551,7 +650,7 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
               st.truckBase.z + st.def.frame.dir[1] * away,
             );
           }
-          if (here || (state === 'away' && away < 14)) {
+          if (here || (state === 'away' && away < TRUCK_LEAVES_M)) {
             // The dock keeps its last four; a longer order shows its last four at their own slots.
             const loaded = state === 'open' ? items.length : num(m, `k${code}`);
             const first = Math.max(0, loaded - items.length);
@@ -567,7 +666,7 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
           const wrapping = str(m, 'w3') !== '' && num(m, 'wt3') < WRAP_MS;
           const phase = wrapping ? num(m, 'wt3') / WRAP_MS : 0;
           if (st.parts.table) st.parts.table.rotation.y = phase * Math.PI * 6;
-          if (st.parts.carriage) st.parts.carriage.position.y = 0.6 + 0.8 * (1 - Math.cos(phase * Math.PI * 2)) / 2;
+          if (st.parts.carriage) st.parts.carriage.position.y = 0.6 + (0.8 * (1 - Math.cos(phase * Math.PI * 2))) / 2;
           const atLabeler = str(m, 'w4') !== '' && num(m, 'wt4') >= ZONE_MS && parsePallet(str(m, 'w4')).label === 0;
           light(st.lamps.labeler, atLabeler ? '#f59e0b' : null);
           break;
@@ -587,14 +686,14 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
   };
 
   const dispose = () => {
+    // Only what this scene made: the kit's clones share their geometry with the cached model.
     group.traverse((obj) => {
-      if ((obj as THREE.Sprite).isSprite) {
-        const s = obj as THREE.Sprite;
-        s.material.map?.dispose();
-        s.material.dispose();
-      }
+      if (obj.userData.own) (obj as THREE.Mesh).geometry.dispose();
     });
-    for (const m of owned) m.dispose();
+    for (const m of owned) {
+      (m as THREE.MeshStandardMaterial).map?.dispose();
+      m.dispose();
+    }
   };
 
   return { group, stations: defs, pose, dispose };

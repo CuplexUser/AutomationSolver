@@ -3,14 +3,14 @@ import type { MachineState } from './index.js';
 import {
   distribution,
   DOOR_MS,
-  EXIT_MS,
-  LOOP_MM,
   QA_MS,
   RIPEN_MS,
   STALL_MS,
-  VEHICLE_MM,
+  VEHICLE_REAR_MM,
+  WAIT_BACK_MM,
   parsePallet,
 } from './distribution.js';
+import { BAY, DC_BAYS, ENTER_MS, bayPos, edgePoint, farLane, nearLane } from './dcRoads.js';
 
 /** Every device the hub can have, so every sensor is published. */
 const ALL = [
@@ -88,7 +88,9 @@ describe('distribution: the fleet is the same fleet at any dt', () => {
           queued++;
         }
         samples.push(
-          [0, 1].map((i) => `${String(r.m[`v${i}S`])}@${String(r.m[`v${i}Pos`])}/${String(r.m[`v${i}Pk`])}`).join(' '),
+          [0, 1]
+            .map((i) => `${String(r.m[`v${i}S`])}@${String(r.m[`v${i}E`])}:${String(r.m[`v${i}Pos`])}/${String(r.m[`v${i}Pk`])}`)
+            .join(' '),
         );
       }
       tick(r, dt);
@@ -163,7 +165,7 @@ describe('distribution: a pallet through the hub', () => {
     dispatch(r, 10, 61);
     runUntil(r, (x) => x.m.shipped === 1);
     runUntil(r, (x) => x.m.v0S === 'park');
-    expect(r.m.v0Pk).toBe(50_000);
+    expect(r.m.v0Pk).toBe(BAY.OUT1);
     noFault(r);
     expect(r.m.received).toBe(1);
   });
@@ -336,7 +338,7 @@ describe('distribution: ripening rooms', () => {
 });
 
 describe('distribution: traffic', () => {
-  it('never lets two vehicles closer than a vehicle length on the loop', () => {
+  it('never lets two vehicles on the road come within a vehicle of each other', () => {
     const r = rig({
       locs: '1,2,10,11,31,61',
       fleet: 3,
@@ -345,7 +347,7 @@ describe('distribution: traffic', () => {
       inFirst: 100,
       inEvery: 2000,
     });
-    let minGap = Infinity;
+    let closest = Infinity;
     let mostDriving = 0;
     // The reservations any correct program needs: QA only reports a pallet once
     // it is on the table, so without these a second order heads for QA, or a
@@ -370,17 +372,18 @@ describe('distribution: traffic', () => {
         if (r.cmd.D0) r.outputs = { Y0: true };
       }
       tick(r);
-      const on = [0, 1, 2].filter((i) => r.m[`v${i}S`] === 'drive').map((i) => Number(r.m[`v${i}Pos`]));
+      const on = [0, 1, 2]
+        .filter((i) => r.m[`v${i}S`] === 'drive')
+        .map((i) => edgePoint(Number(r.m[`v${i}E`]), Number(r.m[`v${i}Pos`])));
       mostDriving = Math.max(mostDriving, on.length);
       for (const a of on) {
         for (const b of on) {
-          if (a === b) continue;
-          const d = (((b - a) % LOOP_MM) + LOOP_MM) % LOOP_MM;
-          minGap = Math.min(minGap, d);
+          if (a !== b) closest = Math.min(closest, Math.hypot(a.x - b.x, a.y - b.y));
         }
       }
     }
-    expect(minGap).toBeGreaterThanOrEqual(VEHICLE_MM);
+    // Two vehicles in opposite lanes pass 1.4 m apart; nothing else comes closer.
+    expect(closest).toBeGreaterThanOrEqual(1390);
     expect(mostDriving).toBeGreaterThanOrEqual(2);
     expect(r.m.jamReason).toBe('');
     // Everything that arrived went through QA and on to the truck or quarantine.
@@ -388,6 +391,84 @@ describe('distribution: traffic', () => {
     expect(Number(r.m.shipped)).toBe(6);
     expect(Number(r.m.quarantined)).toBe(1);
   });
+});
+
+describe('distribution: the floor plan', () => {
+  it('stands every bay clear of the junctions at both ends of its aisle', () => {
+    // A vehicle stopping at a bay must be wholly out of the junction behind it,
+    // or it could never be let into the junction to get there.
+    for (let b = 0; b < DC_BAYS.length; b++) {
+      for (const lane of [nearLane(b), farLane(b)]) {
+        expect(bayPos(b, lane), `${DC_BAYS[b].name} on lane ${lane}`).toBeGreaterThanOrEqual(VEHICLE_REAR_MM + 100);
+      }
+    }
+    expect(WAIT_BACK_MM).toBeGreaterThan(VEHICLE_REAR_MM);
+  });
+});
+
+describe('distribution: no gridlock', () => {
+  /** A small deterministic generator, so a failing seed can be run again. */
+  function lcg(seed: number): () => number {
+    let x = seed;
+    return () => {
+      x = (x * 1103515245 + 12345) % 2147483648;
+      return x / 2147483648;
+    };
+  }
+
+  const LANES = [31, 32, 33, 41, 42, 43];
+
+  function shuffle(seed: number, ms: number): { moves: number; jam: string } {
+    const rnd = lcg(seed);
+    const r = rig({
+      locs: '10,31,32,33,41,42,43,61,70',
+      fleet: 3,
+      c31: '450pn0,450pn0',
+      c32: '450pn0,450pn0,450pn0',
+      c33: '450pn0',
+      c41: '450pn0,450pn0',
+      c42: '450pn0',
+      c43: '450pn0,450pn0,450pn0',
+    });
+    let moves = 0;
+    for (let t = 0; t < ms && r.m.jam !== true; t += 50) {
+      if (r.bits.X0 || r.bits.X1) {
+        if (r.outputs.Y0 && r.bits.X0) moves++;
+        r.outputs = {};
+      } else if (!r.outputs.Y0 && r.bits.X2) {
+        // What is on its way in and out of every lane, from the fleet's own legs.
+        const out = new Map<number, number>();
+        const inn = new Map<number, number>();
+        for (let i = 0; i < 3; i++) {
+          const leg = r.m[`v${i}Leg`];
+          if (leg === 'src') out.set(Number(r.m[`v${i}From`]), (out.get(Number(r.m[`v${i}From`])) ?? 0) + 1);
+          if (leg === 'src' || leg === 'dst') inn.set(Number(r.m[`v${i}To`]), (inn.get(Number(r.m[`v${i}To`])) ?? 0) + 1);
+        }
+        const count = (c: number) => String(r.m[`c${c}`]).split(',').filter((x) => x !== '').length;
+        const from = LANES.filter((c) => count(c) - (out.get(c) ?? 0) > 0);
+        const to = LANES.filter((c) => count(c) + (inn.get(c) ?? 0) < 4);
+        if (from.length > 0 && to.length > 0) {
+          const a = from[Math.floor(rnd() * from.length)];
+          const b = to.filter((c) => c !== a);
+          if (b.length > 0) {
+            r.cmd = { D0: a, D1: b[Math.floor(rnd() * b.length)] };
+            r.outputs = { Y0: true };
+          }
+        }
+      }
+      tick(r);
+    }
+    return { moves, jam: String(r.m.jamReason) };
+  }
+
+  it('keeps three vehicles moving through random storage moves', () => {
+    for (const seed of [1, 7, 42, 99, 2024]) {
+      const res = shuffle(seed, 300_000);
+      expect(res.jam, `seed ${seed}`).toBe('');
+      expect(res.moves, `seed ${seed}`).toBeGreaterThan(30);
+    }
+    // Five five-minute shifts of a three-vehicle plant: seconds, under a loaded test run.
+  }, 60_000);
 });
 
 describe('distribution: the stocktake download', () => {
@@ -400,7 +481,7 @@ describe('distribution: the stocktake download', () => {
     expect(r.regs.D301).toBe(407);
     tick(r);
     expect(r.regs.D200).toBeUndefined();
-    expect(EXIT_MS).toBeGreaterThan(0);
+    expect(ENTER_MS).toBeGreaterThan(0);
   });
 });
 
@@ -449,7 +530,7 @@ describe('distribution: trucks and their orders', () => {
 });
 
 describe('distribution: batteries', () => {
-  it('runs a vehicle flat on the loop', () => {
+  it('runs a vehicle flat on the road', () => {
     const r = rig({ locs: '1,10,61,70', battery: true, v0Batt: 5, in1: '301P', inFirst: 100 });
     runUntil(r, (x) => x.bits.X3 === true);
     dispatch(r, 1, 10);
@@ -464,25 +545,25 @@ describe('distribution: batteries', () => {
     runUntil(r, (x) => x.m.v1S === 'charge');
     expect(r.m.v0S).toBe('park');
     runUntil(r, (x) => x.m.v1S === 'park');
-    expect(r.m.v1Pk).toBe(46_000);
+    expect(r.m.v1Pk).toBe(BAY.CHARGER);
     expect(r.regs.D82).toBe(100);
     noFault(r);
   });
 
   it('queues a charge for a busy vehicle until its job is done, and says so on X26', () => {
-    const r = rig({ locs: '1,10,61,70', battery: true, fleet: 2, v0Batt: 900, v1Batt: 300, in1: '301P', inFirst: 100 });
+    const r = rig({ locs: '1,10,61,70', battery: true, fleet: 2, v0Batt: 300, v1Batt: 900, in1: '301P', inFirst: 100 });
     runUntil(r, (x) => x.bits.X3 === true);
     dispatch(r, 1, 10);
-    expect(r.m.v1Leg).toBe('src');
+    expect(r.m.v0Leg).toBe('src');
     dispatch(r, 0, 70);
     expect(r.bits.X26).toBe(true);
-    expect(r.m.v1ChgNext).toBe(true);
-    expect(r.m.v0Leg).toBe('');
-    runUntil(r, (x) => x.m.v1S === 'charge');
+    expect(r.m.v0ChgNext).toBe(true);
+    expect(r.m.v1Leg).toBe('');
+    runUntil(r, (x) => x.m.v0S === 'charge');
     // It finished the job first: the pallet is on QA.
     expect(r.m.c10).not.toBe('');
     runUntil(r, (x) => x.bits.X26 === false);
-    expect(r.regs.D82).toBe(100);
+    expect(r.regs.D81).toBe(100);
     noFault(r);
   });
 });

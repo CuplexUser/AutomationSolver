@@ -8,8 +8,8 @@ import { PLANT_FOCUS, sectionFocus } from './distribution/layout';
 import { buildHubPlant } from './distribution/plant';
 
 /**
- * The Cold Chain Hub: a one-way loop of automated forklifts and everything they
- * serve, from the goods-in doors to the trucks.
+ * The Cold Chain Hub: a floor of two-way aisles, the automated forklifts that
+ * drive them and everything they serve, from the goods-in doors to the trucks.
  *
  * One view for every puzzle in the category. Each one builds only some of the
  * hub (`plantConfig.locs`), so the scene builds the same subset and stands every
@@ -49,7 +49,6 @@ function HubScene({ machine, section }: { machine: MachineState; section?: strin
   return (
     <group>
       <SectionCamera focus={focus} />
-      <ambientLight intensity={0.35} />
       <primitive object={plant.group} />
     </group>
   );
@@ -67,15 +66,17 @@ export function Distribution3D({
   return (
     <MachineCanvas
       height={height}
-      cameraPosition={[10, 26, 22]}
+      cameraPosition={[12, 30, 28]}
       fov={34}
       target={PLANT_FOCUS.center}
       minDistance={4}
-      maxDistance={90}
+      maxDistance={110}
       polarRange={[0.2, 1.3]}
-      panBounds={{ x: [-14, 27], y: [-1, 6], z: [-6, 12] }}
-      // The floor and the truck yard together are about 43 x 18 m.
-      shadowExtent={26}
+      panBounds={{ x: [-18, 30], y: [-1, 6], z: [-7, 19] }}
+      // The floor and the truck yard together are about 50 x 26 m.
+      shadowExtent={30}
+      mood="coldStore"
+      background="#232b33"
       interactive
     >
       <HubScene machine={machine} section={section} />

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import type { MachineState } from '@automationsolver/shared';
+import { BAY, type MachineState } from '@automationsolver/shared';
 import { buildHubPlant } from './plant';
 
 /**
@@ -41,7 +41,7 @@ function kitTree(): THREE.Group {
   return root;
 }
 
-// The signs paint into a canvas; Node has none, and an empty image is all a texture needs here.
+// The floor codes paint into a canvas; Node has none, and an empty image is all a texture needs here.
 const realDocument = (globalThis as { document?: unknown }).document;
 beforeAll(() => {
   (globalThis as { document?: unknown }).document = {
@@ -74,14 +74,19 @@ describe('the hub scene, built from the kit', () => {
     fleet: 3,
     // Two tomato pallets in F1, front first.
     c31: '301pn0,302pn0',
-    // Vehicle 1 in QA's pocket carrying a potato pallet; vehicle 2 driving; vehicle 3 parked.
+    // Vehicle 1 in QA's bay carrying a potato pallet; vehicle 2 driving; vehicle 3 parked.
     v0S: 'hold',
-    v0Pk: 5500,
+    v0Pk: BAY.QA,
     v0Load: '404pn0',
     v1S: 'drive',
-    v1Pos: 20_000,
+    v1E: 0,
+    v1Pos: 6000,
+    v1Leg: 'src',
+    v1From: 21,
+    v1Rt: '0.14.2',
+    v1Ri: 0,
     v2S: 'park',
-    v2Pk: 32_500,
+    v2Pk: BAY.P3,
     // A truck at OUT1 with one pallet on it.
     t61: 'docked',
     k61: 1,
@@ -101,17 +106,17 @@ describe('the hub scene, built from the kit', () => {
     plant.pose(machine, 0.05);
     const slot = plant.group.getObjectsByProperty('name', 'FlowLaneSlot0').find((s) => {
       const p = worldOf(s);
-      return Math.abs(p.x - 10) < 0.01;
+      return Math.abs(p.x - 4.4) < 0.01;
     });
     expect(slot).toBeDefined();
     const stack = slot!.children.find((c) => c.children.some((k) => k.name === 'Pallet'));
     expect(stack?.visible).toBe(true);
     const shown = stack!.children.filter((c) => c.visible && c.name.startsWith('Load_')).map((c) => c.name);
     expect(shown).toEqual(['Load_Tomatoes']);
-    // The pick end is a pocket short of the south leg (z 8), on the lane's bed.
+    // The pick end is a station front short of the south aisle (z 10.1), on the lane's bed.
     const p = worldOf(slot!);
-    expect(p.z).toBeGreaterThan(6);
-    expect(p.z).toBeLessThan(7);
+    expect(p.z).toBeGreaterThan(7);
+    expect(p.z).toBeLessThan(8);
   });
 
   it('carries a pallet on the forks of the vehicle that has one', () => {
@@ -120,8 +125,15 @@ describe('the hub scene, built from the kit', () => {
     const anchors = plant.group.getObjectsByProperty('name', 'AgvPalletAnchor');
     const loaded = anchors.filter((a) => a.children.some((c) => c.visible));
     expect(loaded).toHaveLength(1);
-    // In QA's pocket, north of the north leg.
-    expect(worldOf(loaded[0]).z).toBeLessThan(-1);
+    // In QA's bay, north of the north aisle.
+    expect(worldOf(loaded[0]).z).toBeLessThan(-1.4);
+  });
+
+  it('draws the route a driving vehicle is following, and none for the others', () => {
+    const plant = buildHubPlant(kitTree(), LOCS, 3);
+    plant.pose(machine, 0.05);
+    const lines = plant.group.children.filter((c) => (c as THREE.Line).isLine) as THREE.Line[];
+    expect(lines.map((l) => l.geometry.drawRange.count > 1)).toEqual([false, true, false]);
   });
 
   it('lifts the truck roof off, so the load order can be seen', () => {

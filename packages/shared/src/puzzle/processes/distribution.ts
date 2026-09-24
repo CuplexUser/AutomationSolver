@@ -1,5 +1,21 @@
 import type { PuzzleDevice } from '../types.js';
 import type { MachineState, ProcessModel, ProcessStepCtx, ProcessResult } from './index.js';
+import {
+  BAY,
+  DC_EDGES,
+  ENTER_FAR_MS,
+  ENTER_MS,
+  EXIT_FAR_MS,
+  EXIT_NEAR_MS,
+  VMAX_MM_S,
+  bayPos,
+  bayRoute,
+  bayToBay,
+  farLane,
+  nearLane,
+  route,
+  routeToBay,
+} from './dcRoads.js';
 
 /**
  * Cold Chain Hub: a food distribution center run by a fleet of automated
@@ -8,7 +24,7 @@ import type { MachineState, ProcessModel, ProcessStepCtx, ProcessResult } from '
  * Every plant before this one is driven. This one is *dispatched*: the program
  * never turns a wheel. It posts transport orders ("from here, to there") to a
  * fleet manager, the way a real PLC talks to a real AGV system, and the manager
- * picks a vehicle, drives it round the loop, keeps it out of the way of the
+ * picks a vehicle, routes it across the floor, keeps it out of the way of the
  * others and puts the pallet down. What is left for the program is everything
  * the manager cannot know: which of four things wanting a forklift gets the next
  * one, where a pallet should go, and - because the plant has exactly one
@@ -19,16 +35,21 @@ import type { MachineState, ProcessModel, ProcessStepCtx, ProcessResult } from '
  *
  * ## The floor
  *
- * A one-way loop, 20 x 8 m, 56 m round, driven clockwise seen from above: east
- * along the north leg, south, west along the south leg, north. Position on it is
- * `s`, millimeters from the north-west corner. Every place a pallet can stand is
- * a **location** with a code (the mailbox's language) and one or two **stops**
- * on the loop. A vehicle leaves the loop into a stop's *pocket* to work there, so
- * a working vehicle never blocks traffic - but only one vehicle fits a pocket,
- * and the next one waits on the loop, a full gap short of the stop so the
- * occupant can still get out. The flow lanes span the inside of the loop and
- * have two stops, a load face on the north leg and a pick face on the south leg,
- * which is what makes them first-in first-out.
+ * A grid of two-lane aisles, one lane each way, with a cross aisle down the
+ * middle (`dcRoads.ts` holds the plan and the routing). Every place a pallet can
+ * stand is a **location** with a code (the mailbox's language) and one or two
+ * **bays** off an aisle. A vehicle takes the fastest route there, stops level
+ * with the bay, pivots and reverses in fork first, so a working vehicle stands
+ * off the road and never blocks traffic; it leaves in whichever direction its
+ * next trip is shorter. Only one vehicle fits a bay, and the next one waits in
+ * its lane a full vehicle short of it so the occupant can still get out. The
+ * flow lanes span the block between the north and south aisles, loaded from one
+ * and picked from the other, which is what makes them first-in first-out.
+ *
+ * Traffic is kept the way a real fleet manager keeps it: vehicles follow at a
+ * safe gap and brake for what is ahead, slow for turns, take a junction one at a
+ * time and only when they can clear it, and book the bay a trip ends at before
+ * they turn into its lane. None of that can gridlock a correct program.
  *
  * ## Determinism
  *
@@ -50,20 +71,29 @@ import type { MachineState, ProcessModel, ProcessStepCtx, ProcessResult } from '
 
 /** Internal sub-step. Every timer and distance below advances on this grid. */
 export const SUB_MS = 10;
-/** Travel per sub-step on the loop: 3 m/s, in the compressed time every plant here runs on. */
-export const SPEED_MM = 30;
-/** The loop, in millimeters round. */
-export const LOOP_MM = 56_000;
-/** Front-to-front distance a vehicle keeps behind the one ahead. */
-export const MIN_GAP_MM = 2000;
-/** A vehicle's length: nothing may merge closer than this to another. */
-export const VEHICLE_MM = 1500;
-/** Where a vehicle waits for a busy pocket: this far short of the stop. */
-export const WAIT_BACK_MM = 2000;
 
-/** Turning off the loop into a pocket, and back out. */
-export const ENTER_MS = 800;
-export const EXIT_MS = 800;
+/** Top speed empty and laden, mm/s, in the compressed time every plant here runs on. */
+export const VMAX_LADEN_MM_S = 2500;
+/** Acceleration, per sub-step: 2.5 m/s². Braking is harder, 3 m/s². */
+export const ACCEL_MM_S_STEP = 25;
+export const DECEL_MM_S2 = 3000;
+/** The slowest a vehicle closes the last few millimeters on a stop. */
+export const VCREEP_MM_S = 300;
+/**
+ * A vehicle's footprint along its lane, from the middle: body first, and the
+ * forks and any pallet behind. It drives body first and reverses into a bay.
+ */
+export const VEHICLE_FRONT_MM = 1100;
+export const VEHICLE_REAR_MM = 1100;
+/** Clear floor a vehicle keeps between its front and anything ahead. */
+export const GAP_MM = 400;
+/** The stretch of lane either side of a bay's axis a vehicle holds while it pivots there. */
+export const ZONE_MM = 1100;
+/** Where a vehicle waits for a busy bay: this far short of it, so whoever is in it can still get out. */
+export const WAIT_BACK_MM = VEHICLE_FRONT_MM + ZONE_MM + GAP_MM;
+/** How far ahead a vehicle looks for traffic and junctions. */
+const LOOKAHEAD_MM = 9000;
+
 /** One fork cycle: lift or set down a pallet. */
 export const FORK_MS = 1200;
 
@@ -80,7 +110,7 @@ export const WRAP_MS = 5000;
 export const DOOR_MS = 2000;
 export const RIPEN_MS = 20_000;
 /** A truck that is not loaded this long after docking has missed its slot. */
-export const TRUCK_MS = 150_000;
+export const TRUCK_MS = 180_000;
 /** The yard turnaround between one truck leaving and the next docking. */
 export const TRUCK_GAP_MS = 6000;
 
@@ -117,41 +147,35 @@ export interface LocationDef {
   code: number;
   name: string;
   kind: LocationKind;
-  /** Stop a vehicle sets a pallet down at, or -1 when nothing is ever put here. */
+  /** Bay a vehicle sets a pallet down from (`DC_BAYS`), or -1 when nothing is ever put here. */
   drop: number;
-  /** Stop a vehicle lifts a pallet from, or -1 when nothing is ever taken from here. */
+  /** Bay a vehicle lifts a pallet from, or -1 when nothing is ever taken from here. */
   pick: number;
-  /** Which side of the loop the pocket is on, for the scene. */
-  side: 'out' | 'in';
 }
 
 /**
  * Every location the hub has. A puzzle builds only some of them (`locs` in its
  * `plantConfig`), but they always stand in the same place, so a distance learned
- * in one puzzle holds in the next.
+ * in one puzzle holds in the next. Where each bay is, and why, is `dcRoads.ts`.
  */
 export const DC_LOCATIONS: readonly LocationDef[] = [
-  { code: 1, name: 'IN1', kind: 'dock-in', drop: -1, pick: 1500, side: 'out' },
-  { code: 2, name: 'IN2', kind: 'dock-in', drop: -1, pick: 3500, side: 'out' },
-  { code: 10, name: 'QA', kind: 'qa', drop: 5500, pick: 5500, side: 'out' },
-  { code: 11, name: 'QUARANTINE', kind: 'quarantine', drop: 7500, pick: -1, side: 'out' },
-  { code: 31, name: 'F1', kind: 'flow', drop: 10_000, pick: 38_000, side: 'in' },
-  { code: 32, name: 'F2', kind: 'flow', drop: 11_500, pick: 36_500, side: 'in' },
-  { code: 33, name: 'F3', kind: 'flow', drop: 13_000, pick: 35_000, side: 'in' },
-  { code: 21, name: 'R1', kind: 'room', drop: 15_500, pick: 15_500, side: 'out' },
-  { code: 22, name: 'R2', kind: 'room', drop: 17_500, pick: 17_500, side: 'out' },
-  { code: 50, name: 'WRAP IN', kind: 'wrap-in', drop: 22_000, pick: -1, side: 'out' },
-  { code: 51, name: 'WRAP OUT', kind: 'wrap-out', drop: -1, pick: 25_000, side: 'out' },
-  { code: 41, name: 'L1', kind: 'drive-in', drop: 40_500, pick: 40_500, side: 'in' },
-  { code: 42, name: 'L2', kind: 'drive-in', drop: 42_000, pick: 42_000, side: 'in' },
-  { code: 43, name: 'L3', kind: 'drive-in', drop: 43_500, pick: 43_500, side: 'in' },
-  // Just downstream of the parking bays: on a one-way loop anything upstream of
-  // them is a whole lap away, which a vehicle sent to charge may not have.
-  { code: 70, name: 'CHARGER', kind: 'charger', drop: 46_000, pick: -1, side: 'out' },
-  // Outbound last, on the west leg, and immediately upstream of the inbound docks:
-  // a vehicle that has just loaded a truck is at the start of the next job.
-  { code: 61, name: 'OUT1', kind: 'dock-out', drop: 50_000, pick: -1, side: 'out' },
-  { code: 62, name: 'OUT2', kind: 'dock-out', drop: 53_000, pick: -1, side: 'out' },
+  { code: 1, name: 'IN1', kind: 'dock-in', drop: -1, pick: BAY.IN1 },
+  { code: 2, name: 'IN2', kind: 'dock-in', drop: -1, pick: BAY.IN2 },
+  { code: 10, name: 'QA', kind: 'qa', drop: BAY.QA, pick: BAY.QA },
+  { code: 11, name: 'QUARANTINE', kind: 'quarantine', drop: BAY.QUARANTINE, pick: -1 },
+  { code: 31, name: 'F1', kind: 'flow', drop: BAY['F1 load'], pick: BAY['F1 pick'] },
+  { code: 32, name: 'F2', kind: 'flow', drop: BAY['F2 load'], pick: BAY['F2 pick'] },
+  { code: 33, name: 'F3', kind: 'flow', drop: BAY['F3 load'], pick: BAY['F3 pick'] },
+  { code: 21, name: 'R1', kind: 'room', drop: BAY.R1, pick: BAY.R1 },
+  { code: 22, name: 'R2', kind: 'room', drop: BAY.R2, pick: BAY.R2 },
+  { code: 50, name: 'WRAP IN', kind: 'wrap-in', drop: BAY['WRAP IN'], pick: -1 },
+  { code: 51, name: 'WRAP OUT', kind: 'wrap-out', drop: -1, pick: BAY['WRAP OUT'] },
+  { code: 41, name: 'L1', kind: 'drive-in', drop: BAY.L1, pick: BAY.L1 },
+  { code: 42, name: 'L2', kind: 'drive-in', drop: BAY.L2, pick: BAY.L2 },
+  { code: 43, name: 'L3', kind: 'drive-in', drop: BAY.L3, pick: BAY.L3 },
+  { code: 70, name: 'CHARGER', kind: 'charger', drop: BAY.CHARGER, pick: -1 },
+  { code: 61, name: 'OUT1', kind: 'dock-out', drop: BAY.OUT1, pick: -1 },
+  { code: 62, name: 'OUT2', kind: 'dock-out', drop: BAY.OUT2, pick: -1 },
 ];
 
 /**
@@ -168,53 +192,16 @@ export const DC_SECTIONS: Readonly<Record<string, readonly number[]>> = {
   FLEET: [70],
 };
 
-/** Each vehicle's own parking pocket, on the outside of the south leg. */
-export const DEPOT_STOPS: readonly number[] = [29_500, 31_000, 32_500];
+/** Each vehicle's own parking bay, beside the charger on the cross aisle. */
+export const DEPOT_BAYS: readonly number[] = [BAY.P1, BAY.P2, BAY.P3];
 /** Most vehicles a puzzle can have. */
-export const MAX_FLEET = DEPOT_STOPS.length;
+export const MAX_FLEET = DEPOT_BAYS.length;
 
 const LOCATION_BY_CODE = new Map(DC_LOCATIONS.map((l) => [l.code, l]));
 
 export function locationByCode(code: number): LocationDef | undefined {
   return LOCATION_BY_CODE.get(code);
 }
-
-/**
- * The loop's corners in plan (x east, y south, millimeters), in travel order
- * from `s = 0`. The scene and the briefings read the same numbers.
- */
-export const LOOP_CORNERS: readonly (readonly [number, number])[] = [
-  [0, 0],
-  [20_000, 0],
-  [20_000, 8000],
-  [0, 8000],
-];
-
-/** Point and heading on the loop. Heading is radians, 0 = east, clockwise positive (plan y is south). */
-export function loopPoint(s: number): { x: number; y: number; heading: number } {
-  let rest = ((s % LOOP_MM) + LOOP_MM) % LOOP_MM;
-  for (let i = 0; i < LOOP_CORNERS.length; i++) {
-    const [x0, y0] = LOOP_CORNERS[i];
-    const [x1, y1] = LOOP_CORNERS[(i + 1) % LOOP_CORNERS.length];
-    const len = Math.abs(x1 - x0) + Math.abs(y1 - y0);
-    if (rest <= len) {
-      const t = len === 0 ? 0 : rest / len;
-      return { x: x0 + (x1 - x0) * t, y: y0 + (y1 - y0) * t, heading: Math.atan2(y1 - y0, x1 - x0) };
-    }
-    rest -= len;
-  }
-  return { x: 0, y: 0, heading: 0 };
-}
-
-/**
- * Which way "out" is at a point on the loop, as a unit vector in plan. The loop
- * runs clockwise, so the outside is always to the travel direction's left.
- */
-export function outward(heading: number): { x: number; y: number } {
-  return { x: Math.round(Math.sin(heading)), y: -Math.round(Math.cos(heading)) };
-}
-
-// --- Pallet tokens ---------------------------------------------------------------
 
 export interface Pallet {
   product: number;
@@ -348,21 +335,21 @@ export function builtLocations(m: MachineState): Set<number> {
 type VehicleState = 'off' | 'park' | 'drive' | 'enter' | 'hold' | 'work' | 'exit' | 'charge';
 type Leg = '' | 'src' | 'dst' | 'home' | 'chg';
 
-const POCKET_STATES = new Set<VehicleState>(['park', 'enter', 'hold', 'work', 'exit', 'charge']);
+/** In a bay: parked, pivoting in, working, backing out or on the charger. */
+const BAY_STATES = new Set<VehicleState>(['park', 'enter', 'hold', 'work', 'exit', 'charge']);
 
 function fleetSize(m: MachineState): number {
   return Math.max(1, Math.min(MAX_FLEET, num(m, 'fleet', 1)));
 }
 
-function stopFor(m: MachineState, i: number): number {
+/** The bay vehicle `i`'s current trip ends at. */
+function bayFor(m: MachineState, i: number): number {
   const leg = str(m, v(i, 'Leg')) as Leg;
   if (leg === 'src') return locationByCode(num(m, v(i, 'From')))?.pick ?? -1;
   if (leg === 'dst') return locationByCode(num(m, v(i, 'To')))?.drop ?? -1;
   if (leg === 'chg') return locationByCode(70)!.drop;
-  return DEPOT_STOPS[i];
+  return DEPOT_BAYS[i];
 }
-
-const ahead = (from: number, to: number): number => (((to - from) % LOOP_MM) + LOOP_MM) % LOOP_MM;
 
 // --- The model --------------------------------------------------------------------------
 
@@ -434,8 +421,23 @@ function init(): MachineState {
   for (let i = 0; i < MAX_FLEET; i++) {
     m[v(i, 'S')] = 'park';
     m[v(i, 'Leg')] = '';
-    m[v(i, 'Pos')] = DEPOT_STOPS[i];
-    m[v(i, 'Pk')] = DEPOT_STOPS[i];
+    m[v(i, 'Pk')] = DEPOT_BAYS[i];
+    // On the road: an edge (-1 in a bay), the distance along it, speed in mm/s
+    // and its sub-millimeter remainder, the route and where on it, the junction
+    // it has claimed, the bay it has booked and the lane it is backing out onto.
+    m[v(i, 'E')] = -1;
+    m[v(i, 'Pos')] = 0;
+    m[v(i, 'V')] = 0;
+    m[v(i, 'Rem')] = 0;
+    m[v(i, 'Rt')] = '';
+    m[v(i, 'Ri')] = 0;
+    m[v(i, 'Box')] = -1;
+    m[v(i, 'Res')] = -1;
+    m[v(i, 'Xe')] = -1;
+    m[v(i, 'Xp')] = -1;
+    m[v(i, 'Want')] = -1;
+    m[v(i, 'WantT')] = 0;
+    m[v(i, 'Xc')] = 0;
     m[v(i, 'T')] = 0;
     m[v(i, 'From')] = 0;
     m[v(i, 'To')] = 0;
@@ -544,7 +546,7 @@ function truckOrder(m: MachineState, dock: number): number[] {
 
 /**
  * Can this pallet be set down here now? `true` to go ahead, `false` to wait
- * holding it; a mistake throws. Checked when the vehicle is in the pocket, which
+ * holding it; a mistake throws. Checked when the vehicle is in the bay, which
  * is when a real one finds out.
  */
 function canDrop(m: MachineState, code: number, token: string, asn: number): boolean {
@@ -741,45 +743,483 @@ function lift(m: MachineState, code: number): void {
 
 // --- The fleet ---------------------------------------------------------------------------------
 
-function onLoop(m: MachineState, i: number): boolean {
-  return str(m, v(i, 'S')) === 'drive';
+const ROUTES = new Map<string, number[]>();
+
+/** A vehicle's route, which the state bag keeps as edge ids joined by dots, parsed once. */
+function routeOf(m: MachineState, i: number): number[] {
+  const key = str(m, v(i, 'Rt'));
+  let r = ROUTES.get(key);
+  if (!r) {
+    r = key === '' ? [] : key.split('.').map((s) => Number.parseInt(s, 10));
+    ROUTES.set(key, r);
+  }
+  return r;
 }
 
-/** Is this pocket taken by a vehicle other than `self`? */
-function pocketBusy(m: MachineState, s: number, self: number): boolean {
+const stateOf = (m: MachineState, j: number): VehicleState => str(m, v(j, 'S')) as VehicleState;
+
+/**
+ * What the rest of the fleet will cost a trip planned now, per edge, in
+ * milliseconds: a vehicle stopped in a lane is a queue, one driving it is a
+ * follow, one pivoting across it holds it for a moment, and the lanes still
+ * ahead of it on its route are lanes it will be in. Routing on top of these
+ * sends a second vehicle round the block rather than into the back of a queue.
+ */
+const QUEUED_MS = 4000;
+const FOLLOW_MS = 600;
+const PIVOT_BLOCK_MS = 1500;
+const PLANNED_MS = 300;
+
+function traffic(m: MachineState, self: number): number[] {
+  const t: number[] = [];
+  const add = (e: number, ms: number) => {
+    t[e] = (t[e] ?? 0) + ms;
+  };
   for (let j = 0; j < MAX_FLEET; j++) {
     if (j === self) continue;
-    if (POCKET_STATES.has(str(m, v(j, 'S')) as VehicleState) && num(m, v(j, 'Pk')) === s) return true;
+    const s = stateOf(m, j);
+    if (s === 'drive') {
+      add(num(m, v(j, 'E')), num(m, v(j, 'V')) === 0 ? QUEUED_MS : FOLLOW_MS);
+      const rt = routeOf(m, j);
+      for (let k = num(m, v(j, 'Ri')) + 1; k < rt.length; k++) add(rt[k], PLANNED_MS);
+    } else if (pivoting(m, j)) {
+      const pk = num(m, v(j, 'Pk'));
+      const on = s === 'enter' ? num(m, v(j, 'E')) : num(m, v(j, 'Xe'));
+      add(on, PIVOT_BLOCK_MS);
+      if (on !== nearLane(pk)) add(nearLane(pk), PIVOT_BLOCK_MS);
+    }
+  }
+  return t;
+}
+
+/** Is a vehicle other than `self` in this bay: parked, pivoting in, working or not yet out? */
+function bayOccupied(m: MachineState, bay: number, self: number): boolean {
+  for (let j = 0; j < MAX_FLEET; j++) {
+    if (j !== self && BAY_STATES.has(stateOf(m, j)) && num(m, v(j, 'Pk')) === bay) return true;
   }
   return false;
 }
 
-/** Distance to the nearest vehicle ahead on the loop, or Infinity. */
-function gapAhead(m: MachineState, i: number): number {
-  let best = Infinity;
-  const pos = num(m, v(i, 'Pos'));
+/** Has a vehicle other than `self` booked this bay for the end of its trip? */
+function bookedByOther(m: MachineState, bay: number, self: number): number {
   for (let j = 0; j < MAX_FLEET; j++) {
-    if (j === i || !onLoop(m, j)) continue;
-    const d = ahead(pos, num(m, v(j, 'Pos')));
-    if (d > 0 && d < best) best = d;
+    if (j !== self && stateOf(m, j) !== 'off' && num(m, v(j, 'Res')) === bay) return j;
   }
-  return best;
+  return -1;
 }
 
-/** Can a vehicle leaving the pocket at `s` rejoin the loop without touching anybody? */
-function mergeClear(m: MachineState, s: number, i: number): boolean {
+/**
+ * May vehicle `i` book `bay` now? Not while somebody else has it, nor while a
+ * vehicle waiting in a bay to pull out asked for it first: otherwise vehicles
+ * arriving through the junctions could book it ahead of that one forever.
+ * Asking records the request; booking, arriving or changing trip clears it.
+ */
+function mayBook(m: MachineState, i: number, bay: number): boolean {
+  if (num(m, v(i, 'Want')) !== bay) {
+    m[v(i, 'Want')] = bay;
+    m[v(i, 'WantT')] = num(m, 'tMs');
+  }
+  if (bookedByOther(m, bay, i) >= 0) return false;
+  const mine = num(m, v(i, 'WantT'));
   for (let j = 0; j < MAX_FLEET; j++) {
-    if (j === i || !onLoop(m, j)) continue;
-    const pos = num(m, v(j, 'Pos'));
-    if (ahead(s, pos) < VEHICLE_MM || ahead(pos, s) < VEHICLE_MM) return false;
+    if (j === i || num(m, v(j, 'Want')) !== bay || bayFor(m, j) !== bay) continue;
+    // Only a vehicle waiting in a bay to pull out holds a place in line: on the
+    // road, vehicles already queue in the order they stand in.
+    if (stateOf(m, j) !== 'exit') continue;
+    const theirs = num(m, v(j, 'WantT'));
+    if (theirs < mine || (theirs === mine && j < i)) return false;
   }
   return true;
 }
 
-/** Is another vehicle on its way to this pocket? */
-function wanted(m: MachineState, pk: number, self: number): boolean {
+function book(m: MachineState, i: number, bay: number): void {
+  m[v(i, 'Res')] = bay;
+  m[v(i, 'Want')] = -1;
+}
+
+function junctionTaken(m: MachineState, junction: number, self: number): boolean {
   for (let j = 0; j < MAX_FLEET; j++) {
-    if (j !== self && onLoop(m, j) && stopFor(m, j) === pk) return true;
+    if (j !== self && stateOf(m, j) !== 'off' && num(m, v(j, 'Box')) === junction) return true;
+  }
+  return false;
+}
+
+/** Braking distance from `vel` down to `to`, in millimeters (speeds in mm/s). */
+const brake = (vel: number, to = 0): number => Math.floor((vel * vel - to * to) / (2 * DECEL_MM_S2));
+
+/** The fastest a vehicle may go and still be down to `to` within `d` millimeters. */
+const allowed = (d: number, to = 0): number => (d <= 0 ? Math.min(to, 0) : Math.floor(Math.sqrt(2 * DECEL_MM_S2 * d + to * to)));
+
+/** Is vehicle `j` holding a stretch of lane while it pivots into or out of a bay? */
+function pivoting(m: MachineState, j: number): boolean {
+  const s = stateOf(m, j);
+  return s === 'enter' || (s === 'exit' && num(m, v(j, 'T')) > 0);
+}
+
+/**
+ * Where on `lane` a pivoting vehicle holds its stretch, or -1. Crossing the
+ * aisle, in or out, holds both lanes, and a vehicle on its way to cross into a
+ * bay holds the near lane's stretch from the moment it claims the crossing.
+ */
+function zoneOn(m: MachineState, j: number, lane: number): number {
+  if (stateOf(m, j) === 'drive') {
+    if (num(m, v(j, 'Xc')) !== 1) return -1;
+    const bay = bayFor(m, j);
+    return nearLane(bay) === lane ? bayPos(bay, lane) : -1;
+  }
+  if (!pivoting(m, j)) return -1;
+  const pk = num(m, v(j, 'Pk'));
+  // The lane it pivots on: where it came from, or where it is going.
+  const on = stateOf(m, j) === 'enter' ? num(m, v(j, 'E')) : num(m, v(j, 'Xe'));
+  if (on === lane || (on !== nearLane(pk) && nearLane(pk) === lane)) return bayPos(pk, lane);
+  return -1;
+}
+
+/**
+ * The nearest thing ahead on `edge` past `from` (a distance along it): the rear
+ * of a vehicle driving it or the near end of a stretch a vehicle is pivoting on.
+ * Infinity when the edge is clear.
+ */
+function firstObstacle(m: MachineState, self: number, edge: number, from: number): number {
+  let best = Infinity;
+  for (let j = 0; j < MAX_FLEET; j++) {
+    if (j === self) continue;
+    const s = stateOf(m, j);
+    if (s === 'drive') {
+      if (num(m, v(j, 'E')) === edge) {
+        const p = num(m, v(j, 'Pos'));
+        if (p > from) best = Math.min(best, p - VEHICLE_REAR_MM);
+      }
+      const at = zoneOn(m, j, edge);
+      if (at >= 0 && at > from) best = Math.min(best, at - ZONE_MM);
+    } else if (pivoting(m, j)) {
+      const at = zoneOn(m, j, edge);
+      if (at >= 0 && at > from) best = Math.min(best, at - ZONE_MM);
+    }
+  }
+  return best;
+}
+
+/** Is vehicle `j` about to come onto `lane` through the junction at its start? */
+function comingOnto(m: MachineState, j: number, lane: number): boolean {
+  const rt = routeOf(m, j);
+  const ri = num(m, v(j, 'Ri'));
+  const here = DC_EDGES[rt[ri]];
+  if (here.kind !== 'lane') return here.next[0] === lane;
+  return num(m, v(j, 'Box')) >= 0 && rt[ri + 2] === lane;
+}
+
+/**
+ * Can a vehicle pull out of `bay` onto `lane` now? The stretch it pivots on has
+ * to be empty, and nothing coming along the lane may be too close to stop for
+ * it. Pulling across the aisle needs the near lane clear as well.
+ */
+function clearToPullOut(m: MachineState, self: number, bay: number, lane: number): boolean {
+  const near = nearLane(bay);
+  if (!stretchClear(m, self, lane, bayPos(bay, lane))) return false;
+  return lane === near || stretchClear(m, self, near, bayPos(bay, near));
+}
+
+function stretchClear(m: MachineState, self: number, lane: number, at: number): boolean {
+  const lo = at - ZONE_MM - GAP_MM;
+  const hi = at + ZONE_MM + GAP_MM;
+  for (let j = 0; j < MAX_FLEET; j++) {
+    if (j === self) continue;
+    const s = stateOf(m, j);
+    if (s === 'drive') {
+      if (num(m, v(j, 'E')) === lane) {
+        const p = num(m, v(j, 'Pos'));
+        if (p - VEHICLE_REAR_MM < hi && p + VEHICLE_FRONT_MM > lo) return false;
+        const vel = num(m, v(j, 'V'));
+        if (p + VEHICLE_FRONT_MM <= lo && vel > 0 && brake(vel) + GAP_MM > lo - p - VEHICLE_FRONT_MM) return false;
+        // Never in front of a vehicle on its way to a crossing it has claimed further on.
+        if (p < at && num(m, v(j, 'Xc')) === 1 && bayPos(bayFor(m, j), lane) > lo) return false;
+      } else if (lo < LANDING_MM + 2000 && comingOnto(m, j, lane)) {
+        return false;
+      }
+      const z = zoneOn(m, j, lane);
+      if (z >= 0 && z - ZONE_MM < hi && z + ZONE_MM > lo) return false;
+    } else if (pivoting(m, j)) {
+      const z = zoneOn(m, j, lane);
+      if (z >= 0 && z - ZONE_MM < hi && z + ZONE_MM > lo) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * How long a vehicle waits to cross into a bay, or at least to pull out the
+ * way it wants, before the manager sends it the long way round instead. Passing
+ * traffic clears in a second or three; a wait this long is two vehicles each
+ * waiting for the other.
+ */
+const DETOUR_MS = 6000;
+/** Pulling out the other way is worth it straight away only if it costs no more than this. */
+const ALT_EXIT_MS = 2000;
+/** The longest a vehicle waits for its preferred way out, well inside `STALL_MS`. */
+const MAX_PATIENCE_MS = 12_000;
+
+/** Is the vehicle in `target` waiting to pull out for `pk`, where vehicle `i` is waiting to leave for `target`? */
+function swapping(m: MachineState, i: number, pk: number, target: number): boolean {
+  for (let j = 0; j < MAX_FLEET; j++) {
+    if (j === i || stateOf(m, j) !== 'exit' || num(m, v(j, 'Pk')) !== target) continue;
+    if (bayFor(m, j) === pk) return true;
+  }
+  return false;
+}
+
+/** Room a vehicle needs past a junction to be wholly out of it, with its gap. */
+const LANDING_MM = VEHICLE_REAR_MM + VEHICLE_FRONT_MM + GAP_MM;
+/** How far short of a junction a vehicle asks for it, beyond its braking distance. */
+const CLAIM_MM = 800;
+
+/**
+ * May vehicle `i` take the junction the connector `rt[k]` crosses? Only one
+ * vehicle is in a junction at a time, and only a vehicle that can get wholly out
+ * the other side: room on the lane beyond, and a place to stop past it. Into the
+ * trip's last lane, it must also book the bay first.
+ */
+function canTakeJunction(m: MachineState, i: number, rt: number[], k: number, ds: number, limit: number, bay: number): boolean {
+  const e = DC_EDGES[rt[k]];
+  if (junctionTaken(m, e.junction, i)) return false;
+  const beyond = rt[k + 1];
+  if (firstObstacle(m, i, beyond, -1) < LANDING_MM) return false;
+  if (k + 1 === rt.length - 1 && num(m, v(i, 'Res')) !== bay) {
+    if (!mayBook(m, i, bay)) return false;
+    book(m, i, bay);
+  }
+  return limit >= ds + e.len + VEHICLE_REAR_MM;
+}
+
+/**
+ * May vehicle `i` claim the crossing into `bay` from the far lane? The near
+ * lane's stretch has to be clear now, and the spot it will stop on must not be
+ * inside a crossing somebody else has claimed: two vehicles each standing in
+ * the other's way across the aisle is the one gridlock two-way aisles invite.
+ */
+function canClaimCrossing(m: MachineState, i: number, bay: number, lane: number, goal: number): boolean {
+  if (!stretchClear(m, i, nearLane(bay), bayPos(bay, nearLane(bay)))) return false;
+  // Nothing between it and the bay: a claim held behind somebody is a claim in their way.
+  const onLane = num(m, v(i, 'E')) === lane;
+  if (firstObstacle(m, i, lane, onLane ? num(m, v(i, 'Pos')) : -1) < goal + VEHICLE_FRONT_MM + GAP_MM) return false;
+  const lo = goal - VEHICLE_REAR_MM - GAP_MM;
+  const hi = goal + VEHICLE_FRONT_MM + GAP_MM;
+  for (let j = 0; j < MAX_FLEET; j++) {
+    if (j === i || stateOf(m, j) === 'off') continue;
+    const z = zoneOn(m, j, lane);
+    if (z >= 0 && z - ZONE_MM < hi && z + ZONE_MM > lo) return false;
+  }
+  return true;
+}
+
+function waitFor(m: MachineState, i: number, what: string): void {
+  const w = num(m, v(i, 'Wait')) + SUB_MS;
+  m[v(i, 'Wait')] = w;
+  if (w >= STALL_MS) {
+    const leg = str(m, v(i, 'Leg'));
+    const where =
+      leg === 'src'
+        ? locationByCode(num(m, v(i, 'From')))?.name
+        : leg === 'dst'
+          ? locationByCode(num(m, v(i, 'To')))?.name
+          : leg === 'chg'
+            ? 'the charger'
+            : 'its parking bay';
+    throw new Fault(`vehicle ${i + 1} has been ${what} ${where} for ${STALL_MS / 1000} s`, {
+      cause: 'stalled',
+    });
+  }
+}
+
+/**
+ * One sub-step on the road: look ahead along the route for the stop, traffic,
+ * junctions and turns, pick the speed that can still stop for all of them, and
+ * drive. Speeds are integer mm/s and the fraction of a millimeter carries over,
+ * so the trajectory is the same at any `dt`.
+ */
+function stepDrive(m: MachineState, i: number): void {
+  const rt = routeOf(m, i);
+  let ri = num(m, v(i, 'Ri'));
+  let pos = num(m, v(i, 'Pos'));
+  const vel = num(m, v(i, 'V'));
+  const bay = bayFor(m, i);
+  const last = rt.length - 1;
+  const goal = bayPos(bay, rt[last]);
+  const here = DC_EDGES[rt[ri]];
+
+  // A junction is let go once the vehicle's rear is out of it.
+  const box = num(m, v(i, 'Box'));
+  if (box >= 0 && here.kind === 'lane' && here.from === box && pos >= VEHICLE_REAR_MM) m[v(i, 'Box')] = -1;
+
+  let toGoal = goal - pos;
+  for (let k = ri; k < last; k++) toGoal += DC_EDGES[rt[k]].len;
+  const busy = bayOccupied(m, bay, i) || bookedByOther(m, bay, i) >= 0;
+  let limit = busy ? Math.max(0, toGoal - (goal - waitPoint(m, i, rt[last], goal))) : toGoal;
+
+  // Into a bay from the far lane: the crossing is claimed as early as it can
+  // be, like a junction, and a claimed crossing is a stretch nobody else drives
+  // into (see `zoneOn`).
+  const crossing = rt[last] === farLane(bay);
+  if (crossing && num(m, v(i, 'Xc')) !== 1 && !busy && toGoal <= LOOKAHEAD_MM) {
+    // A crossing is claimed together with the bay's booking, never without it:
+    // a claim on a bay somebody else has booked stands in that vehicle's way in.
+    const mine = num(m, v(i, 'Res')) === bay;
+    if (canClaimCrossing(m, i, bay, rt[last], goal) && (mine || mayBook(m, i, bay))) {
+      if (!mine) book(m, i, bay);
+      m[v(i, 'Xc')] = 1;
+    }
+  }
+
+  const laden = str(m, v(i, 'Load')) !== '';
+  let cap = Math.min(
+    vel + ACCEL_MM_S_STEP,
+    here.kind === 'left' || here.kind === 'right' ? here.vmax : laden ? VMAX_LADEN_MM_S : VMAX_MM_S,
+  );
+  let ds = -pos;
+  for (let k = ri; k <= last && ds < LOOKAHEAD_MM; k++) {
+    const e = DC_EDGES[rt[k]];
+    if (k > ri && e.kind !== 'lane') {
+      const stopAt = ds - VEHICLE_FRONT_MM;
+      if (num(m, v(i, 'Box')) !== e.junction) {
+        if (stopAt > brake(vel) + CLAIM_MM || !canTakeJunction(m, i, rt, k, ds, limit, bay)) {
+          limit = Math.min(limit, stopAt);
+          break;
+        }
+        m[v(i, 'Box')] = e.junction;
+      }
+      if (e.kind !== 'straight') cap = Math.min(cap, allowed(ds, e.vmax));
+    }
+    const ob = firstObstacle(m, i, e.id, k === ri ? pos : -1);
+    if (ob < Infinity) limit = Math.min(limit, ds + ob - VEHICLE_FRONT_MM - GAP_MM);
+    ds += e.len;
+  }
+
+  let speed = Math.min(cap, allowed(limit));
+  if (speed < VCREEP_MM_S && limit > 0) speed = Math.min(VCREEP_MM_S, Math.max(cap, speed));
+  const acc = num(m, v(i, 'Rem')) + (limit > 0 ? speed : 0);
+  let stepMm = Math.floor(acc / 100);
+  let rem = acc - stepMm * 100;
+  if (stepMm >= limit) {
+    stepMm = Math.max(0, limit);
+    speed = 0;
+    rem = 0;
+  }
+
+  if (stepMm === 0) {
+    m[v(i, 'V')] = limit > 0 ? speed : 0;
+    m[v(i, 'Rem')] = rem;
+    if (limit > 0) return;
+    if (ri === last && pos === goal && !busy) {
+      // Arriving on the far lane, it reverses across the near one: that has to
+      // be clear, and claimed. Somebody waiting for their own crossing may be
+      // standing in it, so after a few seconds the manager sends this vehicle
+      // round the block to come in on the near lane instead.
+      const near = nearLane(bay);
+      if (rt[last] !== near) {
+        if (num(m, v(i, 'Xc')) !== 1 && num(m, v(i, 'Res')) === bay && canClaimCrossing(m, i, bay, rt[last], goal)) {
+          m[v(i, 'Xc')] = 1;
+        }
+        if (num(m, v(i, 'Xc')) !== 1 || !stretchClear(m, i, near, bayPos(bay, near))) {
+          if (num(m, v(i, 'Wait')) >= DETOUR_MS) {
+            planTo(m, i, rt[last], pos, near);
+            m[v(i, 'Wait')] = 0;
+            return;
+          }
+          waitFor(m, i, 'waiting to cross into');
+          return;
+        }
+      }
+      m[v(i, 'Xc')] = 0;
+      m[v(i, 'Want')] = -1;
+      m[v(i, 'S')] = 'enter';
+      m[v(i, 'Pk')] = bay;
+      m[v(i, 'T')] = 0;
+      m[v(i, 'V')] = 0;
+      m[v(i, 'Wait')] = 0;
+      m[v(i, 'Res')] = -1;
+      m[v(i, 'Box')] = -1;
+      return;
+    }
+    waitFor(m, i, busy ? 'queued for a busy bay on its way to' : 'held up in traffic on its way to');
+    return;
+  }
+  pos += stepMm;
+  while (ri < last && pos >= DC_EDGES[rt[ri]].len) {
+    pos -= DC_EDGES[rt[ri]].len;
+    ri++;
+  }
+  m[v(i, 'Pos')] = pos;
+  m[v(i, 'Ri')] = ri;
+  m[v(i, 'E')] = rt[ri];
+  m[v(i, 'V')] = speed;
+  m[v(i, 'Rem')] = rem;
+  m[v(i, 'Wait')] = 0;
+  drain(m, i, stepMm);
+}
+
+/**
+ * Plan a vehicle's trip from `pos` along `start` to the bay its leg ends at,
+ * with the traffic as it is now. A vehicle on the last lane of its trip always
+ * holds the bay's booking: a route that gets there without crossing another
+ * junction books it now, and if somebody else has it, the trip goes in from the
+ * bay's other lane instead, which is a junction away.
+ */
+function planTo(m: MachineState, i: number, start: number, pos: number, lane = -1): void {
+  const bay = bayFor(m, i);
+  const jam = traffic(m, i);
+  let r = lane < 0 ? routeToBay(start, pos, bay, jam) : route(start, pos, lane, bayPos(bay, lane), jam);
+  m[v(i, 'Res')] = -1;
+  if (num(m, v(i, 'Want')) !== bay) m[v(i, 'Want')] = -1;
+  const immediate = r.edges.length === 1 || (r.edges.length === 2 && DC_EDGES[start].kind !== 'lane');
+  if (immediate) {
+    if (mayBook(m, i, bay)) {
+      book(m, i, bay);
+    } else {
+      const lane = r.edges[r.edges.length - 1] === nearLane(bay) ? farLane(bay) : nearLane(bay);
+      r = route(start, pos, lane, bayPos(bay, lane), jam);
+    }
+  }
+  m[v(i, 'Rt')] = r.edges.join('.');
+  m[v(i, 'Ri')] = 0;
+  m[v(i, 'Xc')] = 0;
+}
+
+/** A new trip for a vehicle already on the road, from where it is. */
+function replan(m: MachineState, i: number): void {
+  planTo(m, i, routeOf(m, i)[num(m, v(i, 'Ri'))], num(m, v(i, 'Pos')));
+}
+
+/**
+ * Where on `lane` a vehicle waits for the busy bay at `goal`: a vehicle's length
+ * short of it, and further back still past any other bay on the lane that has a
+ * vehicle in it, because a vehicle standing across a bay's mouth is in the way
+ * of whoever has to pull out of it. Can be behind the lane's start, which means
+ * waiting before the junction.
+ */
+function waitPoint(m: MachineState, self: number, lane: number, goal: number): number {
+  let p = goal - WAIT_BACK_MM;
+  for (let pass = 0; pass < MAX_FLEET; pass++) {
+    let moved = false;
+    for (let j = 0; j < MAX_FLEET; j++) {
+      if (j === self || !BAY_STATES.has(stateOf(m, j))) continue;
+      const pk = num(m, v(j, 'Pk'));
+      if (nearLane(pk) !== lane && farLane(pk) !== lane) continue;
+      const q = bayPos(pk, lane);
+      if (q >= goal) continue;
+      if (p - VEHICLE_REAR_MM - GAP_MM < q + ZONE_MM && p + VEHICLE_FRONT_MM + GAP_MM > q - ZONE_MM) {
+        p = q - ZONE_MM - VEHICLE_FRONT_MM - GAP_MM;
+        moved = true;
+      }
+    }
+    if (!moved) break;
+  }
+  return p;
+}
+
+/** Is another vehicle on its way to this bay? */
+function wanted(m: MachineState, bay: number, self: number): boolean {
+  for (let j = 0; j < MAX_FLEET; j++) {
+    if (j !== self && stateOf(m, j) === 'drive' && bayFor(m, j) === bay) return true;
   }
   return false;
 }
@@ -791,9 +1231,11 @@ function idle(m: MachineState, i: number): boolean {
   return s === 'park' || ((s === 'drive' || s === 'exit') && leg === 'home');
 }
 
-/** Where a vehicle is, for "nearest": its pocket if it is in one, else its place on the loop. */
-function whereOnLoop(m: MachineState, i: number): number {
-  return onLoop(m, i) ? num(m, v(i, 'Pos')) : num(m, v(i, 'Pk'));
+/** What a trip to `bay` would take vehicle `i` from where it is now, for "nearest". */
+function tripCost(m: MachineState, i: number, bay: number): number {
+  if (stateOf(m, i) === 'drive') return routeToBay(routeOf(m, i)[num(m, v(i, 'Ri'))], num(m, v(i, 'Pos')), bay).cost;
+  const pk = num(m, v(i, 'Pk'));
+  return pk === bay ? 0 : bayRoute(pk, bay).cost;
 }
 
 function freeVehicles(m: MachineState): number {
@@ -848,12 +1290,12 @@ function mailbox(m: MachineState, outputs: Record<string, boolean>, regs: Record
     m.nak = true;
     return;
   }
-  const stop = locationByCode(from)!.pick;
+  const src = locationByCode(from)!.pick;
   let pick = -1;
   let best = Infinity;
   for (let i = 0; i < fleet; i++) {
     if (!idle(m, i)) continue;
-    const d = ahead(whereOnLoop(m, i), stop);
+    const d = tripCost(m, i, src);
     if (d < best) {
       best = d;
       pick = i;
@@ -889,9 +1331,12 @@ function assign(m: MachineState, i: number, leg: Leg, from: number, to: number, 
   m[v(i, 'From')] = from;
   m[v(i, 'To')] = to;
   m[v(i, 'Asn')] = asn;
-  if (str(m, v(i, 'S')) === 'park') {
+  const s = str(m, v(i, 'S'));
+  if (s === 'park') {
     m[v(i, 'S')] = 'exit';
     m[v(i, 'T')] = 0;
+  } else if (s === 'drive') {
+    replan(m, i);
   }
 }
 
@@ -905,7 +1350,7 @@ function drain(m: MachineState, i: number, mm: number): void {
   }
   m[v(i, 'Bmm')] = acc;
   m[v(i, 'Batt')] = batt;
-  if (batt <= 0) throw new Fault(`vehicle ${i + 1} ran its battery flat on the loop`, { cause: 'flat' });
+  if (batt <= 0) throw new Fault(`vehicle ${i + 1} ran its battery flat on the road`, { cause: 'flat' });
 }
 
 function stepVehicle(m: MachineState, i: number): void {
@@ -921,6 +1366,8 @@ function stepVehicle(m: MachineState, i: number): void {
     if (state === 'park') {
       m[v(i, 'S')] = 'exit';
       m[v(i, 'T')] = 0;
+    } else if (state === 'drive') {
+      replan(m, i);
     }
     return;
   }
@@ -930,58 +1377,30 @@ function stepVehicle(m: MachineState, i: number): void {
       return;
 
     // Park at last position, the policy real fleet managers default to: an idle
-    // vehicle stays in the pocket it last worked in until another vehicle heads
-    // for that pocket, and only then goes home. On a one-way loop the difference
-    // is a whole lap every time a program collects a pallet it has just set down
-    // for a check.
+    // vehicle stays in the bay it last worked in until another vehicle heads for
+    // that bay, and only then goes home. The difference is a round trip every
+    // time a program collects a pallet it has just set down for a check.
     case 'park': {
       const pk = num(m, v(i, 'Pk'));
-      if (pk === DEPOT_STOPS[i] || !wanted(m, pk, i)) return;
+      if (pk === DEPOT_BAYS[i] || !wanted(m, pk, i)) return;
       m[v(i, 'Leg')] = 'home';
       m[v(i, 'S')] = 'exit';
       m[v(i, 'T')] = 0;
       return;
     }
 
-    case 'drive': {
-      const stop = stopFor(m, i);
-      const pos = num(m, v(i, 'Pos'));
-      const busy = pocketBusy(m, stop, i);
-      const toStop = ahead(pos, stop);
-      // Waiting for a busy pocket happens a full gap short of it, so whoever is
-      // in it can still get out; a vehicle already past that point just stops.
-      let target = busy ? stop - WAIT_BACK_MM : stop;
-      if (busy && toStop <= WAIT_BACK_MM) target = pos;
-      const d = ahead(pos, target);
-      if (d === 0) {
-        if (!busy && toStop === 0) {
-          m[v(i, 'S')] = 'enter';
-          m[v(i, 'Pk')] = stop;
-          m[v(i, 'T')] = 0;
-          m[v(i, 'Wait')] = 0;
-          return;
-        }
-        waitFor(m, i, 'queued on the loop');
-        return;
-      }
-      const room = gapAhead(m, i) - MIN_GAP_MM;
-      const stepMm = Math.max(0, Math.min(SPEED_MM, d, room));
-      if (stepMm === 0) {
-        waitFor(m, i, 'queued on the loop');
-        return;
-      }
-      m[v(i, 'Pos')] = (pos + stepMm) % LOOP_MM;
-      m[v(i, 'Wait')] = 0;
-      drain(m, i, stepMm);
+    case 'drive':
+      stepDrive(m, i);
       return;
-    }
 
+    // Pivot on the lane, then reverse in, fork first.
     case 'enter':
-      if (t < ENTER_MS) {
+      if (t < (num(m, v(i, 'E')) === nearLane(num(m, v(i, 'Pk'))) ? ENTER_MS : ENTER_FAR_MS)) {
         m[v(i, 'T')] = t;
         return;
       }
       m[v(i, 'T')] = 0;
+      m[v(i, 'E')] = -1;
       m[v(i, 'S')] = leg === 'home' ? 'park' : leg === 'chg' ? 'charge' : 'hold';
       if (leg === 'home') m[v(i, 'Leg')] = '';
       return;
@@ -992,7 +1411,7 @@ function stepVehicle(m: MachineState, i: number): void {
           ? canPick(m, num(m, v(i, 'From')), num(m, v(i, 'To'))) !== null
           : canDrop(m, num(m, v(i, 'To')), str(m, v(i, 'Load')), num(m, v(i, 'Asn')));
       if (!ready) {
-        waitFor(m, i, leg === 'src' ? 'waiting to pick' : 'waiting to set down');
+        waitFor(m, i, leg === 'src' ? 'waiting to pick at' : 'waiting to set down at');
         return;
       }
       m[v(i, 'S')] = 'work';
@@ -1045,24 +1464,76 @@ function stepVehicle(m: MachineState, i: number): void {
       return;
     }
 
+    // Still in the bay until the way out is clear; then forward out, onto the
+    // near lane or across it to the far one, and a pivot onto the new heading.
     case 'exit': {
-      if (t < EXIT_MS) {
+      const pk = num(m, v(i, 'Pk'));
+      const target = bayFor(m, i);
+      if (num(m, v(i, 'T')) === 0) {
+        // A vehicle already in the bay its next job starts from never leaves it.
+        if (target === pk && leg !== '') {
+          m[v(i, 'S')] = leg === 'home' ? 'park' : leg === 'chg' ? 'charge' : 'hold';
+          if (leg === 'home') m[v(i, 'Leg')] = '';
+          return;
+        }
+        // The way out its route prefers, chosen once with the traffic as it is
+        // now. The other way is only taken if it costs little more, or once the
+        // preferred one has been blocked long enough to look like a standoff.
+        let prefer = num(m, v(i, 'Xp'));
+        if (prefer < 0) {
+          const jam = traffic(m, i);
+          const best = bayToBay(pk, target, -1, jam);
+          const alt = bayToBay(pk, target, best.exit === nearLane(pk) ? farLane(pk) : nearLane(pk), jam);
+          prefer = best.exit;
+          m[v(i, 'Xp')] = prefer;
+          m[v(i, 'Xd')] = alt.cost - best.cost;
+        }
+        const other = prefer === nearLane(pk) ? farLane(pk) : nearLane(pk);
+        // Break-even: the other way once the wait has cost as much as it would,
+        // and never later than a standoff could last without stalling the hub.
+        // Two vehicles each waiting to take the other's bay is a standoff at once.
+        const extra = num(m, v(i, 'Xd'));
+        const patience = Math.min(MAX_PATIENCE_MS, Math.max(DETOUR_MS, extra));
+        const lanes =
+          extra <= ALT_EXIT_MS || num(m, v(i, 'Wait')) >= patience || swapping(m, i, pk, target)
+            ? [prefer, other]
+            : [prefer];
+        let out = -1;
+        for (const lane of lanes) {
+          // Straight on along the lane it pulls out onto: the bay is booked first.
+          const direct = (lane === nearLane(target) || lane === farLane(target)) && bayPos(target, lane) >= bayPos(pk, lane);
+          if (direct && !mayBook(m, i, target)) continue;
+          // Pulling out just short of a bay somebody is still in would stand in their way out.
+          if (direct && bayOccupied(m, target, i) && waitPoint(m, i, lane, bayPos(target, lane)) < bayPos(pk, lane)) continue;
+          if (!clearToPullOut(m, i, pk, lane)) continue;
+          if (direct) book(m, i, target);
+          out = lane;
+          break;
+        }
+        if (out < 0) {
+          waitFor(m, i, 'waiting to pull out on its way to');
+          return;
+        }
+        m[v(i, 'Xe')] = out;
+        m[v(i, 'T')] = SUB_MS;
+        m[v(i, 'Wait')] = 0;
+        return;
+      }
+      const lane = num(m, v(i, 'Xe'));
+      if (t < (lane === nearLane(pk) ? EXIT_NEAR_MS : EXIT_FAR_MS)) {
         m[v(i, 'T')] = t;
         return;
       }
-      m[v(i, 'T')] = EXIT_MS;
-      const pk = num(m, v(i, 'Pk'));
-      // A vehicle already in the pocket its next job starts from never leaves it.
-      if (stopFor(m, i) === pk && leg !== '') {
-        m[v(i, 'S')] = leg === 'home' ? 'park' : leg === 'chg' ? 'charge' : 'hold';
-        m[v(i, 'T')] = 0;
-        if (leg === 'home') m[v(i, 'Leg')] = '';
-        return;
-      }
-      if (!mergeClear(m, pk, i)) return;
+      const at = bayPos(pk, lane);
       m[v(i, 'S')] = 'drive';
-      m[v(i, 'Pos')] = pk;
+      m[v(i, 'E')] = lane;
+      m[v(i, 'Pos')] = at;
+      m[v(i, 'V')] = 0;
+      m[v(i, 'Rem')] = 0;
+      planTo(m, i, lane, at);
       m[v(i, 'Pk')] = -1;
+      m[v(i, 'Xe')] = -1;
+      m[v(i, 'Xp')] = -1;
       m[v(i, 'T')] = 0;
       return;
     }
@@ -1082,23 +1553,6 @@ function stepVehicle(m: MachineState, i: number): void {
         m[v(i, 'T')] = 0;
       }
     }
-  }
-}
-
-function waitFor(m: MachineState, i: number, what: string): void {
-  const w = num(m, v(i, 'Wait')) + SUB_MS;
-  m[v(i, 'Wait')] = w;
-  if (w >= STALL_MS) {
-    const leg = str(m, v(i, 'Leg'));
-    const where =
-      leg === 'src'
-        ? locationByCode(num(m, v(i, 'From')))?.name
-        : leg === 'dst'
-          ? locationByCode(num(m, v(i, 'To')))?.name
-          : 'its parking bay';
-    throw new Fault(`vehicle ${i + 1} has been ${what} at ${where} for ${STALL_MS / 1000} s`, {
-      cause: 'stalled',
-    });
   }
 }
 
@@ -1196,7 +1650,7 @@ function printLabel(m: MachineState, door: number): void {
   m.w4 = formatPallet(p);
 }
 
-/** Is a vehicle anywhere in a room's pocket, going in, working or backing out? */
+/** Is a vehicle anywhere in a room's bay, going in, working or backing out? */
 function inDoorway(m: MachineState, code: number): boolean {
   const stop = locationByCode(code)!.drop;
   for (let i = 0; i < MAX_FLEET; i++) {

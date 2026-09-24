@@ -165,7 +165,7 @@ export const dcRipening: PuzzleSpec = {
         },
         {
           label: 'Every call is filled from the rooms, each pallet under its own notice',
-          holdMs: 150_000,
+          holdMs: 225_000,
           until: { machine: { shipped: 6 } },
           expectMachine: { jam: false, stalled: false, blocked: false },
         },

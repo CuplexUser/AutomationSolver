@@ -92,11 +92,11 @@ export const dcHub: PuzzleSpec = {
     '',
     '## Interlocks and safety',
     '- A trailer is loaded from the front, so the last stop\'s pallet goes on first. A pallet',
-    '  out of that sequence is a fault, and so is a truck not loaded 150 s after docking.',
-    '- A vehicle that runs its battery flat on the loop stops the hub.',
+    '  out of that sequence is a fault, and so is a truck not loaded 180 s after docking.',
+    '- A vehicle that runs its battery flat on the road stops the hub.',
     '',
     '## Field notes',
-    '- Two pallets on the loop to the same dock can arrive in either order. That is why a',
+    '- Two pallets on their way to the same dock can arrive in either order. That is why a',
     '  dock has one on its way at a time, released when its count changes.',
     '- A section\'s order is accepted on its slot\'s pulse: RIPEN\'s M312 with D521 at 61,',
     '  STORE\'s M313 with D531 at 61 or 62.',
@@ -105,13 +105,13 @@ export const dcHub: PuzzleSpec = {
     '- Every charge takes a vehicle off the floor for the drive to the charger and the',
     '  charge itself, and a charge always fills the battery. Topping up early costs more',
     '  than it saves. Leave it too late and the vehicle cannot finish its job and still',
-    '  reach the charger. A battery lasts about a kilometer, the loop is 56 m, and a vehicle',
-    '  is usually halfway round it when you decide.',
+    '  reach the charger. A battery lasts about a kilometer, a trip across the hub is 20 to',
+    '  40 m, and a vehicle is usually in the middle of one when you decide.',
     '',
     '## Acceptance',
     '- Every truck leaves loaded, in sequence, in its slot, and no vehicle runs flat.',
-    '- Scored on time as well: the hub\'s best program finishes each shift in about three',
-    '  minutes.',
+    '- Scored on time as well: the hub\'s best program finishes each shift in about three and',
+    '  a half minutes.',
   ].join('\n'),
   hints: [
     'SHIP, the lines: one rung on X21 and not Y6, that computes Z6 as (D8 - 61) x 10, ' +
@@ -127,7 +127,7 @@ export const dcHub: PuzzleSpec = {
       'K9 into D590 when D590 is 0, X26 is off and any of D81 to D83 is low, three compares ' +
       'in parallel. The post rung then needs a second row for K9: K0 into D0 and K70 into D1.',
     'How low is low: every percent is 10 m of driving. A vehicle has to finish the job it is ' +
-      'on and drive to the charger, which can be two whole laps. Any sooner than that and the ' +
+      'on and drive to the charger, which can be the width of the hub away. Any sooner than that and the ' +
       'hub spends vehicles on charging it did not need yet.',
   ],
   devices: [
@@ -203,17 +203,17 @@ export const dcHub: PuzzleSpec = {
   scenarios: [
     {
       name: 'A shift at the hub',
-      parMs: 189_500,
+      parMs: 215_500,
       steps: [
         {
           label: 'The first truck at each dock is loaded last stop first and leaves',
-          holdMs: 160_000,
+          holdMs: 190_000,
           until: { machine: { trucksOut: 2 } },
           expectMachine: { jam: false, stalled: false, blocked: false, late: false, flat: false },
         },
         {
           label: 'The bananas ripen and go out on the second truck at OUT1',
-          holdMs: 150_000,
+          holdMs: 160_000,
           until: { machine: { trucksOut: 3 } },
           expectMachine: { jam: false, stalled: false, blocked: false, late: false, flat: false },
         },
@@ -221,7 +221,7 @@ export const dcHub: PuzzleSpec = {
     },
     {
       name: 'Different orders',
-      parMs: 191_500,
+      parMs: 198_500,
       initialMachine: {
         c31: '302pn0',
         c32: '301pn0,303pn0',
@@ -237,13 +237,13 @@ export const dcHub: PuzzleSpec = {
       steps: [
         {
           label: 'Both docks load their first truck in reverse, from both kinds of lane',
-          holdMs: 160_000,
+          holdMs: 180_000,
           until: { machine: { trucksOut: 2 } },
           expectMachine: { jam: false, stalled: false, blocked: false, late: false, flat: false },
         },
         {
           label: 'Ripe bananas and a tomato fill the last truck',
-          holdMs: 150_000,
+          holdMs: 185_000,
           until: { machine: { trucksOut: 3 } },
           expectMachine: { jam: false, stalled: false, blocked: false, late: false, flat: false },
         },

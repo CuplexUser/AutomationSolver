@@ -154,23 +154,82 @@ at once if it is idle or as soon as its current job is done, and the manager ans
 either way, the way a real one queues a charge request. `X26` is on from then until that vehicle is
 full, and `D81`–`D83` are the batteries in percent.
 
-### Kinematics
+### The roads
 
-One to three AGVs on a one-way loop of about 30 m, with every location a spur stop off it. About
-2 m/s, about 3 s per pick or drop. Zone blocking: a vehicle cannot enter the segment ahead while
-another holds it, so a busy station queues traffic behind it, visibly.
+The floor is a grid of **two-lane aisles**, one lane each way, traffic keeping right: a north and
+a south aisle 10.1 m apart (a flow lane's 5.6 m plus a 2.25 m station front at each end), a west
+and an east aisle, and a cross aisle down the middle, meeting at six junctions. `dcRoads.ts` owns
+all of it: `DC_JUNCTIONS`, `DC_AISLES`, `DC_BAYS`, and `DC_EDGES`, which is every lane plus a
+**connector** per move a junction allows (straight on, a tight right turn round the near corner,
+a wide left across the other lane; nobody turns round in a junction, and nobody needs to).
+
+Every place a vehicle works is a **bay** off one side of an aisle. A station's front edge stands
+2.25 m from the centerline, leaving a 0.85 m apron between the aisle's edge line and the station,
+and a vehicle working in a bay stands wholly off the road. A vehicle stops level with the bay,
+pivots a quarter turn and **reverses in fork first**; it drives out forward and pivots onto its
+new heading. It can arrive and leave on either lane: from the far lane it reverses straight
+across the near one. Locations name bays (`DC_LOCATIONS[].drop`/`.pick` are bay indices), a flow
+lane has one on each aisle, and each vehicle has a parking bay in the fleet corner on the cross
+aisle beside the charger.
+
+Motion: 3 m/s empty and 2.5 m/s laden, accelerating at 2.5 m/s² and braking at 3 m/s², and round
+a turn no faster than keeps sideways acceleration at 1.6 m/s² (about 1.1 m/s round the tight right
+turn, 1.8 m/s round the wide left). A vehicle looks 9 m ahead along its route and picks the speed
+that can still stop for everything there. Bay moves take 1 s from the near lane and 1.4 s across
+the aisle, 0.35 s of that the pivot.
+
+**Routing** is Dijkstra over whole edges, costed in the time a vehicle takes to drive them, with
+every tie broken on edge index. When a vehicle plans a trip it adds what the rest of the fleet
+will cost it (`traffic()`): a vehicle stopped in a lane is a queue (4 s), one driving it a follow
+(0.6 s), one pivoting across it a short block (1.5 s), and a lane still ahead on somebody else's
+route a little (0.3 s). Routes between bays on an empty floor are worked out once at load; the
+traffic-aware one is planned when a vehicle actually sets off. The scene draws each vehicle's
+route in its own color.
+
+**Traffic rules**, each of which the gridlock fuzz test (below) earned:
+
+1. Follow at a gap: a vehicle's front keeps 0.4 m clear of whatever is ahead, braking in time.
+2. **A junction is one vehicle at a time, and only one that can clear it**: it is claimed a
+   braking distance short, and only with room for the whole vehicle on the lane beyond and a place
+   to stop past it. Nobody ever stops inside a junction.
+3. **A vehicle books the bay a trip ends at before it enters that bay's lane**, at the last
+   junction or as it pulls out onto it. A vehicle on the last lane of its trip always holds the
+   booking. A vehicle whose trip changes on the road re-plans, and if the new bay is booked it
+   comes in from the bay's other lane, a junction away.
+4. **Crossing into a bay from the far lane is claimed like a junction**, together with the bay's
+   booking, and only when nothing stands between the vehicle and the bay. A claimed crossing is a
+   stretch of the near lane nobody drives into, and nobody may claim a crossing while the spot it
+   will stop on is inside somebody else's. After 6 s unable to cross, the manager sends it round
+   the block to come in on the near lane.
+5. **Never wait in front of an occupied bay.** A vehicle waiting for its bay stands a vehicle's
+   length short of it, and further back past any other bay on the lane with a vehicle in it; if
+   that is behind the lane's start, it waits before the junction. The same wait point decides
+   whether a vehicle may pull out straight toward a bay that is still occupied.
+6. **Pulling out** takes the way its route prefers, planned with the traffic as it is when it
+   first wants to go. The other way is taken at once only if it costs under 2 s more; otherwise
+   only once the wait has cost as much as the detour would (break-even), and never later than
+   12 s. Two vehicles each waiting to take the other's bay (a swap) go the other way at once.
+7. **Bookings are served in the order they were asked for, but only for vehicles waiting in a
+   bay**, which could otherwise be overtaken for good by vehicles arriving through junctions. On
+   the road vehicles already queue in the order they stand in; giving the earlier asker priority
+   there put it behind the later one on the same lane, waiting for each other.
+
+A vehicle waiting 20 s for anything is `stalled`, as before, and a correct program never stalls
+the plant.
 
 Determinism is the same discipline as `tank.ts`, `axis.ts` and `factoryLine.ts`: integer
-millimeters, a fixed `SUB_MS` internal sub-step with a carried remainder, vehicles iterated in
-index order and every tie broken by index. **The first test pins that the fleet's trajectory is
-identical at dt 10, 50 and 60 ms.** State is flat keys (`agv{i}Pos`, `agv{i}State`,
-`agv{i}Load`, `agv{i}Batt`, a key per lane slot holding a pallet id, `pal{id}` = product x 100 +
-lot) so replay and the 3D view read it directly.
+millimeters and mm/s, a fixed `SUB_MS` internal sub-step with sub-millimeter travel carried as a
+remainder, vehicles iterated in index order and every tie broken by index. **The first test pins
+that the fleet's trajectory is identical at dt 10, 50 and 60 ms.** State is flat keys per vehicle
+(`v{i}S` state, `E` edge and `Pos` along it, `V` speed, `Rt` route as edge ids and `Ri` where on
+it, `Pk` bay, `Box` junction claimed, `Res` bay booked, `Xc` crossing claimed, `Xe`/`Xp` lane
+pulling out onto and preferred, `Load`, `Batt`, `Wait`), plus a key per location holding its
+pallets, so replay and the 3D view read it directly.
 
-`DC_LAYOUT` (loop and spur geometry in millimeters), `DC_LOCATIONS` and `DC_SECTIONS` are exported
-and re-exported from `processes/index.ts`. They are the contract the 3D scene and the briefings
-quote, the way `LINE_ZONES` is for the excavator line. Here the plant owns the geometry, unlike the
-excavator line's, because distance is what the vehicles' timing is made of.
+`DC_JUNCTIONS`, `DC_AISLES`, `DC_BAYS`, `DC_EDGES`, `edgePoint`, `bayFrame`, `bayPos`,
+`DC_LOCATIONS` and `DC_SECTIONS` are re-exported from `processes/index.ts`: the contract the 3D
+scene paints and poses from. The plant owns the geometry, unlike the excavator line's, because
+distance is what the vehicles' timing is made of.
 
 ### What it checks
 
@@ -190,7 +249,53 @@ lot and the place.
 - `mixedBatch` — two products in one ripening room. `spoiled` — a ripening door opened mid-cycle.
 - `stalled`, a truck leaving short or out of sequence, a flat battery.
 
-### What was measured
+### What the roads measured
+
+The one-way loop the hub first shipped with (below) was replaced on 2026-09-24 by the road
+network above: every trip that had to go back upstream cost a lap, and the vehicles only ever
+drove in a circle.
+
+- **Pace is about the loop's, with shorter trips and longer bay moves.** The tutorial moves a
+  pallet IN1, QA, OUT1 in about 34 s with one vehicle (the loop: 32 s). Flow lanes got faster
+  (puzzle 56: 161 s against 143 to 213 s), and the rest landed within 10%.
+- **Bays reachable from both lanes.** With no U-turns and bays entered only from the near lane,
+  QA 4.8 m from IN1 on the same side was a 50 m trip round the block. Crossing the near lane in
+  from the far one is what real vehicles do, and the rest of the traffic rules follow from it.
+- **Every rule above is a deadlock the fuzz test found**: a crossing each blocked by the other
+  vehicle's stop (IN1 and F1 face each other 0.6 m apart), a crossing claimed behind another
+  vehicle, a booking and a crossing claim held by two vehicles for one bay, two vehicles swapping
+  neighboring bays, a ring of three through waiting spots in front of bays 1.5 m apart, and a
+  vehicle pulling out straight into the stretch in front of an occupied neighbor. The test
+  (`distribution.test.ts`, "no gridlock") moves pallets at random between all six lanes with
+  three vehicles; five seeds are pinned, and several hundred more were swept while tuning.
+- **The first answer to a blocked exit was too eager.** Taking the other way out the moment the
+  preferred one was blocked sent a vehicle round a 50 m block rather than wait a second for a
+  passing vehicle, and a fixed 3 s wait did the same whenever the detour was long. Break-even
+  fixed it; the 12 s cap keeps a standoff from reaching the 20 s stall.
+- **A parking bay 1.0 m from a junction** could never be driven to: stopping there left the
+  vehicle's tail in the junction, so it could never be let in. The fleet corner moved 0.2 m, and a
+  test now pins every bay at least a vehicle's overhang clear of both lane starts.
+- **Floor plan.** The wrapper moved next to the outbound docks it feeds (the wrap-and-label step
+  was a 40 m trip away on the east side), and the parking bays and charger into a fleet corner on
+  the cross aisle, in the middle of the floor.
+- **Measured scenario lengths** (canonical programs): 54 about 123 s, 55 125 to 260 s, 56 94 to
+  161 s, 57 306 s, 58 252 s, 59 215 and 198 s. Step budgets are about 1.5 times these.
+- **The capstone's truck slot is 180 s** (it was 150 s). The second truck at OUT1 needs two ripe
+  bananas, and receiving, QA, a ripening cycle and the loading had about 13 s to spare in the
+  canonical run: any small change to the dispatcher missed the slot, which turned "charging early
+  is slower" into "charging early fails".
+- **The capstone's par is still about charging late.** Over the two shifts: never charging, or
+  charging below 3%, runs a vehicle flat; anything from 4% up solves; 8 to 10% is fastest (215
+  and 198 s), 15 to 25% takes up to 234 s. The canonical answer charges below 10%.
+- **Grading cost.** `dc-hub` grades in about 3.35 s under tsx (2.4 s on the loop). The shifts are
+  longer (413 s simulated against 380 s) and the state bag carries a dozen more keys a vehicle,
+  and it is copied every scan. Routing is not where the time goes: a route is planned only when a
+  vehicle sets off. Grading in a worker is still the fix that matters, and has its TODO box.
+
+### What the loop measured (history)
+
+These were measured on the one-way loop. The ones about the fleet manager's contract still
+hold; the ones about laps are why the loop went.
 
 - **Pace.** At 3 m/s, 0.8 s into and out of a pocket and a 1.2 s fork cycle, one pallet from
   IN1 through QA to OUT1 costs about 32 s with one vehicle, 21 s with two and 16 s with three
@@ -243,7 +348,7 @@ lot and the place.
 - **Trucks need the whole order before the first pallet.** A truck's lines are fed as it docks,
   and a program cannot tell the last line from a pause in the feed, so the plant publishes the
   order's length (`D15`, `D16`): a dock's stack is complete when its count reaches it.
-- **The capstone's par is about charging late.** Measured over two shifts with the fleet starting
+- **The capstone's par was about charging late.** Measured over two shifts with the fleet starting
   between 16% and 30%: sending a vehicle to charge below 15% finishes in 189 s and 191 s, below
   18% to 70% takes 194 to 222 s, and below 10% or never runs one flat. Every charge fills the
   battery, so an early one takes a vehicle off the floor for longer and sooner than it needs. The
@@ -328,10 +433,10 @@ never a trip back to Blender.
 | `QuarantineCage` | `QuarantineSlot0`–`3` |
 | `DockIn` | `DockInSlot0`–`2` (0 is picked first), `DockInShutter` |
 | `DockOut` | `DockOutShutter`, `DockOutLampRed`, `DockOutLampGreen` |
-| `Truck` | `TruckSlot0`–`5` (0 at the front of the body), `TruckRoof` (hidden in the scene) |
+| `Truck` | A tractor and reefer semi-trailer after the current Scania S and R cabs (no badge). `TruckSlot0`–`5` (0 at the trailer's front end), `TruckRoof` (hidden in the scene). Rear doors at Blender y 0, the tractor toward +Y, about 14 m long |
 | `Wrapper` | `WrapZone0`–`5`, `WrapTurntable` (spin), `WrapCarriage` (Z), `LabelerPad`, `LabelerLamp` |
 | `Charger` | `ChargerLamp` |
-| `Column`, `WallPanel` | Repeated round the hall |
+| `Column`, `WallPanel` | Repeated round the hall. The panel's kick plate stands proud of the sheet on both faces and just inside its ends |
 
 **Conventions**, which the build script's docstring states and the client relies on:
 
@@ -348,6 +453,16 @@ never a trip back to Blender.
   scenes drive their stack lights through `emissive`.
 - A root's rest position in the file is only there so the kit can be looked at; the client sets
   every transform.
+- **No two faces coincide.** The exporter writes double-sided materials, so even a hidden back
+  face can fight a front face at the same depth. The wall panel's kick plate once shared the
+  sheet's hall-facing face, and every wall's foot flickered. Anything laid on a surface (a window,
+  a grille, a stripe) stands a few millimeters off it.
+- The kit paints nothing on the floor. It used to draw striped borders round the docks, the
+  charger and quarantine, and they crossed the scene's aisle lines; the floor is the scene's.
+- The palette is a cold store's: pale grey insulated panels, deep-blue uprights with light-blue
+  beams, teal-green guards and bollards, blue doors, and orange vehicles as the one warm color.
+  No surface is near-white (the panels are `#c8d0d7`, the reefer `#cfd5da`): under the hall's
+  key light anything brighter blows out and the scene loses every edge.
 
 Wider decisions:
 
@@ -363,18 +478,33 @@ Wider decisions:
 **What the scene settled** (`features/sim/Distribution3D.tsx`, `distribution/layout.ts`,
 `distribution/plant.ts`):
 
-- **The floor plan exists once.** `layout.ts` turns the plant's stops and sides into scene
-  frames: a station's front edge stands 1.2 m off the loop (1.65 m for an outbound dock, so its
-  wall is behind the vehicle's pocket), and a vehicle in a pocket stands 1.15 m off it, where
-  its forks reach the first slot. With those, a flow lane is exactly the 5.6 m between its two
-  faces, which a test pins. `DC_SECTIONS` in the plant names the locations each section owns,
-  and a section camera frames their floor.
+- **The floor plan exists once.** `layout.ts` turns the plant's bays into scene frames: a
+  station's front edge 2.25 m off its aisle's centerline (2.7 m for an outbound dock, so its wall
+  is behind the vehicle's bay), a vehicle in a bay 2.2 m off it, where its forks reach the first
+  slot. With those, a flow lane is exactly the 5.6 m between its two faces, which a test pins.
+  Vehicles are posed from their edge and distance (`edgePoint`), and through a bay move by
+  pivoting on the lane and reversing in. `DC_SECTIONS` names the locations each section owns, and
+  a section camera frames their floor.
+- **Codes are painted on the floor, not hung in the air.** Floating signs overlapped each other
+  wherever stations stood 1.5 m apart. Each location's code is painted on the apron in front of
+  it, reading the right way up from the south where the camera starts, or just beyond the station
+  where the apron is too narrow that way (a bay off a north-south aisle). Floor paint sits in
+  layers a centimeter apart with a polygon offset as well, and no line is painted into a junction
+  or across another line.
+- **Each vehicle has its own color**, on its roof panel and on the route drawn ahead of it.
+- **The look is a cold store's, not the excavator plant's**: a mid-grey epoxy floor with darker
+  drive lanes and blue markings, pale grey walls, and a dim slate background with a haze
+  (`MachineCanvas`'s `coldStore` mood). The first version lit it with a bright sky, a strong
+  environment map, a fill and an ambient over a near-white floor, and every surface washed out
+  to the same white. The light is now one strong key from high over the north-east corner, with
+  a 4096 shadow map for the 60 m box, and very little bounce: shadows fall south-west across the
+  floor where the camera sees them, the west wall's face is lit and the north wall's is not.
 - **Two roofs come off.** A closed room hides its batch, and a closed trailer hides the load
   order the capstone is about. The kit keeps both roofs as their own nodes (`RoomRoof`,
   `TruckRoof`) and the scene hides them.
 - **The building is only the two walls the camera faces**, west (the truck doors) and north
-  (the goods-in doors, stepping back behind the rooms), with each puzzle's dock doors cut out of
-  them. East and south are open floor with columns, so the loop can be seen.
+  (the goods-in doors, stepping back behind QA to clear quarantine and the rooms), with each
+  puzzle's dock doors cut out of them. East and south are open floor, so the aisles can be seen.
 - **How it was checked without a browser.** The layout code was run against a real capstone
   trace and the placements rebuilt in Blender from the kit's own objects, which is what caught
   the closed trailer and a wall run built backwards. `plant.test.ts` then rebuilds the GLB's node

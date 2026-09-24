@@ -75,7 +75,7 @@ export const dcLabel: PuzzleSpec = {
     '## Acceptance',
     '- The pallets the night shift left on the line, and every new one after them, are',
     '  labeled for the right dock and loaded there.',
-    '- Nothing is sent where it cannot go, and the loop never stalls.',
+    '- Nothing is sent where it cannot go, and the hub never stalls.',
   ].join('\n'),
   hints: [
     'Build on the commissioning program: a pending relay per kind of order (IN1 to QA, QA ' +
@@ -133,7 +133,7 @@ export const dcLabel: PuzzleSpec = {
       steps: [
         {
           label: 'The three pallets left on the line are labeled and loaded',
-          holdMs: 150_000,
+          holdMs: 190_000,
           until: { machine: { shipped: 3 } },
           expectMachine: { jam: false, stalled: false, blocked: false },
         },
@@ -151,7 +151,7 @@ export const dcLabel: PuzzleSpec = {
       steps: [
         {
           label: 'Two pallets on the line, two more to come, four different doors to get right',
-          holdMs: 220_000,
+          holdMs: 270_000,
           until: { machine: { shipped: 4 } },
           expectMachine: { jam: false, stalled: false, blocked: false },
         },
@@ -163,7 +163,7 @@ export const dcLabel: PuzzleSpec = {
       steps: [
         {
           label: 'Nothing is on the line, so the table starts empty and fills as pallets arrive',
-          holdMs: 180_000,
+          holdMs: 210_000,
           until: { machine: { shipped: 2 } },
           expectMachine: { jam: false, stalled: false, blocked: false },
         },
