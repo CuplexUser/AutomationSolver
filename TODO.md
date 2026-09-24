@@ -288,6 +288,47 @@ None of this touches the simulation engine.
 
 ---
 
+## 3D views: the Cold Chain look and speed everywhere
+
+The Cold Chain Hub got a realism and speed pass (shadow-casting key light, no near-white surfaces,
+GTAO ambient occlusion behind the "Realistic 3D rendering" setting, on-demand rendering, static
+batching), and the user wants the same carried into every other 3D view. Each box below is one
+kind of change across the views it names; do them in this order, since the look has to settle
+before the cost of it can be measured. Reference: [`docs/FEATURE-MAP.md`](docs/FEATURE-MAP.md) §5
+(`MachineCanvas.tsx` for `ao`, `frameloop` and the moods; `Distribution3D.tsx` for on-demand
+rendering and `mergeByMaterial`), and [`docs/COLD-CHAIN.md`](docs/COLD-CHAIN.md) §"The 3D view"
+for why the first cold-store look washed out.
+
+- [ ] **Retune the `workshop` light and the washed-out albedos.** Every view but the hub still
+      renders under `workshop` (hemi 0.5, env 0.45, a fill), the stack the hub had to abandon.
+      Per view: one dominant shadow-casting key, little bounce, and no surface lighter than about
+      `#d0d6dc`. Kit views fix their colors in the Blender build script and the GLB together, as
+      the hub's panels were. Views: drill station, pick-and-place arm, elevator shaft, pack
+      machine, transfer carriage (`AxisRig3D`), tank vessel, warehouse, excavator plant
+      (`Factory3D`), excavator line (`FactoryLine3D`).
+- [ ] **Ambient occlusion for the single-machine views.** Opt each into `ao={{ radius }}` at its
+      own scale (the drill station's GLB is exported at x10; the transfer carriage is real
+      scale), so it follows the Settings toggle: drill station, pick-and-place arm, elevator
+      shaft, pack machine, transfer carriage, tank vessel.
+- [ ] **Ambient occlusion for the plant-scale views**: warehouse, excavator plant, excavator line.
+      Tune the radius per view, and check the frame time in the full-page plant workspace before
+      turning it on, since those floors are the heaviest scenes.
+- [ ] **Render on demand where the view is a pure function of `machine`.** No clock of their own
+      in the top-level scene: elevator shaft, pack machine, tank vessel, warehouse, excavator line
+      (check the row components too). Invalidate on each new scan and keep invalidating through
+      any camera flight (`factoryLine/camera.tsx` has its own `SectionCamera`).
+- [ ] **Decide on-demand rendering for the views with a clock of their own**: drill station (the
+      ejected part's stage machine), pick-and-place arm (the conveyor glide), transfer carriage,
+      and the excavator plant (weld-arc flicker and paint-bay motion on `clock.elapsedTime`).
+      Either keep invalidating while an animation runs, or stay on `always`; write down which in
+      FEATURE-MAP.
+- [ ] **Batch the static geometry in the procedural plant scenes.** Measure the draw calls first,
+      the way the hub was measured (about 390 per pass before, half of it static). Move
+      `mergeByMaterial` out of `distribution/plant.ts` into a shared module, then apply it to the
+      buildings, fences, racking and floor paint in `factory/`, `factoryLine/` and `Warehouse3D`.
+
+---
+
 ## P3 — Engine and content growth
 
 The leftovers of the original Phase 3, plus the last item of the analog plan. Each is independent
@@ -374,6 +415,10 @@ and gets what each step measures.
 - [x] **A cold store's look.** The kit's palette, the flickering wall foot, floor-painted codes
       that cannot overlap, per-vehicle route lines, the `coldStore` light, and a Scania-style
       tractor and reefer trailer. → COLD-CHAIN §"The 3D view"
+- [x] **Realism, speed and a fly-in.** The relit hall (one key light, no near-white surfaces),
+      GTAO behind the "Realistic 3D rendering" setting, on-demand rendering, static batching, and
+      the first-open fly-in over a recorded run of the solved capstone. → COLD-CHAIN §"The 3D
+      view"; FEATURE-MAP §5 (`Distribution3D.tsx`)
 
 ---
 
