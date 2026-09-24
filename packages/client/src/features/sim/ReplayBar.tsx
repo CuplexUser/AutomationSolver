@@ -1,4 +1,4 @@
-import type { ReplayController } from './useReplay';
+import { REPLAY_SPEEDS, type ReplayController, type ReplaySpeed } from './useReplay';
 
 export function ReplayBar({ replay, demoCaption }: { replay: ReplayController; demoCaption?: string }) {
   const {
@@ -6,6 +6,8 @@ export function ReplayBar({ replay, demoCaption }: { replay: ReplayController; d
     index,
     playing,
     demo,
+    speed,
+    setSpeed,
     currentStep,
     failureMarks,
     play,
@@ -64,6 +66,19 @@ export function ReplayBar({ replay, demoCaption }: { replay: ReplayController; d
             <span key={i} className="replay-mark" style={{ left: `${at * 100}%` }} />
           ))}
         </div>
+        <select
+          className="replay-speed mono"
+          value={speed}
+          onChange={(e) => setSpeed(Number(e.target.value) as ReplaySpeed)}
+          aria-label="Playback speed"
+          title="Playback speed"
+        >
+          {REPLAY_SPEEDS.map((s) => (
+            <option key={s} value={s}>
+              {s}x
+            </option>
+          ))}
+        </select>
         <span className="replay-time mono">
           {(tMs / 1000).toFixed(1)}s / {(totalMs / 1000).toFixed(1)}s
         </span>

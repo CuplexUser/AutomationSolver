@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   traceScenario,
   type LadderPuzzleSpec,
@@ -8,16 +8,26 @@ import {
 import { trimDevMeasures } from './devMeasures';
 import type { SimRunner } from './useSimRunner';
 
-const PLAY_INTERVAL_MS = 80;
 /**
- * A looping demo plays at the trace's own cadence.
- *
- * Samples are one `GRADE_DT` apart, so one every 50 ms is the plant running at
- * the speed it really runs at — which is the whole point of watching it. The
- * slower default above is for picking a failure apart, where real time is a
- * hindrance.
+ * Samples are one `GRADE_DT` apart, so advancing one sample per 50 ms tick is
+ * the plant at the speed it really runs at. Faster speeds advance several
+ * samples per tick instead of ticking faster, since timers cannot go much
+ * below a frame and every tick re-renders the machine view.
  */
-const LOOP_INTERVAL_MS = 50;
+const TICK_MS = 50;
+
+/** The speeds the replay bar offers, as multiples of real time. */
+export const REPLAY_SPEEDS = [0.5, 1, 2, 4, 8, 16] as const;
+export type ReplaySpeed = (typeof REPLAY_SPEEDS)[number];
+
+/**
+ * A player's own replay starts at real time, for picking a failure apart. A
+ * demonstration starts at 4x: a forklift crossing the hall takes most of a
+ * minute, and the point of watching is the order of operations, not the drive.
+ * A looping demo is ambient and has no transport to change it, so real time.
+ */
+const REPLAY_SPEED: ReplaySpeed = 1;
+const DEMO_SPEED: ReplaySpeed = 4;
 
 const noop = () => {
   // replay is driven by the controller below, not by SimRunner controls
@@ -37,6 +47,9 @@ export interface ReplayController {
   demo: boolean;
   /** This demo restarts at the end rather than stopping (`PuzzleDemo.loop`). */
   looping: boolean;
+  /** Playback speed as a multiple of real time. */
+  speed: ReplaySpeed;
+  setSpeed: (speed: ReplaySpeed) => void;
   /** The step the playhead is inside, so the bar can show why it failed. */
   currentStep: ScenarioTrace['steps'][number] | undefined;
   /** Where each failing step was judged, as a 0..1 position along the scrub. */
@@ -58,6 +71,9 @@ export function useReplay(): ReplayController {
   const [playing, setPlaying] = useState(false);
   const [demo, setDemo] = useState(false);
   const [looping, setLooping] = useState(false);
+  const [speed, setSpeed] = useState<ReplaySpeed>(REPLAY_SPEED);
+  // The fraction of a sample a slow speed has not advanced yet.
+  const carry = useRef(0);
 
   const start = useCallback(
     (spec: LadderPuzzleSpec, program: ProgramDoc, scenarioName: string) => {
@@ -67,6 +83,7 @@ export function useReplay(): ReplayController {
       setPlaying(false);
       setDemo(false);
       setLooping(false);
+      setSpeed(REPLAY_SPEED);
     },
     [],
   );
@@ -80,6 +97,7 @@ export function useReplay(): ReplayController {
     setIndex(0);
     setDemo(true);
     setLooping(spec.demo.loop === true);
+    setSpeed(spec.demo.loop === true ? 1 : DEMO_SPEED);
     setPlaying(t !== undefined);
   }, []);
 
@@ -120,22 +138,27 @@ export function useReplay(): ReplayController {
   useEffect(() => {
     if (!playing || !trace) return;
     const total = trace.samples.length;
+    carry.current = 0;
     const id = setInterval(() => {
+      carry.current += speed;
+      const step = Math.floor(carry.current);
+      if (step === 0) return;
+      carry.current -= step;
       setIndex((i) => {
         if (i >= total - 1) {
           if (looping) return 0;
           setPlaying(false);
           return i;
         }
-        return i + 1;
+        return Math.min(i + step, total - 1);
       });
-    }, looping ? LOOP_INTERVAL_MS : PLAY_INTERVAL_MS);
+    }, TICK_MS);
     const stopTrim = trimDevMeasures();
     return () => {
       clearInterval(id);
       stopTrim();
     };
-  }, [playing, trace, looping]);
+  }, [playing, trace, looping, speed]);
 
   const history = useMemo(
     () => trace?.samples.map((s) => ({ tMs: s.tMs, bits: s.bits, registers: s.registers })) ?? [],
@@ -186,6 +209,8 @@ export function useReplay(): ReplayController {
     playing,
     demo,
     looping,
+    speed,
+    setSpeed,
     currentStep,
     failureMarks,
     runner,

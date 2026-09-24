@@ -763,6 +763,9 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     just submitted and exposes the trace through a read-only `SimRunner` adapter, scrubbed by
     scan index; play/pause, jump-to-first-failure, and a close button that hands control back to
     the live runner. Wired from a "▶ Replay" button on each failing scenario in the results card.
+    A speed selector (0.5x to 16x real time) sits beside the scrub: the tick stays at 50 ms and
+    a faster speed advances several samples per tick. A replay opens at 1x, a demo at 4x (a
+    forklift crossing the Cold Chain hall takes most of a minute), a looping demo at 1x.
     - `startDemo(spec)` runs the same machinery over the puzzle's shipped `demo` instead, from a
       "▶ Watch the machine run" button above the briefing. It opens already playing, drops the
       jump-to-failure control (nothing failed), and blanks `evalResults` — the rungs on screen
