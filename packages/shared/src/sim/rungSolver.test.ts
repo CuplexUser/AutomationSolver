@@ -55,6 +55,45 @@ describe('evaluateRung', () => {
     expect(outEnergized(evaluateRung(r, conductsFrom({ X0: false, X1: true })), 'Y0')).toBe(false);
   });
 
+  /**
+   * The highlighting the editor draws: which cells carried power and which
+   * nodes were live. X0 on, X1 off, in series before a coil: the rail and the
+   * node after X0 are live, and only X0's cell conducted.
+   */
+  it('reports the live cells and energized nodes the editor highlights', () => {
+    const r = rung(1, 3, (_, c) =>
+      c === 0 ? el('contact-no', 'X0') : c === 1 ? el('contact-no', 'X1') : el('coil-out', 'Y0'),
+    );
+    const res = evaluateRung(r, conductsFrom({ X0: true, X1: false }));
+    expect([...res.liveCells]).toEqual(['0:0']);
+    // Node ids run row * (cols + 1) + column boundary: 0 is the rail, 1 is after X0.
+    expect([...res.energizedNodes]).toEqual([0, 1]);
+  });
+
+  /**
+   * The grader asks without the detail. It must not change a single output, or
+   * the server would grade a different program from the one the player watched.
+   */
+  it('gives the same outputs without the highlighting detail, and none of the detail', () => {
+    const r = rung(
+      2,
+      3,
+      (rw, c) => {
+        if (rw === 0) return c === 0 ? el('contact-no', 'X0') : c === 1 ? el('coil-out', 'Y0') : el('coil-out', 'Y1');
+        return c === 0 ? el('contact-nc', 'X1') : null;
+      },
+      [{ row: 0, col: 1 }],
+    );
+    const states: Record<string, boolean>[] = [{ X0: true }, { X1: true }, { X0: false, X1: true }, {}];
+    for (const state of states) {
+      const full = evaluateRung(r, conductsFrom(state));
+      const lean = evaluateRung(r, conductsFrom(state), false);
+      expect(lean.outputs).toEqual(full.outputs);
+      expect(lean.liveCells.size).toBe(0);
+      expect(lean.energizedNodes.size).toBe(0);
+    }
+  });
+
   it('parallel branches (vertical link) are logical OR', () => {
     // row0col0 = X0, row1col0 = X1, coil at row0col1, vlink joins node col1.
     const r = rung(

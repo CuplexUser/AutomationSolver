@@ -255,9 +255,16 @@ lot and the place.
   small policy changes are the loop's nature: which vehicle is nearest when an order lands
   decides whether a banana reaches its room before the quiet timer. The capstone's briefing
   claims only what held in every run.
-- **Grading cost.** `dc-hub` is the heaviest grade in the game, about 4.5 s for two shifts (the
-  excavator line takes 1.5 s). A profile put a fifth of it in re-parsing the same word operands
-  every scan, now cached in `value.ts`; most of the rest is the rung solver. There is a TODO box.
+- **Grading cost.** `dc-hub` is the heaviest grade in the game. It first took about 4.7 s for
+  two shifts (the excavator line 1.5 s), and profiling took it to about 2.4 s (the line to
+  0.85 s), with every trace byte-identical: word operands parsed once and cached (`value.ts`),
+  the rungs' highlighting detail skipped when a grade records no trace, a typed-array
+  union-find with no per-scan closures (tsx wraps every named inner function in a naming
+  helper, which alone cost 0.9 s), and the plant's state keys built once. What is left is
+  spread thin: the engine's per-task copy of the bit image, and the plant's state bag, which
+  is a dictionary of about 150 string keys. Grading in a worker is the fix that stops the
+  request thread blocking at all, and it is a deployment change (the API is a Vercel
+  function), so it is a TODO box of its own.
 
 ### The tutorial needs its bookings
 
@@ -321,7 +328,7 @@ never a trip back to Blender.
 | `QuarantineCage` | `QuarantineSlot0`–`3` |
 | `DockIn` | `DockInSlot0`–`2` (0 is picked first), `DockInShutter` |
 | `DockOut` | `DockOutShutter`, `DockOutLampRed`, `DockOutLampGreen` |
-| `Truck` | `TruckSlot0`–`5` (0 at the front of the body) |
+| `Truck` | `TruckSlot0`–`5` (0 at the front of the body), `TruckRoof` (hidden in the scene) |
 | `Wrapper` | `WrapZone0`–`5`, `WrapTurntable` (spin), `WrapCarriage` (Z), `LabelerPad`, `LabelerLamp` |
 | `Charger` | `ChargerLamp` |
 | `Column`, `WallPanel` | Repeated round the hall |
@@ -352,3 +359,23 @@ Wider decisions:
   exactly what the live run showed.
 - One view serves both layouts: a panel in the single-program puzzles, the whole stage plus
   section cameras (keyed on `DC_SECTIONS`) in the plant workspace.
+
+**What the scene settled** (`features/sim/Distribution3D.tsx`, `distribution/layout.ts`,
+`distribution/plant.ts`):
+
+- **The floor plan exists once.** `layout.ts` turns the plant's stops and sides into scene
+  frames: a station's front edge stands 1.2 m off the loop (1.65 m for an outbound dock, so its
+  wall is behind the vehicle's pocket), and a vehicle in a pocket stands 1.15 m off it, where
+  its forks reach the first slot. With those, a flow lane is exactly the 5.6 m between its two
+  faces, which a test pins. `DC_SECTIONS` in the plant names the locations each section owns,
+  and a section camera frames their floor.
+- **Two roofs come off.** A closed room hides its batch, and a closed trailer hides the load
+  order the capstone is about. The kit keeps both roofs as their own nodes (`RoomRoof`,
+  `TruckRoof`) and the scene hides them.
+- **The building is only the two walls the camera faces**, west (the truck doors) and north
+  (the goods-in doors, stepping back behind the rooms), with each puzzle's dock doors cut out of
+  them. East and south are open floor with columns, so the loop can be seen.
+- **How it was checked without a browser.** The layout code was run against a real capstone
+  trace and the placements rebuilt in Blender from the kit's own objects, which is what caught
+  the closed trailer and a wall run built backwards. `plant.test.ts` then rebuilds the GLB's node
+  tree from its JSON chunk and poses a state against it, so a renamed slot fails a test.

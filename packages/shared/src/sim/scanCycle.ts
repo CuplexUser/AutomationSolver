@@ -72,6 +72,12 @@ export interface EngineOptions {
    * that check, applied identically by the client and the grader.
    */
   protectedRegisters?: ReadonlySet<string>;
+  /**
+   * Keep each rung's energized nodes and live cells, for highlighting and replay.
+   * On by default; the grader turns it off when it is not recording a trace,
+   * which changes nothing a program does and a great deal of what a scan costs.
+   */
+  rungDetail?: boolean;
 }
 
 /** Location of the instruction being executed, for diagnostics and pulse memory. */
@@ -162,10 +168,12 @@ export class SimEngine {
   private pulses = new Map<string, boolean>();
   private diagnostics: OpDiagnostics = { errors: 0, notices: 0 };
   private readonly protectedRegisters: ReadonlySet<string>;
+  private readonly rungDetail: boolean;
 
   constructor(program: ProgramDoc, options: EngineOptions = {}) {
     this.project = toProject(program);
     this.protectedRegisters = options.protectedRegisters ?? new Set();
+    this.rungDetail = options.rungDetail ?? true;
     this.indexPous();
   }
 
@@ -602,11 +610,15 @@ export class SimEngine {
         const site = this.site;
         site.pouId = pouId;
         site.rungIndex = rungIndex;
-        const result = evaluateRung(rung, (el, row, col) => {
-          site.row = row;
-          site.col = col;
-          return this.conducts(el);
-        });
+        const result = evaluateRung(
+          rung,
+          (el, row, col) => {
+            site.row = row;
+            site.col = col;
+            return this.conducts(el);
+          },
+          this.rungDetail,
+        );
         for (const out of result.outputs) {
           site.row = out.row;
           site.col = out.col;

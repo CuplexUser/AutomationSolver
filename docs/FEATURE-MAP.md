@@ -99,6 +99,11 @@ never wall-clock time. Everything else in the system is arranged around keeping 
 - **`engineFor(spec, doc)`** (`puzzle/engine.ts`) is how both the grader and the client runner
   build an engine: `runnableProject` plus a write fence of the plant's analog inputs, so the two
   refuse exactly the same indexed writes.
+- **Rung detail is optional.** `evaluateRung` collects the live cells and energized nodes the
+  editor highlights only when asked; `EngineOptions.rungDetail` defaults on, and the grader
+  turns it off when it is not recording a trace. Outputs are identical either way (a test pins
+  it, and the call order of `conducts`, which pulse memory and diagnostics depend on, is
+  unchanged). With a typed-array union-find this halved the heaviest grades.
 
 #### POUs and tasks
 
@@ -226,11 +231,11 @@ units** and **tasks** over the existing model without touching it:
     is `Briefing` in `client/src/pages/play/BriefColumn.tsx`.
   - Every spec also carries a **`category`** (`basics` / `timers-counters` / `stations` /
     `elevator` / `control-cabinet` / `packaging` / `pick-place` / `drill` / `process-control` /
-    `motion` / `warehouse` / `factory`) — the unit of unlock progression and list grouping
+    `motion` / `warehouse` / `factory` / `distribution`) — the unit of unlock progression and list grouping
     (`CATEGORY_ORDER` / `CATEGORY_TITLES` / `CATEGORY_BLURBS` in `types.ts`).
   - Categories group into five **tracks** (`CATEGORY_TRACK`, `TRACK_ORDER`, `TRACK_TITLES`,
     `TRACK_BLURBS`, `categoriesInTrack`): `fundamentals`, `panel`, `machines`, `process`,
-    `plants`. Twelve categories is the right granularity for gating progress and much too fine
+    `plants`. Thirteen categories is the right granularity for gating progress and much too fine
     a one for navigation — as a flat pill row it wrapped onto two lines and turned a curriculum
     into a wall. **A track is navigation only**: nothing about locking, grading or content knows
     it exists. `control-cabinet` gets a track to itself because it is a different *kind* of
@@ -595,10 +600,17 @@ deterministic TS under the same lint bans as the rest of `shared`.
 | 52 | `factory-paint` | hard | hold an analog cure band, spray each part to its own film spec, and change color without stopping or scrapping | factory-line |
 | 53 | `factory-assembly` | hard | two sections at once: interlock a build, run the bench beside the jig, and send for a lorry ten seconds before it is needed | factory-line |
 | 54 | `factory-line` | hard | capstone: **all seven sections open and seeded with the working plant**, graded on how much faster it ships than the line you were handed | factory-line |
+| 55 | `dc-dispatch` | tutorial | the fleet manager's mailbox: post a transport order, book QA and the pickup, route a pass to the truck and a fail to quarantine. Ships a watchable demo | distribution |
+| 56 | `dc-label` | easy | index registers: a hand-built table of what is on the wrapper line, and a door lookup for the labeler | distribution |
+| 57 | `dc-flow-lanes` | medium | `SFWRP`/`SFRDP` on an indexed head: three FIFO lanes, the oldest lot first, a shipping notice for every pallet | distribution |
+| 58 | `dc-ripening` | hard | the first hub puzzle in **sections**: fill, shut, gas and empty two LIFO ripening rooms with `POPP`, the door interlocked | distribution |
+| 59 | `dc-drive-in` | hard | smart storage: flow lanes and drive-in lanes, a put-away rule per kind, so the oldest lot can always leave | distribution |
+| 60 | `dc-hub` | hard | capstone: SHIP and FLEET open, trucks loaded last stop first from a `POPP` stack, one pallet in flight per dock, charging late, graded on time | distribution |
 
 Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 `elevator`,
 15–20 `control-cabinet`, 21–24 `packaging`, 25–28 `pick-place`, 29–32 `drill`,
-33–37 `process-control`, 38–41 `motion`, 42–47 `warehouse`, 48–54 `factory`.
+33–37 `process-control`, 38–41 `motion`, 42–47 `warehouse`, 48–54 `factory`, 55–60 `distribution`
+(the Cold Chain Hub, [COLD-CHAIN.md](./COLD-CHAIN.md)).
 
 ### 5. Client — `packages/client/src/`
 - **Ladder editor** (`features/ladder/`) — grid canvas, instruction palette, device chips,
@@ -897,6 +909,17 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     20 times a second and only the crane, the lamps and the pallets that changed should
     reconcile. The whole scene is still a pure function of the machine state with no clock of its
     own, so replay scrubbing shows exactly what the live run showed.
+  - **`Distribution3D.tsx`** (`processId: 'distribution'`, the Cold Chain Hub) — one scene for all
+    six puzzles: a panel over the whole floor in the single-program ones, the whole page with
+    section cameras (keyed on the plant's `DC_SECTIONS`) in the plant workspace. It is a **kit**
+    scene: `dc-kit.glb` holds one named root per asset, and `distribution/plant.ts` clones them
+    per station, per vehicle and per pallet and stands each where `distribution/layout.ts` says
+    the plant has it, derived from `DC_LOCATIONS` and `loopPoint`, so the floor plan exists
+    once. Pallets come from a pool reparented to slot empties every frame and are drawn from the
+    plant's *true* tokens; the room and truck roofs are lifted off so a batch and a trailer's
+    load order can be read. `plant.test.ts` rebuilds the GLB's node tree from its JSON chunk
+    (no decoder, no GPU) and poses a real state against it, which is how a renamed slot or a
+    pallet on the wrong anchor fails a test instead of a demo. The model URL is base-relative.
 - **Resizable workspace** (`features/layout/Resizable.tsx`) — the play view is a full-height
   three-column workbench. The brief and operator panels are drag-resizable (widths persisted to
   `localStorage`, arrow keys when the divider is focused, double-click to collapse) and
@@ -1052,7 +1075,7 @@ a plant does not, so here the machine **is** the page.
   selected instruction does nothing, rather than toggling it away, so a double click cannot undo
   itself. Erase is the eraser tool, a right click, or Delete on a focused cell.
 - **The page carries every category, and the counts are hand-written.** Hero copy, the spec strip
-  (`53` / `12`), the machines gallery and the work-order list all state numbers that nothing
+  (`59` / `13`), the machines gallery and the work-order list all state numbers that nothing
   derives from `content/index.ts`, so shipping a puzzle does not update them. They drifted once
   already: the page sat at "forty-five jobs, eleven categories" with no excavator plant on it at
   all for the whole of the category's build. When a category lands, the page is part of it.

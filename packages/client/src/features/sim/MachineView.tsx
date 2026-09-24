@@ -1,7 +1,9 @@
 import { lazy, Suspense } from 'react';
 import {
   FACTORY_LIMITS,
+  isMultiPou,
   LINE_LIMITS,
+  MAX_FLEET,
   type LadderPuzzleSpec,
   type MachineState,
 } from '@automationsolver/shared';
@@ -27,6 +29,9 @@ const TankVessel3D = lazy(() =>
 const AxisRig3D = lazy(() => import('./AxisRig3D').then((m) => ({ default: m.AxisRig3D })));
 const Warehouse3D = lazy(() => import('./Warehouse3D').then((m) => ({ default: m.Warehouse3D })));
 const Factory3D = lazy(() => import('./Factory3D').then((m) => ({ default: m.Factory3D })));
+const Distribution3D = lazy(() =>
+  import('./Distribution3D').then((m) => ({ default: m.Distribution3D })),
+);
 const FactoryLine3D = lazy(() =>
   import('./factoryLine/FactoryLine3D').then((m) => ({ default: m.FactoryLine3D })),
 );
@@ -147,6 +152,50 @@ export function MachineView({
         <Suspense fallback={<div className="machine3d" style={{ height: '100%' }} />}>
           <FactoryLine3D machine={m} outputs={runner.bits} section={section} height="100%" />
         </Suspense>
+      </div>
+    );
+  }
+  if (spec.processId === 'distribution') {
+    const m = runner.machine;
+    const stats = hubStats(m);
+    const readouts = (
+      <>
+        <Flow label="In" value={`${numOf(m.received)}`} on={numOf(m.received) > 0} />
+        <Flow label="Shipped" value={`${numOf(m.shipped)}`} on={numOf(m.shipped) > 0} />
+        {numOf(m.quarantined) > 0 && <Flow label="Quarantine" value={`${numOf(m.quarantined)}`} on warn />}
+        <Flow label="Fleet" value={`${stats.busy}/${stats.fleet} busy`} on={stats.busy > 0} />
+        {stats.battery !== null && (
+          <Flow label="Lowest battery" value={`${stats.battery}%`} on={stats.battery >= 25} warn={stats.battery < 15} />
+        )}
+        {stats.trucks && <Flow label="Trucks out" value={`${numOf(m.trucksOut)}`} on={numOf(m.trucksOut) > 0} />}
+      </>
+    );
+    // The sectioned puzzles get the plant workspace, where the scene is the page
+    // and flies to the section being edited; the rest get the usual panel.
+    if (isMultiPou(spec)) {
+      return (
+        <div className="machine-view plant">
+          <div className="mv-head floating">
+            <span className="eyebrow">Cold Chain Hub</span>
+            <StatusTag tag={hubTag(m)} />
+            <span className="mv-flow">{readouts}</span>
+          </div>
+          <Suspense fallback={<div className="machine3d" style={{ height: '100%' }} />}>
+            <Distribution3D machine={m} section={section} height="100%" />
+          </Suspense>
+        </div>
+      );
+    }
+    return (
+      <div className="machine-view panel">
+        <div className="mv-head">
+          <span className="eyebrow">Cold Chain Hub</span>
+          <StatusTag tag={hubTag(m)} />
+        </div>
+        <Suspense fallback={sceneFallback}>
+          <Distribution3D machine={m} height={300} />
+        </Suspense>
+        <div className="mv-readout mv-flow">{readouts}</div>
       </div>
     );
   }
@@ -746,6 +795,70 @@ function lineTag(m: MachineState): MachineTag {
       tip: 'The yard is full, so test cannot dispatch and the line will back up behind it. Call a lorry.',
     };
   }
+  if (numOf(m.shipped) > 0) return { text: 'running', icon: 'check' };
+  return { text: 'idle' };
+}
+
+// --- Cold Chain Hub --------------------------------------------------------------
+
+/** What the header says about the fleet: how many vehicles are working, and the flattest battery. */
+function hubStats(m: MachineState): { fleet: number; busy: number; battery: number | null; trucks: boolean } {
+  const fleet = Math.max(1, Math.min(MAX_FLEET, numOf(m.fleet, 1)));
+  let busy = 0;
+  let lowest = Infinity;
+  for (let i = 0; i < fleet; i++) {
+    const state = strOf(m[`v${i}S`]);
+    if (state !== 'park' && state !== 'off' && strOf(m[`v${i}Leg`]) !== 'home') busy++;
+    lowest = Math.min(lowest, numOf(m[`v${i}Batt`], 1000));
+  }
+  return {
+    fleet,
+    busy,
+    battery: m.battery === true ? Math.trunc(lowest / 10) : null,
+    trucks: strOf(m.trucks61) !== '' || strOf(m.trucks62) !== '' || strOf(m.t61) === 'docked' || strOf(m.t62) === 'docked',
+  };
+}
+
+/**
+ * Every way the hub stops is a latch with a reason, and most of them leave the
+ * picture looking healthy: a stalled vehicle is just standing still, a late truck
+ * just drives off. So each gets its own words, and the plant's reason on hover.
+ */
+function hubTag(m: MachineState): MachineTag {
+  if (m.jam === true) {
+    const reason = strOf(m.jamReason);
+    const said = reason ? `${reason[0].toUpperCase()}${reason.slice(1)}.` : '';
+    if (m.stalled === true) {
+      return {
+        text: 'stalled',
+        icon: 'block',
+        warn: true,
+        tip: `${said} A vehicle waited too long for a place that was never free. The run has already failed.`,
+      };
+    }
+    if (m.blocked === true) {
+      return {
+        text: 'goods in blocked',
+        icon: 'warn',
+        warn: true,
+        tip: `${said} Nothing collected from that dock in time. The run has already failed.`,
+      };
+    }
+    if (m.late === true) {
+      return { text: 'truck missed its slot', icon: 'warn', warn: true, tip: `${said} The run has already failed.` };
+    }
+    if (m.flat === true) {
+      return {
+        text: 'battery flat',
+        icon: 'warn',
+        warn: true,
+        tip: `${said} Send vehicles to charge before they run low. The run has already failed.`,
+      };
+    }
+    return jamTag(m);
+  }
+  const stats = hubStats(m);
+  if (stats.busy > 0) return { text: `${stats.busy} vehicle${stats.busy === 1 ? '' : 's'} working`, icon: 'right' };
   if (numOf(m.shipped) > 0) return { text: 'running', icon: 'check' };
   return { text: 'idle' };
 }

@@ -353,16 +353,17 @@ and gets what each step measures.
 - [x] **57 `dc-ripening`**, the first sectioned one. → COLD-CHAIN §"The puzzles"
 - [x] **58 `dc-drive-in`.** → COLD-CHAIN §"The puzzles"
 - [x] **59 `dc-hub`**, the capstone, `parMs`-graded. → COLD-CHAIN §"The puzzles"
-- [ ] **Grade the capstone without holding the server up.** `dc-hub` takes about 4.5 s to grade
-      (two shifts, five sections, three vehicles), on the request thread. Most of it is
-      `evaluateRung` rebuilding each rung's union-find every scan; caching a rung's topology, or
-      grading in a worker, would each fix it. → COLD-CHAIN §"What was measured"; `sim/rungSolver.ts`
+- [ ] **Grade the capstone without holding the server up.** `dc-hub` still takes about 2.4 s to
+      grade on the request thread (down from 4.7 s; the engine and plant work is done). Grading in
+      a `worker_threads` worker would stop the thread blocking, but the API is a Vercel function,
+      so it needs the worker file bundled into it: decide that, then build it.
+      → COLD-CHAIN §"What was measured"; `server/src/routes/puzzles.ts`
 - [x] **The Blender kit** `Automation-cold-storage-assets.blend` → `dc-kit.glb`, build script saved
       beside it.
       → COLD-CHAIN §"The 3D view"
-- [ ] **`Distribution3D`** and its `MachineView` branch, panel and plant-workspace layouts.
+- [x] **`Distribution3D`** and its `MachineView` branch, panel and plant-workspace layouts.
       → COLD-CHAIN §"The 3D view"
-- [ ] **Tell the outside world.** FEATURE-MAP's content table and category ranges, `README.md`
+- [x] **Tell the outside world.** FEATURE-MAP's content table and category ranges, `README.md`
       and `site/index.html` counts. → FEATURE-MAP §"Puzzle content"
 
 ---

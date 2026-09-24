@@ -355,18 +355,19 @@
       <h1>Make the rung <span class="lit">remember</span></h1>
       <p class="lede">
         Program a <strong>Mitsubishi-style PLC</strong> on a grid editor, hit Run, and watch power
-        flood the rung while a real machine moves in 3D beside it. Fifty-three work orders take you
-        from one contact driving one coil to a PID loop holding a tank on setpoint, and on to a whole
+        flood the rung while a real machine moves in 3D beside it. Fifty-nine work orders take you
+        from one contact driving one coil to a PID loop holding a tank on setpoint, on to a whole
         excavator plant written in seven program sections, where the job is no longer to make a
-        machine work but to find out which of six stations is holding the line up.
+        machine work but to find out which of six stations is holding the line up, and finally to a
+        food distribution center whose forklifts you dispatch but never drive.
       </p>
       <div class="cta-row">
         <a class="btn btn-amber" href="#try">Build a rung now</a>
         <a class="btn btn-ghost" href="https://github.com/CuplexUser/AutomationSolver">View on GitHub</a>
       </div>
       <dl class="spec">
-        <div><dt>Work orders</dt><dd>53</dd></div>
-        <div><dt>Categories</dt><dd>12</dd></div>
+        <div><dt>Work orders</dt><dd>59</dd></div>
+        <div><dt>Categories</dt><dd>13</dd></div>
         <div><dt>Scan cycle</dt><dd>50 ms</dd></div>
       </dl>
     </div>
@@ -618,7 +619,7 @@
 <section id="orders">
   <div class="wrap">
     <p class="panel-label">Work orders</p>
-    <h2>Fifty-three jobs, twelve categories</h2>
+    <h2>Fifty-nine jobs, thirteen categories</h2>
     <p class="section-lede">
       Each category is its own ladder of difficulty, starting from something you can finish in a
       minute and ending in a capstone that combines everything in it.
@@ -636,6 +637,7 @@
       <div class="order"><span class="name">Motion Control</span><span class="count">4 jobs</span><span class="desc">Speed references, drive ramp parameters and the stopping distance a load implies.</span></div>
       <div class="order"><span class="name">Automated Warehouse</span><span class="count">6 jobs</span><span class="desc">Drive a stacker crane by position sensor, search the stock table for the nearest slot, and keep two lines fed.</span></div>
       <div class="order"><span class="name">Excavator Plant</span><span class="count">7 jobs</span><span class="desc">Not a machine but a line: seven program sections over one floor, ending in a capstone that hands over every station already working and asks you to make it earn more.</span></div>
+      <div class="order"><span class="name">Cold Chain Hub</span><span class="count">6 jobs</span><span class="desc">Automated forklifts you dispatch but never drive: track every pallet through QA, ripening rooms and FIFO and LIFO lanes, and ship the oldest lot first.</span></div>
     </div>
     <p class="lock-note">
       Scoring is 85 marks for scenarios passed plus 15 for performance, and the performance marks

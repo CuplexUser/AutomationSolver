@@ -1,10 +1,10 @@
 # ⚡ AutomationSolver
 
-**A puzzle game where the puzzle piece is ladder logic.** Program a Mitsubishi-style PLC on a grid editor, hit Run, and watch power flood the rung while a real machine moves in 3D beside it. Fifty-three work orders across twelve categories take you from a single contact driving a single coil to a PID loop holding a tank on setpoint, and on to a whole excavator plant written in seven program sections, where the job is no longer to make a machine work but to find out which of six stations is holding the line up.
+**A puzzle game where the puzzle piece is ladder logic.** Program a Mitsubishi-style PLC on a grid editor, hit Run, and watch power flood the rung while a real machine moves in 3D beside it. Fifty-nine work orders across thirteen categories take you from a single contact driving a single coil to a PID loop holding a tank on setpoint, on to a whole excavator plant written in seven program sections, where the job is no longer to make a machine work but to find out which of six stations is holding the line up, and finally to a food distribution center whose forklifts you never drive: you dispatch them, and keep track of every pallet yourself.
 
 [![TypeScript](https://badgen.net/badge/TypeScript/React%20%2B%20Express/3178c6)]()
 [![No native deps](https://badgen.net/badge/npm%20install/no%20C%2B%2B%20toolchain/2ea44f)]()
-[![Puzzles](https://badgen.net/badge/work%20orders/53%20across%2012%20categories/ffb020)]()
+[![Puzzles](https://badgen.net/badge/work%20orders/59%20across%2013%20categories/ffb020)]()
 
 [**Play the demo rung →**](https://cuplexuser.github.io/AutomationSolver/) · a real solver and grader running in the page, no install
 
@@ -100,6 +100,7 @@ Submitting runs every scenario the puzzle declares: a scripted input timeline wi
 | **Motion Control** (4) | Speed references, drive ramp parameters, and the stopping distance a loaded carriage implies. |
 | **Automated Warehouse** (6) | Drive a stacker crane by position sensor, search a WMS table for the nearest slot holding what was asked for, and keep two lines fed from one aisle. |
 | **Excavator Plant** (7) | Not a machine but a **line**, written in seven program sections across one 55 x 38 m floor: a weld fixture, a rack store, a portal robot, a spray booth and cure oven, a jig, a test bay and dock, and twelve zones of accumulating conveyor the player programs. Ends in a capstone that hands over every section already working and asks you to make it earn more. |
+| **Cold Chain Hub** (6) | A food distribution center run by automated forklifts the player never drives: post transport orders to a fleet manager, track every pallet through QA, ripening rooms, FIFO flow lanes and LIFO drive-in lanes with index registers and `SFWRP`/`SFRDP`/`POPP`, and ship the oldest lot first. Ends in a capstone that loads trucks last stop first and keeps three vehicles charged. |
 
 Categories unlock sequentially — each one's first puzzle is always open, and the rest gate on the previous solve. Enforced on the API, not just hidden in the UI.
 

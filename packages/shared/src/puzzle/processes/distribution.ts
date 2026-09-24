@@ -154,6 +154,20 @@ export const DC_LOCATIONS: readonly LocationDef[] = [
   { code: 62, name: 'OUT2', kind: 'dock-out', drop: 53_000, pick: -1, side: 'out' },
 ];
 
+/**
+ * The locations each section of the sectioned hub puzzles runs, keyed by the
+ * section's POU id (content/dc-sections.ts), so the scene can frame a section by
+ * the floor it owns. FLEET owns no location; it gets the vehicles' own corner,
+ * the parking bays and the charger.
+ */
+export const DC_SECTIONS: Readonly<Record<string, readonly number[]>> = {
+  RECEIVE: [1, 2, 10, 11],
+  RIPEN: [21, 22],
+  STORE: [31, 32, 33, 41, 42, 43],
+  SHIP: [61, 62],
+  FLEET: [70],
+};
+
 /** Each vehicle's own parking pocket, on the outside of the south leg. */
 export const DEPOT_STOPS: readonly number[] = [29_500, 31_000, 32_500];
 /** Most vehicles a puzzle can have. */
@@ -313,8 +327,13 @@ const num = (m: MachineState, k: string, d = 0): number => (typeof m[k] === 'num
 const str = (m: MachineState, k: string, d = ''): string => (typeof m[k] === 'string' ? (m[k] as string) : d);
 const bool = (m: MachineState, k: string): boolean => m[k] === true;
 
-const v = (i: number, key: string): string => `v${i}${key}`;
-const contentsKey = (code: number): string => `c${code}`;
+// State keys are built once and reused. The plant reads them several times a
+// sub-step, and a key built afresh each time is a new string to hash on every
+// lookup, which was a visible share of grading a three-vehicle plant.
+const V_KEYS: Record<string, string>[] = [];
+const C_KEYS: string[] = [];
+const v = (i: number, key: string): string => ((V_KEYS[i] ??= {})[key] ??= `v${i}${key}`);
+const contentsKey = (code: number): string => (C_KEYS[code] ??= `c${code}`);
 
 /** Codes this puzzle actually built, from `plantConfig.locs`. */
 export function builtLocations(m: MachineState): Set<number> {
@@ -1394,10 +1413,22 @@ function stocktake(m: MachineState): Record<string, number> {
   return regs;
 }
 
+/** The addresses a puzzle wired, built once per device list rather than once per scan. */
+const DECLARED = new WeakMap<readonly PuzzleDevice[], ReadonlySet<string>>();
+
+function declaredOf(devices: readonly PuzzleDevice[]): ReadonlySet<string> {
+  let set = DECLARED.get(devices);
+  if (!set) {
+    set = new Set(devices.map((d) => d.address));
+    DECLARED.set(devices, set);
+  }
+  return set;
+}
+
 function step(ctx: ProcessStepCtx): ProcessResult {
   const m: MachineState = { ...ctx.machine };
   settle(m);
-  const declared = new Set(ctx.devices.map((d) => d.address));
+  const declared = declaredOf(ctx.devices);
 
   if (ctx.dtMs === 0) {
     const { bits, regs } = sensors(m, declared);

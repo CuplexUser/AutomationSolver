@@ -22,9 +22,14 @@ export function protectedRegisters(spec: LadderPuzzleSpec): ReadonlySet<string> 
  * same reason `runnableProject` exists: two places constructing an engine
  * slightly differently is how the client and the server stop agreeing.
  */
-export function engineFor(spec: LadderPuzzleSpec, program: ProgramDoc): SimEngine {
+export function engineFor(
+  spec: LadderPuzzleSpec,
+  program: ProgramDoc,
+  opts: { rungDetail?: boolean } = {},
+): SimEngine {
   return new SimEngine(runnableProject(spec, program), {
     protectedRegisters: protectedRegisters(spec),
+    rungDetail: opts.rungDetail,
   });
 }
 

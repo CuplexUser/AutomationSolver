@@ -147,7 +147,8 @@ function simulateScenario(
   // with the puzzle, and every name in both is resolved to an address before the
   // engine sees it. Doing that here (rather than at the route) is what keeps the
   // client's live run and the server's grade the same run.
-  const engine = engineFor(spec, program);
+  // A grade that records no trace never reads the rungs' highlighting detail.
+  const engine = engineFor(spec, program, { rungDetail: samples !== undefined });
   engine.reset();
   const process = getProcess(spec.processId);
   let machine: MachineState = { ...plantAtStart(spec, process), ...scenario.initialMachine };
