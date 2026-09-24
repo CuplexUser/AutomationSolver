@@ -301,15 +301,49 @@ solution and at least one plausible wrong answer in `grade.test.ts`.
 
 ## The 3D view
 
-A Blender **kit**, not a whole-hall model: `D:\Code\Claude\Design\DcKit.blend` exports
-`packages/client/public/models/dc-kit.glb` (Draco, applied transforms) holding one named root per
-asset — `AGV` (with `AgvForks`, a lidar, a mast and its own `AgvBeacon` material), `FlowLane`,
-`DriveInLane`, `RipeningRoom` (`RoomDoor`), `Wrapper` (`Turntable`, `WrapArm`), `QaArch`,
-`DockDoor` (`DockShutter`), `Charger`, `Pallet` and one `Load_*` per product. The scene places
-clones from `DC_LAYOUT`, so a layout change is a code change and never a trip back to Blender.
+A Blender **kit**, not a whole-hall model: `D:\Code\Blender\Automation-cold-storage-assets.blend`
+exports `packages/client/public/models/dc-kit.glb` (Draco, modifiers applied, about 300 KB). The
+blend is a build product: `Automation-cold-storage-assets.build.py` beside it deletes everything
+and builds the kit from nothing, and a `README` text inside the blend repeats its conventions.
+The scene places clones from the plant's own geometry, so a layout change is a code change and
+never a trip back to Blender.
 
-- The build script is saved beside the blend (`DcKit.build.py`). No script survives for any of
-  the earlier GLBs, which is what makes them hard to regenerate.
+**The roots**, one per asset, each cloned by name:
+
+| Root | What the client drives |
+|---|---|
+| `AGV` | `AgvForks` (the lift, in Z), `AgvPalletAnchor` (parent a carried pallet here), `AgvBeacon` |
+| `Pallet`, `Load_Bananas`, `Load_BananasGreen`, `Load_Avocados`, `Load_AvocadosGreen`, `Load_Tomatoes`, `Load_Potatoes`, `LoadWrap`, `LoadLabel` | All share the pallet's origin, so a stack is one transform. The green loads are the unripe fruit; `LoadLabelStripe` takes the dock's color |
+| `FlowLane` | `FlowLaneSlot0`–`3` (0 is the pick end), `FlowLaneLoad` (where a dropped pallet lands before it rolls) |
+| `DriveInLane` | `DriveInSlot0`–`3` (0 is the deepest) |
+| `RipeningRoom` | `RoomSlot0`–`3` (0 at the back), `RoomDoor` (scale Z: 1 shut), `RoomRoof` (hide to see in), `RoomLamp` |
+| `QaStation` | `QaSlot`, `QaLampPass`, `QaLampBusy`, `QaLampFail` |
+| `QuarantineCage` | `QuarantineSlot0`–`3` |
+| `DockIn` | `DockInSlot0`–`2` (0 is picked first), `DockInShutter` |
+| `DockOut` | `DockOutShutter`, `DockOutLampRed`, `DockOutLampGreen` |
+| `Truck` | `TruckSlot0`–`5` (0 at the front of the body) |
+| `Wrapper` | `WrapZone0`–`5`, `WrapTurntable` (spin), `WrapCarriage` (Z), `LabelerPad`, `LabelerLamp` |
+| `Charger` | `ChargerLamp` |
+| `Column`, `WallPanel` | Repeated round the hall |
+
+**Conventions**, which the build script's docstring states and the client relies on:
+
+- Meters, Blender Z up. The exporter turns Blender (x, y, z) into three's (x, z, -y), checked by
+  parsing the GLB: `TruckSlot0` at Blender (0, 6.55, 1.2) arrives at (0, 1.2, -6.55).
+- A station's origin is the middle of its front edge at floor level, the face a vehicle comes in
+  from, and the station runs away from it along Blender +Y (three -Z). A lane is 1.4 m wide on
+  the plant's 1.5 m pitch, and slots are 0.9 m apart.
+- A pallet is 1.2 m along X and 0.8 m along Y, and stands that way in every slot: parent it to
+  the slot with an identity transform. The AGV carries it 0.8 m along its forks, which is why
+  `AgvPalletAnchor` is a quarter turn.
+- The AGV is 1.55 m long, forks forward along +X, origin in the middle of its footprint.
+- Every lamp lens has its own material, dark until the client lights it, the way the earlier
+  scenes drive their stack lights through `emissive`.
+- A root's rest position in the file is only there so the kit can be looked at; the client sets
+  every transform.
+
+Wider decisions:
+
 - The model URL is base-relative (`import.meta.env.BASE_URL`), per the deployment rule. The older
   scenes' `'/models/...'` is not the pattern to copy.
 - Pallets are drawn from the plant's **true** identity, so when a player's tables are wrong the

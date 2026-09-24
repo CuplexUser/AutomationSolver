@@ -357,7 +357,8 @@ and gets what each step measures.
       (two shifts, five sections, three vehicles), on the request thread. Most of it is
       `evaluateRung` rebuilding each rung's union-find every scan; caching a rung's topology, or
       grading in a worker, would each fix it. → COLD-CHAIN §"What was measured"; `sim/rungSolver.ts`
-- [ ] **The Blender kit** `DcKit.blend` → `dc-kit.glb`, build script saved beside it.
+- [x] **The Blender kit** `Automation-cold-storage-assets.blend` → `dc-kit.glb`, build script saved
+      beside it.
       → COLD-CHAIN §"The 3D view"
 - [ ] **`Distribution3D`** and its `MachineView` branch, panel and plant-workspace layouts.
       → COLD-CHAIN §"The 3D view"
