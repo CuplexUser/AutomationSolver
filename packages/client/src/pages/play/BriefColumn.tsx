@@ -209,6 +209,28 @@ function parseBriefingBody(lines: string[]): BriefingBody | undefined {
   return { type: 'p', text: lines.join(' ').replace(/\s+/g, ' ').trim() };
 }
 
+/**
+ * Keep ladder notation whole when the text wraps.
+ *
+ * A narrow panel otherwise breaks "MOV K1 D0" after the K1, or leaves "NC" at
+ * the end of one line and its X7 at the start of the next, and an instruction
+ * split in two reads as two. Each mnemonic is glued to its operands (and "Row
+ * 2:" to its number) with no-break spaces, so the line breaks between
+ * instructions instead of inside one.
+ */
+const INSTRUCTION =
+  /\b(?:NO|NC|OUT|SET|RST|MOV|PLS|PLF|INC|DEC|ADD|SUB|MUL|DIV|CMP|ZRST|SFWR|SFRD|POP|LDP|LDI|LD|ANI|AND|ORI|OR|rising|falling)(?: (?:K=?-?\d+|[XYMTCDZS]\d+))+/g;
+const NUMBERED = /\b(?:Rung|Row|Step|step|row|rung) \d+\b/g;
+function keepTogether(text: string): string {
+  const glue = (m: string) => m.replaceAll(' ', ' ');
+  return text.replace(INSTRUCTION, glue).replace(NUMBERED, glue);
+}
+
+/** A hint that walks a rung row by row starts each row on its own line. */
+function hintText(text: string): string {
+  return keepTogether(text.replace(/\. (?=Row \d+:)/g, '.\n'));
+}
+
 function Briefing({ text }: { text: string }) {
   const blocks = parseBriefingBlocks(text);
   return (
@@ -224,12 +246,12 @@ function Briefing({ text }: { text: string }) {
 }
 
 function BriefingBodyView({ body }: { body: BriefingBody }) {
-  if (body.type === 'p') return <p>{body.text}</p>;
+  if (body.type === 'p') return <p>{keepTogether(body.text)}</p>;
   if (body.type === 'ul')
     return (
       <ul>
         {body.items.map((item, i) => (
-          <li key={i}>{item}</li>
+          <li key={i}>{keepTogether(item)}</li>
         ))}
       </ul>
     );
@@ -237,11 +259,11 @@ function BriefingBodyView({ body }: { body: BriefingBody }) {
     <ol>
       {body.items.map((item, i) => (
         <li key={i}>
-          {item.text}
+          {keepTogether(item.text)}
           {item.sub.length > 0 && (
             <ol type="a">
               {item.sub.map((s, j) => (
-                <li key={j}>{s}</li>
+                <li key={j}>{keepTogether(s)}</li>
               ))}
             </ol>
           )}
@@ -378,7 +400,7 @@ function HintsPanel({ slug, hints }: { slug: string; hints: string[] }) {
       {revealed > 0 && (
         <ul>
           {hints.slice(0, revealed).map((h, i) => (
-            <li key={i}>{h}</li>
+            <li key={i}>{hintText(h)}</li>
           ))}
         </ul>
       )}

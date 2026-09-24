@@ -34,6 +34,11 @@ export function SlotsPanel({
   const { data: settingsData } = useSettings();
   const { user } = useAuth();
   const importExportEnabled = settingsData?.settings.enableImportExport === true;
+  // Dev builds only: `import.meta.env.DEV` is a compile-time false in production,
+  // so the button and the dynamic import of the answers both drop out of the bundle.
+  const canonicalEnabled =
+    import.meta.env.DEV && spec.kind === 'ladder' && settingsData?.settings.devUnlockAll === true;
+  const [canonicalError, setCanonicalError] = useState<string | null>(null);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [importError, setImportError] = useState<string | null>(null);
@@ -64,6 +69,24 @@ export function SlotsPanel({
       {
         onSuccess: (slot) => onSelect(slot.id),
         onError: () => setImportError('That file was rejected as an invalid program.'),
+      },
+    );
+  };
+
+  const loadCanonical = async () => {
+    if (spec.kind !== 'ladder') return;
+    setCanonicalError(null);
+    const { canonicalSolution } = await import('@automationsolver/shared/solutions');
+    const solution = canonicalSolution(spec);
+    if (!solution) {
+      setCanonicalError('No canonical solution is recorded for this puzzle.');
+      return;
+    }
+    createSlot.mutate(
+      { program: solution, name: 'Canonical solution' },
+      {
+        onSuccess: (slot) => onSelect(slot.id),
+        onError: () => setCanonicalError('The canonical solution was rejected as an invalid program.'),
       },
     );
   };
@@ -157,6 +180,19 @@ export function SlotsPanel({
           + New slot from current program
         </button>
       </div>
+      {canonicalEnabled && (
+        <div className="slots-import-export">
+          <button
+            className="btn btn-ghost full"
+            disabled={createSlot.isPending}
+            onClick={() => void loadCanonical()}
+            title="Developer mode: load the reference answer into a new slot"
+          >
+            Load canonical solution
+          </button>
+          {canonicalError && <p className="auth-error sm">{canonicalError}</p>}
+        </div>
+      )}
       {importExportEnabled && (
         <div className="slots-import-export">
           <button className="btn btn-ghost full" onClick={() => void exportCurrent()}>

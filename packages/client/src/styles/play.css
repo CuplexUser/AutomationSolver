@@ -91,6 +91,13 @@
 .briefing li {
   margin-bottom: 8px;
 }
+/* Balance the last lines of a paragraph instead of leaving one word hanging;
+   ladder notation is kept whole by keepTogether() in BriefColumn. */
+.briefing p,
+.briefing li,
+.hints li {
+  text-wrap: pretty;
+}
 .briefing li:last-child {
   margin-bottom: 0;
 }
@@ -148,6 +155,7 @@
    hints carry no newlines, so this changes nothing for them. */
 .hints li {
   white-space: pre-line;
+  margin-bottom: 6px;
 }
 .hint-reveal {
   margin-top: 10px;

@@ -128,10 +128,13 @@ export const dcDispatch: PuzzleSpec = {
     'Rung 2: NO X3, NC M0, NC M10, NC M11, SET M10.',
     'Rung 3, three rows. Row 1: NO M10, MOV K1 D0, MOV K10 D1. Row 2: NO M11, NO X7, ' +
       'MOV K10 D0, MOV K61 D1. Row 3: NO M11, NC X7, MOV K10 D0, MOV K11 D1.',
-    'Rung 4: NO M10 with NO M11 in parallel below it, then NC X0, OUT Y0.',
+    'Rung 4: NO M10 with NO M11 in parallel below it, then NC X0, OUT Y0. X0 must be ' +
+      'normally closed: Y0 asks while there is no answer yet, and drops the moment X0 comes on. ' +
+      'With NO X0, Y0 waits for an answer to a question it never asks.',
     'Rung 5, two rows. Row 1: rising X0, NO M10, SET M0, RST M10. Row 2: rising X0, ' +
-      'NO M11, SET M1, RST M0, RST M11.',
-    'Rung 6: NC X5, RST M1.',
+      'NO M11, then three outputs: SET M1, RST M0, RST M11. Without RST M0, QA stays booked ' +
+      'after the first pallet and no second one is ever brought in.',
+    'Rung 6: NC X5, RST M1. Normally closed: the pickup is done when QA is empty, so X5 is off.',
   ],
   devices: [...DC_MAILBOX, ...DC_INBOUND_1, ...DC_QA],
   registers: [
