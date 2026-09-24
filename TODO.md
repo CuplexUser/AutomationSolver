@@ -394,6 +394,15 @@ and gets what each step measures.
 - [x] **57 `dc-ripening`**, the first sectioned one. → COLD-CHAIN §"The puzzles"
 - [x] **58 `dc-drive-in`.** → COLD-CHAIN §"The puzzles"
 - [x] **59 `dc-hub`**, the capstone, `parMs`-graded. → COLD-CHAIN §"The puzzles"
+- [ ] **Clear briefings and hints for 56 to 59.** Raised from play: the order of operations was
+      obvious from the replay, but how to build it from the PLC instructions and I/O was not.
+      54 and 55 now show the pattern. They build on the reference solution without changing the
+      plant or scenarios, and the brief has a "Your relays" section naming every relay the
+      solution uses. The Sequence of operation gives each step's exact contacts and coils, and
+      table or queue work is written as ordered instruction recipes. The hints give an overview
+      first, then each rung exactly, then the common mistakes. Every relay is listed under
+      Working Registers.
+      → `content/54-dc-dispatch.ts`, `content/55-dc-label.ts` as the worked examples
 - [ ] **Grade the capstone without holding the server up.** `dc-hub` still takes about 3.4 s to
       grade on the request thread (4.7 s at first, 2.4 s on the old loop; the engine and plant
       work is done). Grading in a `worker_threads` worker would stop the thread blocking, but the
