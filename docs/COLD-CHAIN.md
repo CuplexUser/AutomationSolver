@@ -501,6 +501,13 @@ Wider decisions:
   floor where the camera sees them, the west wall's face is lit and the north wall's is not.
   Ambient occlusion (`ao={{ radius: 1.2 }}`, meters) darkens where pallets, racks and walls
   meet the floor; it follows the player's "Realistic 3D rendering" setting, on by default.
+- **A fly-in shows where the category ends.** The first time a player opens the view, the camera
+  tours the whole hub running on the solved capstone (goods in, the ripening rooms, the fleet,
+  storage, a full trailer pulling out) and settles on their puzzle. The run is recorded, not
+  staged: `scripts/record-dc-intro.ts` traces the capstone's canonical sections and keeps 48-84 s
+  of the first scenario, the stretch where every vehicle is busy and OUT1's truck leaves full at
+  69.9 s and the next is backed in by 75.9 s. Re-record it when the plant or the capstone
+  changes; FEATURE-MAP §5 (`Distribution3D.tsx`) has the mechanics.
 - **Two roofs come off.** A closed room hides its batch, and a closed trailer hides the load
   order the capstone is about. The kit keeps both roofs as their own nodes (`RoomRoof`,
   `TruckRoof`) and the scene hides them.

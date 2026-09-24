@@ -935,7 +935,27 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     drawn from the plant's *true* tokens; the room and truck roofs are lifted off so a batch and
     a trailer's load order can be read. `plant.test.ts` rebuilds the GLB's node tree from its JSON chunk
     (no decoder, no GPU) and poses a real state against it, which is how a renamed slot or a
-    pallet on the wrong anchor fails a test instead of a demo. The model URL is base-relative.
+    pallet on the wrong anchor fails a test instead of a demo (`testKit.ts` holds that tree for
+    every test in the folder). The model URL is base-relative.
+    It is the one scene that renders **on demand** (`MachineCanvas`'s `frameloop="demand"`): the
+    plant is a pure function of `machine`, so a frame is drawn only for a new scan, a camera move
+    or a running flight, and an idle view costs nothing while the player edits. Anything that
+    animates in it has to keep calling `invalidate()`, and clamp its `dt`, since the first frame
+    after an idle spell carries the whole spell. The hall's paint, walls and columns are baked
+    into one mesh per material at build (`mergeByMaterial`), which took about half the draw
+    calls off each of the frame's three passes (shadow map, AO normals, image).
+    **The fly-in** (`distribution/intro.ts`, `IntroDirector.tsx`, `IntroOverlay.tsx`) plays the
+    first time a viewer opens the view (a `localStorage` flag; never on its own under
+    `prefers-reduced-motion`) and replays from a button: a 19.5 s camera path over the whole hub,
+    running. What runs is real: `public/intro/dc-hub-shift.json` is 36 s of the capstone solved
+    by its canonical sections, recorded by `scripts/record-dc-intro.ts` through
+    `traceScenario`, delta-encoded, and replayed at 1.5x through the scene's own `pose`, which
+    takes a `blend` so vehicles glide between scans. The camera runs centripetal Catmull-Rom
+    curves through the shots and ends on the pose `SectionCamera` would fly to (`focusPose`),
+    which is held while the intro owns the camera; a fade through black hides the swap from the
+    showcase hub to the puzzle's own. `intro.test.ts` pins the recording to the shots: OUT1's
+    trailer must pull away while the outbound caption is up, so re-record whenever the plant,
+    the capstone or its sections change, and move the window and the shots together.
 - **Resizable workspace** (`features/layout/Resizable.tsx`) — the play view is a full-height
   three-column workbench. The brief and operator panels are drag-resizable (widths persisted to
   `localStorage`, arrow keys when the divider is focused, double-click to collapse) and

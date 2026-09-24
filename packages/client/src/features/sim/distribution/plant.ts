@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import {
   DEPOT_BAYS,
   DOOR_MS,
@@ -109,6 +110,56 @@ function light(l: Lamp | undefined, color: string | null): void {
   l.mat.emissiveIntensity = color ? 1.3 : 0.15;
 }
 
+// --- static batching ---------------------------------------------------------------------
+
+/**
+ * Bakes meshes that never move into one mesh per material.
+ *
+ * The hall's paint, walls and columns were two hundred of the scene's four
+ * hundred draw calls, and every frame draws the scene three times (the shadow
+ * map, the occlusion pass's normals and the image itself). None of it moves, so
+ * each material's pieces are transformed into place once and drawn as one.
+ * `parts` must not be parented yet: their own transforms are the placement.
+ */
+function mergeByMaterial(parts: THREE.Object3D[], cast: boolean): THREE.Object3D[] {
+  const buckets = new Map<THREE.Material, { geo: THREE.BufferGeometry; src: THREE.Mesh }[]>();
+  for (const part of parts) {
+    part.updateMatrixWorld(true);
+    part.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh || !mesh.visible || Array.isArray(mesh.material)) return;
+      const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+      const list = buckets.get(mesh.material) ?? [];
+      list.push({ geo, src: mesh });
+      buckets.set(mesh.material, list);
+    });
+  }
+  const out: THREE.Object3D[] = [];
+  for (const [material, items] of buckets) {
+    // Only the attributes every piece has, all indexed or none, or the merge refuses.
+    const names = Object.keys(items[0].geo.attributes).filter((n) => items.every((i) => i.geo.getAttribute(n)));
+    const indexed = items.every((i) => i.geo.index);
+    const geos = items.map(({ geo }) => {
+      const g = indexed || !geo.index ? geo : geo.toNonIndexed();
+      for (const n of Object.keys(g.attributes)) if (!names.includes(n)) g.deleteAttribute(n);
+      return g;
+    });
+    const merged = geos.length > 1 ? mergeGeometries(geos) : geos[0];
+    if (merged && geos.length > 1) for (const g of geos) g.dispose();
+    // Already in place, so a bucket that would not merge is drawn piece by piece.
+    for (const geo of merged ? [merged] : geos) {
+      const mesh = new THREE.Mesh(geo, material);
+      mesh.castShadow = cast;
+      mesh.receiveShadow = true;
+      mesh.userData.own = true;
+      out.push(mesh);
+    }
+    // The plant's own source pieces are spent; the kit's are shared with the cached model.
+    for (const { src } of items) if (src.userData.own) src.geometry.dispose();
+  }
+  return out;
+}
+
 // --- floor paint ------------------------------------------------------------------------
 
 /**
@@ -190,10 +241,13 @@ function buildFloor(group: THREE.Group, stations: StationDef[], owned: THREE.Mat
   const bayLine = paint(FLOOR.bay, LAYER.line, 0.5);
   owned.push(slab, yard, aisle, edge, dash, arrow, apronMat, bayLine);
 
+  // Every flat piece of paint, merged per material at the end; the plates keep
+  // their own meshes, since each carries its own painted texture.
+  const flat: THREE.Object3D[] = [];
   const [hx0, hx1] = HALL.x;
   const [hz0, hz1] = HALL.z;
-  group.add(floorRect({ x: (hx0 + hx1) / 2, z: (hz0 + hz1) / 2, w: hx1 - hx0, d: hz1 - hz0 }, slab, 0));
-  group.add(
+  flat.push(floorRect({ x: (hx0 + hx1) / 2, z: (hz0 + hz1) / 2, w: hx1 - hx0, d: hz1 - hz0 }, slab, 0));
+  flat.push(
     floorRect(
       { x: (YARD.x[0] + YARD.x[1]) / 2, z: (YARD.z[0] + YARD.z[1]) / 2, w: YARD.x[1] - YARD.x[0], d: YARD.z[1] - YARD.z[0] },
       yard,
@@ -201,10 +255,10 @@ function buildFloor(group: THREE.Group, stations: StationDef[], owned: THREE.Mat
     ),
   );
 
-  for (const r of aisleSurfaces()) group.add(floorRect(r, aisle, LAYER.aisle));
+  for (const r of aisleSurfaces()) flat.push(floorRect(r, aisle, LAYER.aisle));
   const lines = aisleLines();
-  for (const r of lines.edges) group.add(floorRect(r, edge, LAYER.line));
-  for (const r of lines.dashes) group.add(floorRect(r, dash, LAYER.line));
+  for (const r of lines.edges) flat.push(floorRect(r, edge, LAYER.line));
+  for (const r of lines.dashes) flat.push(floorRect(r, dash, LAYER.line));
 
   const shape = new THREE.Shape();
   shape.moveTo(0.32, 0);
@@ -219,14 +273,13 @@ function buildFloor(group: THREE.Group, stations: StationDef[], owned: THREE.Mat
     // Plan headings turn toward +z (south); a shape's +x turned by -heading about the floor's normal.
     mesh.rotation.z = -a.heading;
     mesh.position.set(a.x, LAYER.line, a.z);
-    mesh.userData.own = true;
-    group.add(mesh);
+    flat.push(mesh);
   }
 
   // Aprons, and each location's code painted on its own.
   for (const b of stationBays(stations)) {
     const a = apron(b.bay, b.width - 0.1, b.depth);
-    group.add(floorRect(a.rect, apronMat, LAYER.apron));
+    flat.push(floorRect(a.rect, apronMat, LAYER.apron));
     // Codes read along x. An apron too narrow that way (a bay off a north-south
     // aisle) gets its code on the floor just beyond the station instead.
     const fits = a.rect.w >= 1.0;
@@ -253,12 +306,14 @@ function buildFloor(group: THREE.Group, stations: StationDef[], owned: THREE.Mat
           { x: f.x + bw / 2, z: f.z, w: 0.06, d: bd },
           { x: f.x, z: f.z + (f.dir[1] * bd) / 2, w: bw, d: 0.06 },
         ];
-    for (const r of sides) group.add(floorRect(r, bayLine, LAYER.line));
+    for (const r of sides) flat.push(floorRect(r, bayLine, LAYER.line));
     const tag = bayFrameAt(bay, BAY_M + 1.55);
     const plate = floorPlate(DEPOT_NAMES[i], 0.8, owned);
     plate.position.set(tag.x, LAYER.plate, tag.z);
     group.add(plate);
   });
+  for (const m of mergeByMaterial(flat, false)) group.add(m);
+  chevron.dispose();
 }
 
 // --- pallets ------------------------------------------------------------------------
@@ -405,7 +460,11 @@ interface Vehicle {
 export interface HubPlant {
   group: THREE.Group;
   stations: StationDef[];
-  pose: (m: MachineState, dt: number) => void;
+  /**
+   * Draws `m`. With `blend`, the vehicles are drawn `f` of the way toward where
+   * they are in `next`, so a replay played faster than the scan rate still glides.
+   */
+  pose: (m: MachineState, dt: number, blend?: { next: MachineState; f: number }) => void;
   dispose: () => void;
 }
 
@@ -421,12 +480,13 @@ const PATH_POINTS = 256;
  * floor can be seen; columns along the walls say the hall carries on.
  */
 function buildWalls(group: THREE.Group, kit: THREE.Object3D, stations: StationDef[]): void {
+  const parts: THREE.Object3D[] = [];
   const panel = (at: [number, number], yaw: number, width: number) => {
     const p = cloneRoot(kit, 'WallPanel');
     p.scale.set(width / 3, WALL_H / 7, 1);
     p.position.set(at[0], 0, at[1]);
     p.rotation.y = yaw;
-    group.add(p);
+    parts.push(p);
   };
   const run = (from: number, to: number, openings: [number, number][], place: (mid: number, w: number) => void) => {
     for (const [a, b] of wallSegments(from, to, openings)) {
@@ -448,13 +508,14 @@ function buildWalls(group: THREE.Group, kit: THREE.Object3D, stations: StationDe
   for (let x = NORTH_STEP_X + 3; x <= HALL.x[1]; x += 6) {
     const c = cloneRoot(kit, 'Column');
     c.position.set(x, 0, NORTH_BACK_Z + 0.3);
-    group.add(c);
+    parts.push(c);
   }
   for (let z = 12; z <= HALL.z[1]; z += 6) {
     const c = cloneRoot(kit, 'Column');
     c.position.set(WEST_WALL_X + 0.3, 0, z);
-    group.add(c);
+    parts.push(c);
   }
+  for (const m of mergeByMaterial(parts, true)) group.add(m);
 }
 
 function buildStation(kit: THREE.Object3D, def: StationDef, group: THREE.Group): Station {
@@ -568,8 +629,9 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
   const pool = new PalletPool(kit);
   let flash = 0;
 
-  const pose = (m: MachineState, dt: number) => {
-    flash = (flash + dt) % 0.8;
+  const pose = (m: MachineState, dt: number, blend?: { next: MachineState; f: number }) => {
+    // Clamped, for the same reason as the camera's: a frame after an idle spell.
+    flash = (flash + Math.min(dt, 0.1)) % 0.8;
     const blink = flash < 0.4;
     pool.begin();
 
@@ -578,9 +640,21 @@ export function buildHubPlant(kit: THREE.Object3D, locs: string, fleet: number):
       v.root.visible = p.visible;
       v.path.visible = p.visible;
       if (!p.visible) return;
-      v.root.position.set(p.x, 0, p.z);
-      v.root.rotation.y = p.yaw;
-      if (v.forks) v.forks.position.y = p.lift;
+      let { x, z, yaw, lift } = p;
+      if (blend && blend.f > 0) {
+        const q = vehiclePose(blend.next, i);
+        // Only a glide within one scan's travel; a jump (a vehicle appearing) stays a jump.
+        if (q.visible && Math.hypot(q.x - x, q.z - z) < 0.5) {
+          const f = blend.f;
+          x += (q.x - x) * f;
+          z += (q.z - z) * f;
+          lift += (q.lift - lift) * f;
+          yaw += Math.atan2(Math.sin(q.yaw - yaw), Math.cos(q.yaw - yaw)) * f;
+        }
+      }
+      v.root.position.set(x, 0, z);
+      v.root.rotation.y = yaw;
+      if (v.forks) v.forks.position.y = lift;
       light(
         v.beacon,
         p.mode === 'charging' ? '#3b82f6' : p.mode === 'stuck' ? (blink ? '#ef4444' : null) : p.mode === 'moving' && blink ? '#f59e0b' : null,

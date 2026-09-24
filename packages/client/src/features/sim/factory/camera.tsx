@@ -63,6 +63,25 @@ export const SECTION_FOCUS: Record<string, Focus> = {
 const FLY_MS = 750;
 
 /**
+ * The camera pose that frames `focus` in a `width` x `height` viewport: its
+ * target, and a position back along `focus.dir` just far enough to hold it all.
+ */
+export function focusPose(
+  camera: THREE.Camera,
+  focus: Focus,
+  width: number,
+  height: number,
+): { target: THREE.Vector3; position: THREE.Vector3 } {
+  const fov = (camera as THREE.PerspectiveCamera).fov ?? 35;
+  const vTan = Math.tan((fov * Math.PI) / 360);
+  const hTan = vTan * (width / height || 1.6);
+  const dist = Math.max(focus.halfWidth / hTan, focus.halfHeight / vTan);
+  const target = new THREE.Vector3(...focus.center);
+  const dir = new THREE.Vector3(...focus.dir).normalize();
+  return { target, position: target.clone().addScaledVector(dir, dist) };
+}
+
+/**
  * Flies the camera to the focused bay.
  *
  * Distance is derived from the live viewport rather than baked into a position,
@@ -71,8 +90,9 @@ const FLY_MS = 750;
  * design. `MachineCanvas` is given no `fitExtent` here so that this is the only
  * thing touching the camera — two authorities would fight on every resize.
  */
-export function SectionCamera({ focus }: { focus: Focus }) {
+export function SectionCamera({ focus, hold = false }: { focus: Focus; hold?: boolean }) {
   const camera = useThree((s) => s.camera);
+  const invalidate = useThree((s) => s.invalidate);
   const controls = useThree((s) => s.controls) as
     | { target: THREE.Vector3; update: () => void }
     | null;
@@ -87,32 +107,31 @@ export function SectionCamera({ focus }: { focus: Focus }) {
     toTgt: new THREE.Vector3(),
   });
 
-  const goal = useMemo(() => {
-    const cam = camera as THREE.PerspectiveCamera;
-    const vTan = Math.tan((cam.fov * Math.PI) / 360);
-    const hTan = vTan * (width / height || 1.6);
-    const dist = Math.max(focus.halfWidth / hTan, focus.halfHeight / vTan);
-    const target = new THREE.Vector3(...focus.center);
-    const dir = new THREE.Vector3(...focus.dir).normalize();
-    return { target, position: target.clone().addScaledVector(dir, dist) };
-  }, [camera, focus, width, height]);
+  const goal = useMemo(() => focusPose(camera, focus, width, height), [camera, focus, width, height]);
 
   // Retargeting from wherever the camera currently is, rather than from a fixed
   // start, is what lets this re-run harmlessly: `controls` resolves a frame
   // after mount, and the repeat is then a fly from here to the same place.
+  // `hold` hands the camera to someone else (the Cold Chain fly-in); letting go
+  // re-runs this, so the flight starts from wherever they left it.
   useEffect(() => {
+    if (hold) return;
     const a = anim.current;
     a.fromPos.copy(camera.position);
     a.fromTgt.copy(controls?.target ?? new THREE.Vector3(...PLANT_TARGET));
     a.toPos.copy(goal.position);
     a.toTgt.copy(goal.target);
     a.t = 0;
-  }, [goal, camera, controls]);
+    // A scene that renders on demand draws nothing until asked.
+    invalidate();
+  }, [goal, camera, controls, hold, invalidate]);
 
-  useFrame((_state, dt) => {
+  useFrame((state, dt) => {
     const a = anim.current;
-    if (a.t >= 1) return;
-    a.t = Math.min(1, a.t + (dt * 1000) / FLY_MS);
+    if (hold || a.t >= 1) return;
+    // Clamped: in a scene that renders on demand, the first frame after an idle
+    // spell carries the whole spell as its dt, and the flight would be skipped.
+    a.t = Math.min(1, a.t + (Math.min(dt, 0.05) * 1000) / FLY_MS);
     // Smoothstep, so the move eases out of the old frame and into the new one
     // instead of jerking to a halt on arrival.
     const e = a.t * a.t * (3 - 2 * a.t);
@@ -122,6 +141,7 @@ export function SectionCamera({ focus }: { focus: Focus }) {
     } else {
       camera.lookAt(a.toTgt);
     }
+    if (a.t < 1) state.invalidate();
   });
 
   return null;

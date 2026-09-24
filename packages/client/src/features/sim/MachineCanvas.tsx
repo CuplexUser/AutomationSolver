@@ -40,6 +40,7 @@ export function enableShadows(root: THREE.Object3D) {
 function SceneEnvironment({ intensity }: { intensity: number }) {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
+  const invalidate = useThree((s) => s.invalidate);
   useEffect(() => {
     const pmrem = new THREE.PMREMGenerator(gl);
     const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -48,13 +49,15 @@ function SceneEnvironment({ intensity }: { intensity: number }) {
     // Kept low so the shadow-casting key light dominates and surfaces shade
     // directionally instead of being evenly washed by the environment.
     scene.environmentIntensity = intensity;
+    // A scene rendering on demand would otherwise not show it until something else moved.
+    invalidate();
     return () => {
       scene.environment = null;
       /* eslint-enable react-hooks/immutability */
       envTex.dispose();
       pmrem.dispose();
     };
-  }, [gl, scene, intensity]);
+  }, [gl, scene, intensity, invalidate]);
   return null;
 }
 
@@ -95,6 +98,7 @@ const AO_MAX_VIEW_SHARE = 0.045;
  */
 function AmbientOcclusion({ radius, intensity = 1 }: AoSettings) {
   const gl = useThree((s) => s.gl);
+  const invalidate = useThree((s) => s.invalidate);
   const scene = useThree((s) => s.scene);
   const camera = useThree((s) => s.camera);
   const width = useThree((s) => s.size.width);
@@ -117,7 +121,8 @@ function AmbientOcclusion({ radius, intensity = 1 }: AoSettings) {
     gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, rings: 2, samples: 8 });
     // eslint-disable-next-line react-hooks/immutability -- a three.js pass, not React state
     gtao.blendIntensity = intensity;
-  }, [gtao, intensity]);
+    invalidate();
+  }, [gtao, intensity, invalidate]);
 
   useEffect(() => {
     const ratio = gl.getPixelRatio();
@@ -125,9 +130,17 @@ function AmbientOcclusion({ radius, intensity = 1 }: AoSettings) {
     composer.setSize(width, height);
     // After the composer, which sizes every pass to the full canvas.
     gtao.setSize(Math.ceil((width * ratio) / 2), Math.ceil((height * ratio) / 2));
-  }, [composer, gtao, gl, width, height]);
+    invalidate();
+  }, [composer, gtao, gl, width, height, invalidate]);
 
-  useEffect(() => () => composer.dispose(), [composer]);
+  useEffect(
+    () => () => {
+      composer.dispose();
+      // Switched off: r3f's own render takes over, but only once asked to draw.
+      invalidate();
+    },
+    [composer, invalidate],
+  );
 
   const focus = useMemo(() => new THREE.Vector3(), []);
   useFrame((state, dt) => {
@@ -251,6 +264,8 @@ export function MachineCanvas({
   mood = 'workshop',
   background,
   ao,
+  frameloop = 'always',
+  overlay,
   children,
 }: {
   /** A CSS length: the single-machine panels want a fixed 300, the plant
@@ -296,6 +311,14 @@ export function MachineCanvas({
    * player's "Realistic 3D rendering" setting is on, which it is by default.
    */
   ao?: AoSettings;
+  /**
+   * `demand` draws a frame only when something asks (`invalidate()`): a scene
+   * that changes only when its machine does then costs nothing while idle. Every
+   * animation in such a scene has to keep asking while it runs.
+   */
+  frameloop?: 'always' | 'demand';
+  /** HTML laid over the canvas, inside its box (the Cold Chain fly-in's letterbox and captions). */
+  overlay?: ReactNode;
   children: ReactNode;
 }) {
   const look = MOODS[mood];
@@ -336,6 +359,7 @@ export function MachineCanvas({
         // r3f's default allows 2x; on a high-DPI screen that is four times the
         // pixels of 1x for every pass, and a big plant view cannot afford it.
         dpr={[1, 1.5]}
+        frameloop={frameloop}
         shadows
         // Khronos "PBR Neutral" tone mapping: compresses highlights without
         // the saturation push ACES gives strong albedos like the terracotta.
@@ -388,6 +412,7 @@ export function MachineCanvas({
         )}
       </Canvas>
       {hint && <span className="machine3d-hint">{hint}</span>}
+      {overlay}
     </div>
   );
 }

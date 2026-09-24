@@ -244,3 +244,250 @@
   flex: 1;
   min-height: 0;
 }
+
+/* --- The Cold Chain Hub fly-in -------------------------------------------------------------
+   A cutscene over the 3D view: letterbox bars, a title card, a caption per shot and fades
+   through black at both ends. Its colors are its own rather than the theme's, since it
+   always sits on the dark scene, and nothing in it is pure white. */
+.dc-intro {
+  --cine-black: #07090c;
+  --cine-ink: #e2e9f0;
+  --cine-dim: #a3b3c3;
+  --cine-accent: #ffb020;
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  cursor: pointer;
+  user-select: none;
+}
+/* A soft vignette while the camera flies: the eye stays in the middle of the frame. */
+.dc-intro::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(4, 6, 9, 0.5) 100%);
+  opacity: 0;
+  transition: opacity 1.2s ease;
+}
+.dc-intro--playing::after {
+  opacity: 1;
+}
+.dc-intro-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 11%;
+  z-index: 3;
+  background: var(--cine-black);
+  transition: transform 0.9s cubic-bezier(0.7, 0, 0.2, 1);
+}
+.dc-intro-bar--top {
+  top: 0;
+}
+.dc-intro-bar--bottom {
+  bottom: 0;
+}
+.dc-intro--reveal .dc-intro-bar--top {
+  transform: translateY(-100%);
+}
+.dc-intro--reveal .dc-intro-bar--bottom {
+  transform: translateY(100%);
+}
+.dc-intro-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 2px;
+  width: 0;
+  background: var(--cine-accent);
+  opacity: 0.8;
+  animation: dc-intro-progress linear forwards;
+}
+@keyframes dc-intro-progress {
+  to {
+    width: 100%;
+  }
+}
+.dc-intro-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: var(--cine-black);
+  opacity: 1;
+  transition: opacity 1.4s ease;
+}
+.dc-intro--playing .dc-intro-veil {
+  opacity: 0;
+}
+.dc-intro--out .dc-intro-veil {
+  opacity: 1;
+  transition-duration: 0.7s;
+}
+.dc-intro--reveal .dc-intro-veil {
+  opacity: 0;
+  transition-duration: 0.9s;
+}
+
+.dc-intro-title {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 16px;
+  text-align: center;
+  pointer-events: none;
+  animation: dc-intro-title 2.6s ease 0.35s both;
+}
+.dc-intro-title h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(20px, 4.4vw, 46px);
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--cine-ink);
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
+  animation: dc-intro-track 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
+}
+.dc-intro-title p {
+  margin: 0;
+  max-width: 40ch;
+  font-family: var(--font-body);
+  font-size: 13px;
+  color: var(--cine-dim);
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7);
+}
+.dc-intro-eyebrow,
+.dc-intro-index {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--cine-accent);
+}
+@keyframes dc-intro-title {
+  0% {
+    opacity: 0;
+    filter: blur(6px);
+  }
+  18%,
+  78% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 0;
+    filter: blur(3px);
+  }
+}
+/* The title's letters close up as it arrives, the way a film card tracks in. */
+@keyframes dc-intro-track {
+  from {
+    letter-spacing: 0.6em;
+  }
+  to {
+    letter-spacing: 0.2em;
+  }
+}
+
+.dc-intro-caption {
+  position: absolute;
+  left: 4%;
+  bottom: calc(11% + 16px);
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: calc(100% - 8%);
+  padding-left: 12px;
+  border-left: 2px solid var(--cine-accent);
+  pointer-events: none;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75);
+  animation: dc-intro-caption 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+.dc-intro-caption strong {
+  font-family: var(--font-display);
+  font-size: clamp(15px, 2.2vw, 22px);
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cine-ink);
+}
+.dc-intro-line {
+  font-family: var(--font-body);
+  font-size: 12px;
+  color: var(--cine-dim);
+}
+@keyframes dc-intro-caption {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+.dc-intro-skip {
+  position: absolute;
+  right: 14px;
+  bottom: 5.5%;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transform: translateY(50%);
+  padding: 3px 9px;
+  border: 1px solid rgba(226, 233, 240, 0.25);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--cine-dim);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dc-intro-skip:hover,
+.dc-intro-skip:focus-visible {
+  border-color: var(--cine-accent);
+  color: var(--cine-ink);
+}
+.dc-intro--out .dc-intro-skip,
+.dc-intro--reveal .dc-intro-skip {
+  opacity: 0;
+}
+
+/* Replays the fly-in; shown on hover, like the zoom controls. */
+.dc-intro-replay {
+  position: absolute;
+  left: 6px;
+  bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+.machine3d:hover .dc-intro-replay,
+.dc-intro-replay:focus-visible {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dc-intro-title,
+  .dc-intro-title h2,
+  .dc-intro-caption {
+    animation-duration: 0.01s;
+  }
+}
