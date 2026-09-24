@@ -33,11 +33,36 @@ function parseIndex(digit: string): string | null {
 }
 
 /**
+ * The engine reads every word operand on every scan, and parsing the same few
+ * strings with a regex each time was a fifth of a large project's grading time.
+ * The answer is a pure function of the string, so it is cached, frozen so no
+ * caller can change what the next one gets, and the cache is dropped whenever it
+ * grows past a bound, since a server sees every operand anybody ever types.
+ */
+const MEMO_LIMIT = 4096;
+const TARGETS = new Map<string, Exclude<ValueRef, { kind: 'K' }> | null>();
+const VALUES = new Map<string, ValueRef | null>();
+
+function memo<T extends object>(cache: Map<string, T | null>, operand: string, parse: (s: string) => T | null): T | null {
+  const hit = cache.get(operand);
+  if (hit !== undefined) return hit;
+  if (cache.size >= MEMO_LIMIT) cache.clear();
+  const ref = parse(operand);
+  const frozen = ref === null ? null : Object.freeze(ref);
+  cache.set(operand, frozen);
+  return frozen;
+}
+
+/**
  * Parse a place a value can be read from or written to: `D10`, `Z0` or
  * `D100Z0`. Everything `parseValueOperand` accepts except a constant, which is
  * what a destination or a queue head has to be.
  */
 export function parseWordTarget(operand: string): Exclude<ValueRef, { kind: 'K' }> | null {
+  return memo(TARGETS, operand, parseTarget);
+}
+
+function parseTarget(operand: string): Exclude<ValueRef, { kind: 'K' }> | null {
   const s = operand.trim().toUpperCase();
 
   const reg = REGISTER_RE.exec(s);
@@ -59,6 +84,10 @@ export function parseWordTarget(operand: string): Exclude<ValueRef, { kind: 'K' 
 
 /** Parse `"D10"` / `"Z0"` / `"D100Z0"` / `"K500"` / `"-20"`. Returns null if it is none. */
 export function parseValueOperand(operand: string): ValueRef | null {
+  return memo(VALUES, operand, parseValue);
+}
+
+function parseValue(operand: string): ValueRef | null {
   const s = operand.trim().toUpperCase();
   if (s === '') return null;
 

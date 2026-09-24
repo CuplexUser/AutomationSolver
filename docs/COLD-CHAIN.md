@@ -134,22 +134,25 @@ Lanes and rooms publish **count, full and empty**. Nothing past QA publishes ide
 The PLC's interface is a transport-order mailbox, a four-phase handshake like a real
 PLC-to-fleet-manager link:
 
-1. The program writes the source into `D20` and the destination into `D21`, and raises `REQ`.
+1. The program writes the source into `D0` and the destination into `D1`, and raises `Y0` (REQ).
 2. The manager accepts only while a vehicle is idle: it raises `ACK` and holds it until `REQ`
    drops, then drops `ACK`. `NAK` answers a malformed order (unknown code, source equals
    destination) and nothing else.
 3. The nearest idle vehicle takes the job (ties broken by vehicle index). The program learns the
    pallet has arrived from the destination's own count.
 
-`D20`/`D21` are declared as analog *output* devices, because the grader only hands the plant the
-registers of `analogDevices(spec)`.
+`D0`/`D1` (and `D3`, the shipping notice) are declared as analog *output* devices, because the
+grader only hands the plant the registers of `analogDevices(spec)`.
 
 **Logistics mistakes are judged when the vehicle gets there**, not when the order is posted,
 because that is when a real one finds out. An empty source is a fault. An occupied or full
 destination makes the vehicle **wait holding the pallet**; a wait longer than `STALL_MS` latches
 `stalled`. A correct program never gridlocks the plant.
 
-A charge order is `D20 = 0`, `D21 = 70`: the idle vehicle with the lowest battery goes.
+A charge order is `D0 = 0`, `D1 = 70`, and it names no vehicle: the one with the lowest battery goes,
+at once if it is idle or as soon as its current job is done, and the manager answers straight away
+either way, the way a real one queues a charge request. `X26` is on from then until that vehicle is
+full, and `D81`–`D83` are the batteries in percent.
 
 ### Kinematics
 
@@ -204,7 +207,10 @@ lot and the place.
   parks in a ripening room's doorway, where the door would close on it.
 - **The charger sits just downstream of the parking bays** (s = 53.5 m, the end of the west
   leg). It was first placed upstream of them, which on a one-way loop is a lap away: a vehicle
-  on 30% could not reach it. A full battery lasts about 300 m, five and a half laps.
+  on 30% could not reach it.
+- **A full battery lasts 1 km**, about eighteen laps (`BATTERY_MM_PER_UNIT` = 1000). It was first
+  300 m, which in the capstone meant a vehicle ran flat 80 s into the shift while another sat on
+  the one charger: charging was the whole job, and the flows were not.
 - **The mailbox runs every sub-step.** It first ran once per `step()`, so an order waiting on a
   busy fleet was accepted at the first step boundary after a vehicle freed up, which depends on
   `dt`. The sub-step invariance test caught it the day lingering made mid-step idling common.
@@ -227,7 +233,31 @@ lot and the place.
   Interleaving two products one pallet at a time left every ripening room closing on its quiet
   timer with a single pallet in it.
 - **Measured scenario lengths** (canonical programs): 54 about 110 s, 55 113 to 200 s, 56 70 to
-  143 s, 57 279 s, 58 231 s. Step budgets are about 1.5 times these.
+  143 s, 57 279 s, 58 231 s, 59 189 and 191 s. Step budgets are about 1.5 times these.
+- **An older lot already being fetched is leaving.** With two docks both wanting potatoes, the
+  order for lot 3 was accepted first and lot 4's second, and lot 4's vehicle, nearer its lane,
+  lifted first: the first-expired-first-out check faulted a program that had released them in
+  the right order. The check now counts the out-end pallets of any lane a vehicle is already on
+  its way to collect from for a dock as gone. It still fires on a newer lot shipped while an
+  older one sits unclaimed.
+- **Trucks need the whole order before the first pallet.** A truck's lines are fed as it docks,
+  and a program cannot tell the last line from a pause in the feed, so the plant publishes the
+  order's length (`D15`, `D16`): a dock's stack is complete when its count reaches it.
+- **The capstone's par is about charging late.** Measured over two shifts with the fleet starting
+  between 16% and 30%: sending a vehicle to charge below 15% finishes in 189 s and 191 s, below
+  18% to 70% takes 194 to 222 s, and below 10% or never runs one flat. Every charge fills the
+  battery, so an early one takes a vehicle off the floor for longer and sooner than it needs. The
+  draft lesson was *charge in the lulls*; with the batteries full enough to make that matter,
+  charging was not needed at all, and a dispatcher that never charged was the fastest.
+- **Dispatch priority did not earn a lesson.** Serving RIPEN and RECEIVE ahead of storage, and
+  choosing only while a vehicle is free (the shipped FLEET commits the mailbox to whoever asked
+  first), won 27 s in one shift and lost it in another as batteries changed. Swings of ±15% from
+  small policy changes are the loop's nature: which vehicle is nearest when an order lands
+  decides whether a banana reaches its room before the quiet timer. The capstone's briefing
+  claims only what held in every run.
+- **Grading cost.** `dc-hub` is the heaviest grade in the game, about 4.5 s for two shifts (the
+  excavator line takes 1.5 s). A profile put a fifth of it in re-parsing the same word operands
+  every scan, now cached in `value.ts`; most of the rest is the rung solver. There is a TODO box.
 
 ### The tutorial needs its bookings
 
@@ -262,7 +292,7 @@ use `symbols: 'optional'`.
 | 56 | `dc-flow-lanes` | single / 2 | `SFWRP`/`SFRDP` with indexed heads (`D200Z0`, `Z0` = lane x 10); FEFO by reading lane fronts; reservations; the ASN report | Two vehicles seeded so arrivals reorder against dispatches: enqueue at dispatch and the tables lie. Volumes spread a product across lanes |
 | 57 | `dc-ripening` | POUs / 2 | `POPP`: LIFO ripening rooms, batch purity, the door interlock, a timed cycle | Pallets leave a one-door room newest first, and each needs its identity for the ASN |
 | 58 | `dc-drive-in` | POUs / 2 | Smart put-away across FIFO *and* LIFO lanes, with lots from two suppliers arriving out of order | Push only onto the same product with a lot no older than the top; peek the top with `MOV D300 Z1`, `MOV D300Z1 D41` |
-| 59 | `dc-hub` (capstone) | POUs / 3 | Trailers loaded in reverse drop order (a `POP` stack of order lines), battery charging in the lulls, `parMs` | A trailer leaving short or out of sequence is a fault; par comes from the canonical solution so a naive program that passes scores visibly less |
+| 59 | `dc-hub` (capstone) | POUs / 3 | SHIP and FLEET open: trailers loaded in reverse drop order (a `POPP` stack of order lines per dock), one pallet in flight per dock, battery charging, `parMs` | A pallet out of sequence, a late truck or a flat battery is a fault; charging too early passes and scores less (see "What was measured") |
 
 Authoring rules the category follows, from the rest of the game: briefings in the manual format
 with no em dashes; presets written `K=3`; sequential steps wait on `until` milestones, never fixed

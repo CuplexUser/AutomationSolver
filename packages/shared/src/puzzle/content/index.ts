@@ -57,6 +57,7 @@ import { dcLabel } from './55-dc-label.js';
 import { dcFlowLanes } from './56-dc-flow-lanes.js';
 import { dcRipening } from './57-dc-ripening.js';
 import { dcDriveIn } from './58-dc-drive-in.js';
+import { dcHub } from './59-dc-hub.js';
 
 /**
  * The excavator line's plant definition, ahead of the puzzles that use it.
@@ -152,6 +153,7 @@ export const PUZZLES: PuzzleSpec[] = [
   dcFlowLanes,
   dcRipening,
   dcDriveIn,
+  dcHub,
 ].sort((a, b) => a.order - b.order);
 
 export function getPuzzle(slug: string): PuzzleSpec | undefined {

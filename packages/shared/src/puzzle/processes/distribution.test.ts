@@ -14,10 +14,10 @@ import {
 
 /** Every device the hub can have, so every sensor is published. */
 const ALL = [
-  ...['X0', 'X1', 'X2', 'X3', 'X4', 'X5', 'X6', 'X7', 'X10', 'X11', 'X12', 'X13', 'X14'],
-  ...['X15', 'X16', 'X17', 'X20', 'X21', 'X22', 'X23', 'X24', 'X25'],
-  ...['D5', 'D7', 'D8', 'D9', 'D11', 'D13', 'D14', 'D21', 'D22', 'D31', 'D32', 'D33', 'D41', 'D42', 'D43'],
-  ...['D61', 'D62', 'D81', 'D82', 'D83', 'D101', 'D102', 'D103', 'D104'],
+  'X0', 'X1', 'X2', 'X3', 'X4', 'X5', 'X6', 'X7', 'X10', 'X11', 'X12', 'X13', 'X14',
+  'X15', 'X16', 'X17', 'X20', 'X21', 'X22', 'X23', 'X24', 'X25', 'X26',
+  'D5', 'D7', 'D8', 'D9', 'D11', 'D13', 'D14', 'D15', 'D16', 'D21', 'D22', 'D31', 'D32', 'D33', 'D41', 'D42', 'D43',
+  'D61', 'D62', 'D81', 'D82', 'D83', 'D101', 'D102', 'D103', 'D104',
 ].map((address) => ({ address, label: address, io: 'input' as const, widget: 'sensor' as const }));
 
 interface Rig {
@@ -244,6 +244,16 @@ describe('distribution: the rules a pallet is held to', () => {
     expect(String(r.m.jamReason)).toContain('the oldest lot ships first');
   });
 
+  it('counts an older lot a vehicle is already fetching as leaving first', () => {
+    // Two vehicles, the older lot's pick ordered first but further away: the
+    // newer one is lifted first, and nothing old is left behind for it.
+    const r = rig({ locs: '10,41,42,61,62', fleet: 2, c41: '404pn0', c42: '403pn0' });
+    dispatch(r, 42, 61);
+    dispatch(r, 41, 62);
+    runUntil(r, (x) => x.m.shipped === 2);
+    noFault(r);
+  });
+
   it('checks the shipping notice against the pallet', () => {
     const r = rig({ locs: '10,31,61', asn: true, c31: '305pn0,306pn0' });
     dispatch(r, 31, 61, 305);
@@ -407,6 +417,17 @@ describe('distribution: trucks and their orders', () => {
     expect([r.regs.D8, r.regs.D9]).toEqual([61, 4]);
   });
 
+  it('says how long the order of a docked truck is, and counts the trucks that leave loaded', () => {
+    const r = rig({ locs: '10,31,61', trucks61: '3', c31: '305pn0' });
+    expect(r.regs.D15).toBe(0);
+    runUntil(r, (x) => x.bits.X13 === true);
+    expect(r.regs.D15).toBe(1);
+    dispatch(r, 31, 61);
+    runUntil(r, (x) => x.bits.X13 === false);
+    expect(r.regs.D15).toBe(0);
+    expect(r.m.trucksOut).toBe(1);
+  });
+
   it('fills the trailer last stop first, then sends it away', () => {
     const r = rig({ locs: '10,31,32,61', trucks61: '34', c31: '405pn0', c32: '305pn0' });
     runUntil(r, (x) => x.bits.X13 === true);
@@ -444,6 +465,23 @@ describe('distribution: batteries', () => {
     expect(r.m.v0S).toBe('park');
     runUntil(r, (x) => x.m.v1S === 'park');
     expect(r.m.v1Pk).toBe(46_000);
+    expect(r.regs.D82).toBe(100);
+    noFault(r);
+  });
+
+  it('queues a charge for a busy vehicle until its job is done, and says so on X26', () => {
+    const r = rig({ locs: '1,10,61,70', battery: true, fleet: 2, v0Batt: 900, v1Batt: 300, in1: '301P', inFirst: 100 });
+    runUntil(r, (x) => x.bits.X3 === true);
+    dispatch(r, 1, 10);
+    expect(r.m.v1Leg).toBe('src');
+    dispatch(r, 0, 70);
+    expect(r.bits.X26).toBe(true);
+    expect(r.m.v1ChgNext).toBe(true);
+    expect(r.m.v0Leg).toBe('');
+    runUntil(r, (x) => x.m.v1S === 'charge');
+    // It finished the job first: the pallet is on QA.
+    expect(r.m.c10).not.toBe('');
+    runUntil(r, (x) => x.bits.X26 === false);
     expect(r.regs.D82).toBe(100);
     noFault(r);
   });

@@ -94,7 +94,7 @@ export const LANE_CAP = 4;
 
 /** Battery in tenths of a percent, and what drains and fills it. */
 export const BATTERY_FULL = 1000;
-export const BATTERY_MM_PER_UNIT = 300;
+export const BATTERY_MM_PER_UNIT = 1000;
 export const CHARGE_MS_PER_UNIT = 20;
 
 /** Products. 1 and 2 arrive green where the plant has ripening rooms. */
@@ -284,6 +284,8 @@ export const DC_IN = {
   /** The light curtain across each room's doorway: no vehicle in it. */
   doorway1Clear: 'X24',
   doorway2Clear: 'X25',
+  /** A vehicle is charging, on its way to the charger, or will go once its job is done. */
+  charging: 'X26',
 } as const;
 
 /** Transmitters: registers the plant writes. */
@@ -295,6 +297,9 @@ export const DC_REG = {
   /** What an outbound dock is calling for, product 1 to 4, or 0 between calls. */
   call1: 'D13',
   call2: 'D14',
+  /** How many lines the order of the truck docked at OUT1 or OUT2 has, or 0 with no truck there. */
+  lines1: 'D15',
+  lines2: 'D16',
   quarantine: 'D11',
   /** A room, lane or dock's count sits in the register numbered like its code. */
   count: (code: number): string => `D${code}`,
@@ -420,7 +425,9 @@ function init(): MachineState {
     m[v(i, 'Batt')] = BATTERY_FULL;
     m[v(i, 'Bmm')] = 0;
     m[v(i, 'Wait')] = 0;
+    m[v(i, 'ChgNext')] = false;
   }
+  m.trucksOut = 0;
   return m;
 }
 
@@ -463,13 +470,40 @@ function setContents(m: MachineState, code: number, items: readonly string[]): v
 }
 
 /** Everything in storage (lanes of either kind), for the first-expired-first-out rule. */
-function stored(m: MachineState): { code: number; pallet: Pallet }[] {
-  const out: { code: number; pallet: Pallet }[] = [];
+function stored(m: MachineState): { code: number; token: string; pallet: Pallet }[] {
+  const out: { code: number; token: string; pallet: Pallet }[] = [];
   for (const loc of DC_LOCATIONS) {
     if (loc.kind !== 'flow' && loc.kind !== 'drive-in') continue;
-    for (const t of contents(m, loc.code)) out.push({ code: loc.code, pallet: parsePallet(t) });
+    for (const t of contents(m, loc.code)) out.push({ code: loc.code, token: t, pallet: parsePallet(t) });
   }
   return out;
+}
+
+/**
+ * Pallets already on their way out: for every vehicle sent to collect from a
+ * lane for a dock or the wrapper, the pallet at that lane's out end, the next
+ * one for a second vehicle, and so on. An older lot a vehicle is already
+ * fetching is leaving first, whichever of the two vehicles gets there first, so
+ * first-expired-first-out does not count it as left behind.
+ */
+function claimedForShipping(m: MachineState): Set<string> {
+  const claims = new Map<number, number>();
+  for (let j = 0; j < MAX_FLEET; j++) {
+    if (str(m, v(j, 'Leg')) !== 'src') continue;
+    const from = num(m, v(j, 'From'));
+    const kind = locationByCode(from)?.kind;
+    const dest = locationByCode(num(m, v(j, 'To')))?.kind;
+    if ((kind === 'flow' || kind === 'drive-in') && (dest === 'dock-out' || dest === 'wrap-in')) {
+      claims.set(from, (claims.get(from) ?? 0) + 1);
+    }
+  }
+  const going = new Set<string>();
+  for (const [code, n] of claims) {
+    const items = contents(m, code);
+    const outFirst = locationByCode(code)!.kind === 'flow' ? items : [...items].reverse();
+    for (const t of outFirst.slice(0, n)) going.add(t);
+  }
+  return going;
 }
 
 const describe = (p: Pallet): string => `${DC_PRODUCTS[p.product] ?? 'product ' + p.product} lot ${p.lot}`;
@@ -645,7 +679,10 @@ function canPick(m: MachineState, code: number, to: number): string | null {
       const destKind = locationByCode(to)?.kind;
       if (destKind === 'dock-out' || destKind === 'wrap-in') {
         const p = parsePallet(token);
-        const older = stored(m).find((s) => s.pallet.product === p.product && s.pallet.lot < p.lot);
+        const going = claimedForShipping(m);
+        const older = stored(m).find(
+          (s) => s.pallet.product === p.product && s.pallet.lot < p.lot && !going.has(s.token),
+        );
         if (older) {
           throw new Fault(
             `${describe(p)} left storage while ${describe(older.pallet)} was still in ` +
@@ -729,6 +766,7 @@ function wanted(m: MachineState, pk: number, self: number): boolean {
 }
 
 function idle(m: MachineState, i: number): boolean {
+  if (bool(m, v(i, 'ChgNext'))) return false;
   const s = str(m, v(i, 'S')) as VehicleState;
   const leg = str(m, v(i, 'Leg')) as Leg;
   return s === 'park' || ((s === 'drive' || s === 'exit') && leg === 'home');
@@ -771,14 +809,18 @@ function mailbox(m: MachineState, outputs: Record<string, boolean>, regs: Record
   const to = regs[DC_CMD.to] ?? 0;
   const fleet = fleetSize(m);
 
+  // A charge order names no vehicle: the one with the lowest battery goes, now if
+  // it is idle, or as soon as its job is done. Taken at once either way, which is
+  // what a real fleet manager does with a charge request.
   if (from === 0 && to === 70 && builtLocations(m).has(70)) {
     let pick = -1;
     for (let i = 0; i < fleet; i++) {
-      if (!idle(m, i)) continue;
+      if (charging(m, i)) continue;
       if (pick < 0 || num(m, v(i, 'Batt')) < num(m, v(pick, 'Batt'))) pick = i;
     }
     if (pick < 0) return;
-    assign(m, pick, 'chg', 0, 70, -1);
+    if (idle(m, pick)) assign(m, pick, 'chg', 0, 70, -1);
+    else m[v(pick, 'ChgNext')] = true;
     m.ack = true;
     return;
   }
@@ -818,6 +860,11 @@ function mailbox(m: MachineState, outputs: Record<string, boolean>, regs: Record
   m.ack = true;
 }
 
+/** Sent to charge: on its way, on the charger, or going once its job is done. */
+function charging(m: MachineState, i: number): boolean {
+  return bool(m, v(i, 'ChgNext')) || str(m, v(i, 'Leg')) === 'chg';
+}
+
 function assign(m: MachineState, i: number, leg: Leg, from: number, to: number, asn: number): void {
   m[v(i, 'Leg')] = leg;
   m[v(i, 'From')] = from;
@@ -846,6 +893,18 @@ function stepVehicle(m: MachineState, i: number): void {
   const state = str(m, v(i, 'S')) as VehicleState;
   const leg = str(m, v(i, 'Leg')) as Leg;
   const t = num(m, v(i, 'T')) + SUB_MS;
+
+  // A charge that was waiting for this vehicle's job to finish starts the moment
+  // it would otherwise have been free for the next one.
+  if (bool(m, v(i, 'ChgNext')) && (state === 'park' || ((state === 'drive' || state === 'exit') && leg === 'home'))) {
+    m[v(i, 'ChgNext')] = false;
+    m[v(i, 'Leg')] = 'chg';
+    if (state === 'park') {
+      m[v(i, 'S')] = 'exit';
+      m[v(i, 'T')] = 0;
+    }
+    return;
+  }
 
   switch (state) {
     case 'off':
@@ -1208,6 +1267,7 @@ function stepTrucks(m: MachineState): void {
     if (state === 'docked') {
       const order = truckOrder(m, d);
       if (num(m, `k${d}`) >= order.length) {
+        m.trucksOut = num(m, 'trucksOut') + 1;
         m[`t${d}`] = 'away';
         m[`t${d}T`] = TRUCK_GAP_MS;
         continue;
@@ -1280,6 +1340,7 @@ function sensors(m: MachineState, declared: ReadonlySet<string>): {
     [DC_IN.door2Shut]: num(m, 'r2Door') === 0,
     [DC_IN.doorway1Clear]: !inDoorway(m, 21),
     [DC_IN.doorway2Clear]: !inDoorway(m, 22),
+    [DC_IN.charging]: Array.from({ length: fleetSize(m) }, (_, i) => charging(m, i)).some(Boolean),
   };
   const allRegs: Record<string, number> = {
     [DC_REG.qaCode]: qaDone && qaPallet ? palletCode(qaPallet) : 0,
@@ -1289,6 +1350,8 @@ function sensors(m: MachineState, declared: ReadonlySet<string>): {
     [DC_REG.quarantine]: contents(m, 11).length,
     [DC_REG.call1]: num(m, 'call61'),
     [DC_REG.call2]: num(m, 'call62'),
+    [DC_REG.lines1]: str(m, 't61') === 'docked' ? truckOrder(m, 61).length : 0,
+    [DC_REG.lines2]: str(m, 't62') === 'docked' ? truckOrder(m, 62).length : 0,
   };
   for (const code of [21, 22, 31, 32, 33, 41, 42, 43]) allRegs[DC_REG.count(code)] = contents(m, code).length;
   for (const code of [61, 62]) allRegs[DC_REG.count(code)] = num(m, `k${code}`);

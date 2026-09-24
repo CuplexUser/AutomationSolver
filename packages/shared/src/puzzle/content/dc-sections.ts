@@ -9,8 +9,10 @@ import { math, mov, nc, no, out, rise, rst, rung, set } from './dc-plant.js';
  * locations, the moves *out of* them and the tables that say what is in them.
  * They share one fleet manager, so one section, FLEET, owns the mailbox and
  * every other section asks it for a vehicle through a request slot of its own.
- * FLEET always ships written: it is the interface every other section is
- * written against, and the lesson is using an interface, not re-deriving one.
+ * FLEET ships written until the capstone: it is the interface every other
+ * section is written against, and the lesson is using an interface, not
+ * re-deriving one. The capstone hands it over, because by then the policy
+ * inside it is what is worth changing.
  *
  * Like `factory-line-sections.ts`, every section lives here once, and a puzzle
  * says which ones its plant has and which of them it opens.
@@ -104,6 +106,104 @@ export const FLEET_PROGRAM: Rung[] = [
   ]),
 ];
 
+/** Any of the three batteries below `k` percent: three compares in parallel, then `tail`. */
+function anyBatteryBelow(lead: LadderElement[], k: number, tail: LadderElement[]): (LadderElement | null)[][] {
+  const n = lead.length;
+  const pad = Array.from({ length: n }, () => null);
+  return [
+    [...lead, cmp('<', 'D81', `K${k}`), ...tail],
+    [...pad, cmp('<', 'D82', `K${k}`)],
+    [...pad, cmp('<', 'D83', `K${k}`)],
+  ];
+}
+
+/**
+ * The capstone's dispatcher: FLEET as the earlier puzzles ship it, and the
+ * charger. A charge order is D0 = 0, D1 = 70, chosen as K9 in the dispatcher's
+ * own slot register ahead of every request; the manager takes it at once and
+ * sends the vehicle with the lowest battery as soon as its job is done, so
+ * posting one never waits for a vehicle to be free.
+ *
+ * `chargeBelow` is the whole policy, and the capstone's answer is the one that
+ * measured fastest: 15%. Earlier is slower, because every charge takes a vehicle
+ * off the floor, and 10% runs one flat (docs/COLD-CHAIN.md). Left out, nothing
+ * ever charges.
+ */
+export function fleetProgram(opts: { chargeBelow?: number }): Rung[] {
+  const [choose, post, ask, answer] = [FLEET_PROGRAM.slice(0, 4), FLEET_PROGRAM[4], FLEET_PROGRAM[5], FLEET_PROGRAM[6]];
+  const links = [
+    { row: 0, col: 3 },
+    { row: 1, col: 3 },
+    { row: 0, col: 4 },
+    { row: 1, col: 4 },
+  ];
+  const charge = (below: number): Rung =>
+    rung('fleet-charge', anyBatteryBelow([cmp('=', 'D590', 'K0'), nc('M399'), nc('X26')], below, [mov('K9', 'D590')]), links);
+  return [
+    ...(opts.chargeBelow !== undefined ? [charge(opts.chargeBelow)] : []),
+    ...choose,
+    rung('fleet-post', [
+      [cmp('>', 'D590', 'K0'), cmp('<', 'D590', 'K9'), ...post.cells[0].slice(1)],
+      [cmp('=', 'D590', 'K9'), mov('K0', 'D0'), mov('K70', 'D1')],
+    ]),
+    ask,
+    answer,
+  ];
+}
+
+/** The capstone's canonical dispatcher. */
+export const HUB_FLEET_PROGRAM: Rung[] = fleetProgram({ chargeBelow: 15 });
+
+// --- SHIP: the outbound trucks -----------------------------------------------------------
+
+/**
+ * Outbound by the truckload. A truck's order arrives as lines, in the order the
+ * truck will *drop* them, and the trailer fills from the front, so the last line
+ * has to go on first: every line is pushed onto its dock's stack as it arrives,
+ * and once the whole order is in, POPP gives them back last first.
+ *
+ * SHIP moves nothing itself. It publishes what each dock wants next, and the
+ * section that holds that product (RIPEN for fruit, STORE for the rest) ships it
+ * under its own slot. SHIP watches for the order that claims its request, and
+ * keeps one pallet on its way to each dock at a time: two on the loop at once
+ * could arrive in either order, and a trailer is loaded in sequence.
+ */
+export const SHIP_PROGRAM: Rung[] = [
+  // Every line onto its dock's stack: OUT1's at D760, OUT2's at D770.
+  rung('ship-line', [
+    [
+      no('X21'),
+      nc('Y6'),
+      math('sub', 'D8', 'K61', 'Z6'),
+      math('mul', 'Z6', 'K10', 'Z6'),
+      queue('sfwr', 'D760Z6', 'D9', 7),
+      out('Y6'),
+    ],
+  ]),
+  ...([1, 2] as const).map((k) =>
+    rung(`ship-order-in-${k}`, [
+      [cmp('=', `D7${k + 5}0`, `D1${k + 4}`), cmp('>', `D1${k + 4}`, 'K0'), set(`M56${k}`)],
+      [cmp('=', `D7${k + 5}0`, 'K0'), rst(`M56${k}`)],
+    ]),
+  ),
+  // The whole order is in, nothing is on its way, and the last request was taken: the next line, last first.
+  ...([1, 2] as const).map((k) =>
+    rung(`ship-want-${k}`, [
+      [no(`M56${k}`), nc(`M55${k}`), cmp('=', `D75${k}`, 'K0'), queue('pop', `D7${k + 5}0`, `D75${k}`, 7)],
+    ]),
+  ),
+  // Claimed: RIPEN ships to OUT1 through slot 2, STORE to either dock through slot 3.
+  rung('ship-claimed', [
+    [no('M312'), cmp('=', 'D521', 'K61'), mov('K0', 'D751'), set('M551'), mov('D61', 'D753')],
+    [no('M313'), cmp('=', 'D531', 'K61'), mov('K0', 'D751'), set('M551'), mov('D61', 'D753')],
+    [no('M313'), cmp('=', 'D531', 'K62'), mov('K0', 'D752'), set('M552'), mov('D62', 'D754')],
+  ]),
+  rung('ship-landed', [
+    [cmp('<>', 'D61', 'D753'), rst('M551')],
+    [cmp('<>', 'D62', 'D754'), rst('M552')],
+  ]),
+];
+
 // --- RECEIVE: the docks and QA -----------------------------------------------------------
 
 /**
@@ -147,7 +247,7 @@ export const RECEIVE_PROGRAM: Rung[] = [
  * 3 ripe) that drives its door and its start. A room is a stack, so its table
  * is pushed with SFWRP and shipped from with POPP straight into the notice.
  */
-function roomRungs(r: 1 | 2): Rung[] {
+function roomRungs(r: 1 | 2, call: string): Rung[] {
   const head = r === 1 ? 'D700' : 'D710';
   const first = r === 1 ? 'D701' : 'D711';
   const product = `D66${r}`;
@@ -181,7 +281,7 @@ function roomRungs(r: 1 | 2): Rung[] {
     ),
     // Can this room ship what OUT1 is calling for: ripe, open, stocked, that product.
     rung(`ripen-can-ship-${r}`, [
-      [cmp('=', state, 'K3'), no(open), cmp('>', head, 'K0'), nc(booked), cmp('=', product, 'D13'), out(canShip)],
+      [cmp('=', state, 'K3'), no(open), cmp('>', head, 'K0'), nc(booked), cmp('=', product, call), out(canShip)],
     ]),
     rung(`ripen-ship-${r}`, [
       [
@@ -237,24 +337,32 @@ function roomRungs(r: 1 | 2): Rung[] {
   ];
 }
 
-export const RIPEN_PROGRAM: Rung[] = [
-  rung('ripen-qa-product', [[math('div', 'D5', 'K100', 'D650')]]),
-  // A green pallet on QA that is ours to collect.
-  rung('ripen-qa-ours', [
-    [no('X6'), no('X7'), cmp('>=', 'D650', 'K1'), cmp('<=', 'D650', 'K2'), nc('M452'), out('M480')],
-  ]),
-  // OUT1 is calling and no shipment of ours is on its way.
-  rung('ripen-call', [[cmp('>', 'D13', 'K0'), nc('M470'), out('M485')]]),
-  ...roomRungs(1),
-  ...roomRungs(2),
-  rung('ripen-accepted', [[no('M312'), rst('M302')]]),
-  rung('ripen-released', [
-    [fall('X5'), rst('M452')],
-    [cmp('=', 'D13', 'K0'), rst('M470')],
-    [cmp('<>', 'D21', 'D681'), rst('M461')],
-    [cmp('<>', 'D22', 'D682'), rst('M462')],
-  ]),
-];
+/**
+ * The rooms, shipping to OUT1 whenever `call` names one of their products: the
+ * plant's own call register D13 in puzzle 57, SHIP's request in the capstone.
+ */
+export function ripenProgram(call: string): Rung[] {
+  return [
+    rung('ripen-qa-product', [[math('div', 'D5', 'K100', 'D650')]]),
+    // A green pallet on QA that is ours to collect.
+    rung('ripen-qa-ours', [
+      [no('X6'), no('X7'), cmp('>=', 'D650', 'K1'), cmp('<=', 'D650', 'K2'), nc('M452'), out('M480')],
+    ]),
+    // OUT1 is calling and no shipment of ours is on its way.
+    rung('ripen-call', [[cmp('>', call, 'K0'), nc('M470'), out('M485')]]),
+    ...roomRungs(1, call),
+    ...roomRungs(2, call),
+    rung('ripen-accepted', [[no('M312'), rst('M302')]]),
+    rung('ripen-released', [
+      [fall('X5'), rst('M452')],
+      [cmp('=', call, 'K0'), rst('M470')],
+      [cmp('<>', 'D21', 'D681'), rst('M461')],
+      [cmp('<>', 'D22', 'D682'), rst('M462')],
+    ]),
+  ];
+}
+
+export const RIPEN_PROGRAM: Rung[] = ripenProgram('D13');
 
 // --- STORE: the lanes --------------------------------------------------------------------------
 
@@ -538,7 +646,7 @@ const SECTIONS: Record<HubSectionId, SectionDef> = {
       '   filling, has its door open, has room, and is empty or already holds that product.',
       '2. Close a room up when it is full, or when it has pallets and nothing has gone in for',
       '   30 s. Start its cycle once the door is shut.',
-      '3. When it is ripe, open it and ship from it to OUT1 whenever OUT1 calls for its',
+      '3. When it is ripe, open it and ship from it to OUT1 whenever OUT1 asks for its',
       '   product, with a shipping notice for every pallet.',
       '4. Once it is empty it is filling again.',
       '',
@@ -557,14 +665,45 @@ const SECTIONS: Record<HubSectionId, SectionDef> = {
     title: 'Storage lanes',
     owns: ['M303', 'D530-D532', 'M500-M549', 'D300-D369', 'D720-D749', 'T20-T29', 'Z4-Z5'],
     maxRungs: 60,
-    brief: 'The flow lanes and the drive-in lanes.',
+    brief: [
+      'The storage lanes: flow lanes that give back their oldest pallet, and drive-in lanes',
+      'that give back their newest. Tomatoes and potatoes, products 3 and 4.',
+      '',
+      '## Sequence of operation',
+      '1. When a dock wants a product, find the lowest code of it at any lane\'s out end, take',
+      '   it off that lane\'s table into the notice, and order the lane to the dock. If that',
+      '   lane is busy, wait for it.',
+      '2. Collect every passed pallet of product 3 or 4 from QA into a lane that can take it',
+      '   without burying anything: beside its own product first, an empty lane only when',
+      '   nothing fits.',
+      '',
+      '## Field notes',
+      '- A flow lane takes a pallet no older than the one at its back, a drive-in lane one no',
+      '  newer than the one on top. Kept that way, the oldest lot is always at an out end.',
+      '- Tables: F1 at D300, F2 at D310, L1 at D330, L2 at D340, L3 at D350, each K=5.',
+    ].join('\n'),
   },
   SHIP: {
     name: 'SHIP',
     title: 'Outbound',
     owns: ['M304', 'D540-D542', 'Y1', 'Y6', 'D2', 'M550-M599', 'D750-D899', 'T30-T39', 'Z6'],
     maxRungs: 40,
-    brief: 'The outbound docks and their trucks.',
+    brief: [
+      'Outbound, by the truckload. SHIP moves nothing itself: it says what each dock wants',
+      'next, and the section that holds that product ships it.',
+      '',
+      '## Sequence of operation',
+      '1. Take every order line as it arrives and push its product onto its dock\'s stack.',
+      '2. Once a dock\'s whole order is on its stack, pop the next line into what that dock',
+      '   wants, while nothing is on its way to that dock.',
+      '3. When a section\'s order to the dock is accepted, set what the dock wants back to 0',
+      '   and wait for the pallet to land.',
+      '',
+      '## Field notes',
+      '- A trailer is loaded from the front, so its last stop goes on first. The lines arrive',
+      '  in drop order, and a stack gives them back the other way round.',
+      '- Two pallets on the loop to one dock can arrive in either order. One at a time.',
+    ].join('\n'),
   },
 };
 
@@ -577,7 +716,40 @@ export interface HubSectionOptions {
   programs?: Partial<Record<HubSectionId, Rung[]>>;
   /** Headroom for an open section, where it differs from the default. */
   maxRungs?: Partial<Record<HubSectionId, number>>;
+  /** Briefs for the sections this puzzle describes differently, as the capstone does FLEET. */
+  briefs?: Partial<Record<HubSectionId, string>>;
 }
+
+/** FLEET's brief where the player writes it: the job, not the policy it used to ship with. */
+export const FLEET_OPEN_BRIEF = [
+  'The dispatcher, and the charger with it. Every section asks for a vehicle through a',
+  'request slot of its own, and FLEET decides who gets the next one.',
+  '',
+  '## The request slots',
+  '- RECEIVE is slot 1, RIPEN 2, STORE 3, SHIP 4. SHIP moves nothing and never asks.',
+  '- Slot k is the relay M30k, raised by its section, and FROM at D5k0, TO at D5k1 and the',
+  '  shipping notice at D5k2. Slot 2 is M302, D520 to D522.',
+  '- When the manager accepts a slot\'s order, turn the relay M31k on for exactly one scan:',
+  '  the section drops its request on that scan.',
+  '',
+  '## The charger',
+  '- A charge order is D0 = 0 and D1 = 70. The manager answers at once, and sends the',
+  '  vehicle with the lowest battery as soon as its job is done.',
+  '- X26 is on from then until that vehicle is full. One vehicle charges at a time.',
+  '- D81 to D83: each vehicle\'s battery in percent. A full battery lasts about a',
+  '  kilometer of driving, and a charge from empty takes 20 s.',
+  '',
+  '## Sequence of operation',
+  '1. With nothing being asked, take the most downstream slot that is requesting: SHIP,',
+  '   then STORE, then RIPEN, then RECEIVE. Copy its three registers into D0, D1 and D3',
+  '   and ask on Y0.',
+  '2. On the answer, pulse the slot\'s accepted relay and free the mailbox.',
+  '3. Send a vehicle to charge before its battery runs out, and not much sooner.',
+  '',
+  '## Field notes',
+  '- FLEET is scanned last, after every section has decided what it wants.',
+  '- A rejected order means a section asked for something impossible. Stop dispatching.',
+].join('\n');
 
 export function hubSections(opts: HubSectionOptions): PouSlot[] {
   const open = new Set<HubSectionId>(opts.open);
@@ -594,7 +766,7 @@ export function hubSections(opts: HubSectionOptions): PouSlot[] {
       ...(program ? { program } : {}),
       ...(editable ? { maxRungs: opts.maxRungs?.[id] ?? def.maxRungs } : {}),
       owns: [...def.owns],
-      brief: def.brief,
+      brief: opts.briefs?.[id] ?? def.brief,
     };
   });
 }

@@ -352,7 +352,11 @@ and gets what each step measures.
 - [x] **56 `dc-flow-lanes`.** → COLD-CHAIN §"The puzzles"
 - [x] **57 `dc-ripening`**, the first sectioned one. → COLD-CHAIN §"The puzzles"
 - [x] **58 `dc-drive-in`.** → COLD-CHAIN §"The puzzles"
-- [ ] **59 `dc-hub`**, the capstone, `parMs`-graded. → COLD-CHAIN §"The puzzles"
+- [x] **59 `dc-hub`**, the capstone, `parMs`-graded. → COLD-CHAIN §"The puzzles"
+- [ ] **Grade the capstone without holding the server up.** `dc-hub` takes about 4.5 s to grade
+      (two shifts, five sections, three vehicles), on the request thread. Most of it is
+      `evaluateRung` rebuilding each rung's union-find every scan; caching a rung's topology, or
+      grading in a worker, would each fix it. → COLD-CHAIN §"What was measured"; `sim/rungSolver.ts`
 - [ ] **The Blender kit** `DcKit.blend` → `dc-kit.glb`, build script saved beside it.
       → COLD-CHAIN §"The 3D view"
 - [ ] **`Distribution3D`** and its `MachineView` branch, panel and plant-workspace layouts.

@@ -26,7 +26,13 @@ import {
   traceScenario,
 } from './grade.js';
 import { validateProgram } from './validate.js';
-import { RIPEN_PROGRAM, storeProgram } from './content/dc-sections.js';
+import {
+  fleetProgram,
+  HUB_FLEET_PROGRAM,
+  RIPEN_PROGRAM,
+  SHIP_PROGRAM,
+  storeProgram,
+} from './content/dc-sections.js';
 import type { LadderPuzzleSpec } from './types.js';
 
 /** Every puzzle in this file is a ladder puzzle; fail loudly if that changes. */
@@ -1698,6 +1704,14 @@ const projectSolutions: Record<string, LadderProject> = {
     ],
     tasks: [],
   },
+  // The capstone opens the two ends of the hub, so its answer is two sections.
+  'dc-hub': {
+    pous: [
+      { id: 'SHIP', name: 'SHIP', rungs: SHIP_PROGRAM },
+      { id: 'FLEET', name: 'FLEET', rungs: HUB_FLEET_PROGRAM },
+    ],
+    tasks: [],
+  },
   'factory-line': {
     pous: [
       lineSolution('WELD', 'SEC1_WELD', WELD_TUNED),
@@ -1726,7 +1740,7 @@ describe('gradeProgram — canonical solutions solve every sectioned puzzle', ()
       expect(failed, failed.join(' | ')).toEqual([]);
       expect(result.solved).toBe(true);
       expect(result.score).toBe(100);
-    });
+    }, 60_000);
   }
 });
 
@@ -2758,6 +2772,69 @@ describe('gradeProgram — Cold Chain Hub puzzles reject the plausible wrong ans
     expect(result.solved).toBe(false);
     expect(failureText(result)).toContain('shipping notice');
   });
+
+  /** The capstone's two sections, either one swapped for a patched copy. */
+  function hub(opts: { ship?: Rung[]; fleet?: Rung[] }): LadderProject {
+    return {
+      pous: [
+        { id: 'SHIP', name: 'SHIP', rungs: opts.ship ?? structuredClone(SHIP_PROGRAM) },
+        { id: 'FLEET', name: 'FLEET', rungs: opts.fleet ?? structuredClone(HUB_FLEET_PROGRAM) },
+      ],
+      tasks: [],
+    };
+  }
+
+  /** A capstone grade simulates two shifts of a three-vehicle plant: seconds, not milliseconds. */
+  const HUB_MS = 60_000;
+
+  /**
+   * An order read front to back: SFRDP gives the lines back in the order they
+   * arrived, which is the order the truck drops them, so the first stop's pallet
+   * goes in first and ends up at the back of the trailer.
+   */
+  it('dc-hub: loading a truck in drop order puts its first stop at the back', () => {
+    const spec = getLadderPuzzle('dc-hub')!;
+    const inOrder = hub({
+      ship: structuredClone(SHIP_PROGRAM).map((r) => ({
+        ...r,
+        cells: r.cells.map((row) => row.map((el) => (el?.type === 'pop' ? { ...el, type: 'sfrd' as const } : el))),
+      })),
+    });
+    const result = gradeProgram(spec, inOrder);
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('loaded last stop first');
+  }, HUB_MS);
+
+  /** The dispatcher the earlier puzzles shipped, unchanged: the fleet starts part charged, and a shift is longer than a battery. */
+  it('dc-hub: a dispatcher that never charges runs a vehicle flat', () => {
+    const spec = getLadderPuzzle('dc-hub')!;
+    const result = gradeProgram(spec, hub({ fleet: fleetProgram({}) }));
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('battery flat');
+  }, HUB_MS);
+
+  /** Too late: below 10% a vehicle cannot finish the job it is on and still reach the charger. */
+  it('dc-hub: charging below 10% runs a vehicle flat on its way', () => {
+    const spec = getLadderPuzzle('dc-hub')!;
+    const result = gradeProgram(spec, hub({ fleet: fleetProgram({ chargeBelow: 10 }) }));
+    expect(result.solved).toBe(false);
+    expect(failureText(result)).toContain('battery flat');
+  }, HUB_MS);
+
+  /**
+   * Too early: every charge fills the battery, so a vehicle sent at 25% or 70%
+   * is off the floor longer, and sooner, than one sent at 15%. It works, and it
+   * is the program most players will write first.
+   */
+  for (const below of [25, 70]) {
+    it(`dc-hub: charging below ${below}% is solved, and slower than par`, () => {
+      const spec = getLadderPuzzle('dc-hub')!;
+      const result = gradeProgram(spec, hub({ fleet: fleetProgram({ chargeBelow: below }) }));
+      expect(result.solved).toBe(true);
+      expect(result.score).toBeGreaterThanOrEqual(CORRECTNESS_WEIGHT);
+      expect(result.score).toBeLessThan(100);
+    }, HUB_MS);
+  }
 });
 
 describe('gradeProgram — the plausible wrong spine is rejected', () => {

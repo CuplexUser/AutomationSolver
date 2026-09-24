@@ -235,3 +235,64 @@ export const DC_CALL_OUT2: PuzzleDevice[] = [
     color: '#f472b6',
   },
 ];
+
+/**
+ * Outbound trucks, for the capstone: a truck at each dock, its order fed one
+ * line at a time, and how many pallets are already on it.
+ */
+export const DC_TRUCKS: PuzzleDevice[] = [
+  { address: 'X13', label: 'Truck At OUT1', io: 'input', widget: 'sensor' },
+  { address: 'X14', label: 'Truck At OUT2', io: 'input', widget: 'sensor' },
+  { address: 'X21', label: 'Order Line Ready', io: 'input', widget: 'sensor' },
+  { address: 'Y6', label: 'Order Line Taken', io: 'output', widget: 'lamp', color: '#f472b6' },
+  {
+    address: 'D8',
+    label: 'Order Line Dock',
+    io: 'input',
+    widget: 'bar',
+    signal: 'analog',
+    range: LOCATION_RANGE,
+    color: '#f472b6',
+  },
+  {
+    address: 'D9',
+    label: 'Order Line Product',
+    io: 'input',
+    widget: 'bar',
+    signal: 'analog',
+    range: whole(4, 'product'),
+    color: '#f472b6',
+  },
+  ...[15, 16].map((a) => ({
+    address: `D${a}`,
+    label: `OUT${a - 14} Order Lines`,
+    io: 'input' as const,
+    widget: 'bar' as const,
+    signal: 'analog' as const,
+    range: whole(6, 'lines'),
+    color: '#f472b6',
+  })),
+  ...[61, 62].map((code) => ({
+    address: `D${code}`,
+    label: `OUT${code - 60} Loaded`,
+    io: 'input' as const,
+    widget: 'bar' as const,
+    signal: 'analog' as const,
+    range: whole(6, 'pallets'),
+    color: '#f472b6',
+  })),
+];
+
+/** The charger, and every vehicle's battery in percent, D81 to D83. */
+export const DC_CHARGER: PuzzleDevice[] = [
+  { address: 'X26', label: 'Charger In Use', io: 'input', widget: 'sensor' },
+  ...[1, 2, 3].map((i) => ({
+    address: `D${80 + i}`,
+    label: `Vehicle ${i} Battery`,
+    io: 'input' as const,
+    widget: 'bar' as const,
+    signal: 'analog' as const,
+    range: whole(100, '%'),
+    color: '#a3e635',
+  })),
+];
