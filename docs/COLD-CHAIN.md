@@ -497,8 +497,10 @@ Wider decisions:
   (`MachineCanvas`'s `coldStore` mood). The first version lit it with a bright sky, a strong
   environment map, a fill and an ambient over a near-white floor, and every surface washed out
   to the same white. The light is now one strong key from high over the north-east corner, with
-  a 4096 shadow map for the 60 m box, and very little bounce: shadows fall south-west across the
+  a 3072 shadow map for the 60 m box, and very little bounce: shadows fall south-west across the
   floor where the camera sees them, the west wall's face is lit and the north wall's is not.
+  Ambient occlusion (`ao={{ radius: 1.2 }}`, meters) darkens where pallets, racks and walls
+  meet the floor; it follows the player's "Realistic 3D rendering" setting, on by default.
 - **Two roofs come off.** A closed room hides its batch, and a closed trailer hides the load
   order the capstone is about. The kit keeps both roofs as their own nodes (`RoomRoof`,
   `TruckRoof`) and the scene hides them.

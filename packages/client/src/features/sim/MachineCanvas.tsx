@@ -1,8 +1,13 @@
-import { Suspense, useEffect, type ReactNode } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import { Suspense, useEffect, useMemo, type ReactNode } from 'react';
+import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { OrbitControls, type OrbitControlsChangeEvent } from '@react-three/drei';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { useSettings } from '../../api/queries';
 
 /**
  * Pass as the second argument of every useGLTF/useGLTF.preload call. Points
@@ -50,6 +55,89 @@ function SceneEnvironment({ intensity }: { intensity: number }) {
       pmrem.dispose();
     };
   }, [gl, scene, intensity]);
+  return null;
+}
+
+/**
+ * How a scene's ambient occlusion is tuned. `radius` is in scene units and is
+ * the reach of the darkening: about the gap between a pallet and the floor it
+ * stands on, so it has to follow the scene's scale.
+ */
+export interface AoSettings {
+  radius: number;
+  /** 0..1, how much of the occlusion is blended over the lit image. */
+  intensity?: number;
+}
+
+/**
+ * The most of the view's height the occlusion may reach across. A world-space
+ * radius that suits the whole floor covers a huge patch of screen once the
+ * camera is close, and GTAO's cost grows with the pixels each sample strides
+ * over, so zooming in used to slow the frame right down. Capping it as a share
+ * of the view keeps the cost flat at any distance and the look the same from
+ * the default one.
+ */
+const AO_MAX_VIEW_SHARE = 0.045;
+
+/**
+ * Ground-truth ambient occlusion (three's `GTAOPass`): the soft darkening where
+ * a pallet meets the floor, under a rack beam or along a wall's foot, which
+ * direct light and a shadow map cannot give. Pure three.js, no extra package.
+ *
+ * It takes over rendering: a `useFrame` at priority 1 turns off r3f's own
+ * render, and the composer draws the scene into a multisampled target, adds the
+ * occlusion, then `OutputPass` applies the renderer's tone mapping and sRGB
+ * conversion (a render target gets neither, so without it the image goes flat).
+ *
+ * The occlusion itself is computed at half resolution: it is a soft, low-detail
+ * signal, the denoiser blurs it anyway, and it is by far the costliest pass, so
+ * a quarter of the pixels is most of the frame time back for no visible change.
+ */
+function AmbientOcclusion({ radius, intensity = 1 }: AoSettings) {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
+  const width = useThree((s) => s.size.width);
+  const height = useThree((s) => s.size.height);
+
+  const { composer, gtao } = useMemo(() => {
+    const target = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 });
+    const composer = new EffectComposer(gl, target);
+    composer.addPass(new RenderPass(scene, camera));
+    const gtao = new GTAOPass(scene, camera, 1, 1);
+    composer.addPass(gtao);
+    composer.addPass(new OutputPass());
+    return { composer, gtao };
+  }, [gl, scene, camera]);
+
+  useEffect(() => {
+    gtao.updateGtaoMaterial({ distanceExponent: 1.5, thickness: 1.5, scale: 1, samples: 16 });
+    // The denoiser's reach is in (half-resolution) pixels; this smooths the
+    // sampling noise without smearing the occlusion across an edge.
+    gtao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 4, rings: 2, samples: 8 });
+    // eslint-disable-next-line react-hooks/immutability -- a three.js pass, not React state
+    gtao.blendIntensity = intensity;
+  }, [gtao, intensity]);
+
+  useEffect(() => {
+    const ratio = gl.getPixelRatio();
+    composer.setPixelRatio(ratio);
+    composer.setSize(width, height);
+    // After the composer, which sizes every pass to the full canvas.
+    gtao.setSize(Math.ceil((width * ratio) / 2), Math.ceil((height * ratio) / 2));
+  }, [composer, gtao, gl, width, height]);
+
+  useEffect(() => () => composer.dispose(), [composer]);
+
+  const focus = useMemo(() => new THREE.Vector3(), []);
+  useFrame((state, dt) => {
+    const cam = state.camera as THREE.PerspectiveCamera;
+    const controls = state.controls as unknown as { target?: THREE.Vector3 } | null;
+    const dist = cam.position.distanceTo(controls?.target ?? focus);
+    const viewH = 2 * dist * Math.tan(((cam.fov ?? 35) * Math.PI) / 360);
+    gtao.updateGtaoMaterial({ radius: Math.min(radius, viewH * AO_MAX_VIEW_SHARE) });
+    composer.render(dt);
+  }, 1);
   return null;
 }
 
@@ -117,7 +205,7 @@ const MOODS = {
     sky: '#b8c7d6', ground: '#39424c', hemi: 0.32,
     key: '#e8f0f8', keyI: 2.9, keyAt: [16, 22, -10],
     fill: 0.14, fillAt: [-10, 6, 14],
-    env: 0.28, shadowMap: 4096,
+    env: 0.28, shadowMap: 3072,
   },
 } as const;
 
@@ -162,6 +250,7 @@ export function MachineCanvas({
   shadowExtent = 16,
   mood = 'workshop',
   background,
+  ao,
   children,
 }: {
   /** A CSS length: the single-machine panels want a fixed 300, the plant
@@ -202,9 +291,17 @@ export function MachineCanvas({
   mood?: Mood;
   /** A solid background color, with a haze of the same color toward the far distance. */
   background?: string;
+  /**
+   * Ambient occlusion for this scene, tuned to its scale. Drawn only while the
+   * player's "Realistic 3D rendering" setting is on, which it is by default.
+   */
+  ao?: AoSettings;
   children: ReactNode;
 }) {
   const look = MOODS[mood];
+  // Default on: a guest, or a player who never saved settings, gets it too.
+  const { data: settings } = useSettings();
+  const realistic = settings?.settings.realisticRendering !== false;
   const showControls = interactive || zoomable || !!panBounds;
 
   // Clamp the pan target and shift the camera by the same delta so the view
@@ -236,6 +333,9 @@ export function MachineCanvas({
     <div className="machine3d" style={{ height }}>
       <Canvas
         camera={{ position: cameraPosition, fov }}
+        // r3f's default allows 2x; on a high-DPI screen that is four times the
+        // pixels of 1x for every pass, and a big plant view cannot afford it.
+        dpr={[1, 1.5]}
         shadows
         // Khronos "PBR Neutral" tone mapping: compresses highlights without
         // the saturation push ACES gives strong albedos like the terracotta.
@@ -265,6 +365,7 @@ export function MachineCanvas({
         />
         <directionalLight position={look.fillAt} intensity={look.fill} />
         <Suspense fallback={null}>{children}</Suspense>
+        {ao && realistic && <AmbientOcclusion {...ao} />}
         {showControls && (
           <OrbitControls
             makeDefault

@@ -815,6 +815,18 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     from the live viewport each resize, so a wide machine can't be cropped by a narrow panel. It
     dollies along the current view direction, so re-fitting never resets an orbit — but
     `maxDistance` has to sit above the widest fit or `OrbitControls` pulls the camera back in.
+    `ao` (`{radius, intensity?}`) opts a scene into ambient occlusion through three's own
+    `GTAOPass`, with no extra package: an `EffectComposer` takes over rendering from a `useFrame`
+    at priority 1, draws into a 4x multisampled half-float target, and ends in `OutputPass`,
+    which applies the tone mapping and sRGB conversion a render target otherwise skips. The
+    radius is in scene units, so each scene tunes its own. It runs only while the player's
+    `realisticRendering` setting is on, which is the default (`!== false`, so guests and
+    never-saved settings get it too). Only the Cold Chain Hub opts in so far. Three things keep
+    it affordable in the full-page plant view: the occlusion is computed at half resolution
+    (`gtao.setSize` after `composer.setSize`, which sizes every pass to the full canvas), the
+    radius is capped each frame at 4.5% of the view's height at the orbit target, since a
+    world-space radius stretched over a close-up made zooming in crawl, and every canvas caps
+    its pixel ratio at 1.5.
   - **`DrillStation3D.tsx`** (`interactive`) — `drill-station.glb`; named nodes
     (`scene.getObjectByName(...)`) looked up once and driven imperatively from `machine.clamp` /
     `machine.drill` / `machine.spinning` / `machine.push`. The work piece runs through a small
@@ -918,8 +930,8 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     floor plan exists once. Vehicles drive two-way aisles on routes the plant plans, and each
     one's route ahead is drawn on the floor in its color; location codes are painted on the
     floor rather than hung as signs, so none can overlap another. The scene uses
-    `MachineCanvas`'s cool `coldStore` mood over a light background, so it does not read as the
-    excavator plant. Pallets come from a pool reparented to slot empties every frame and are
+    `MachineCanvas`'s cool `coldStore` mood (one shadow-casting key over a dim slate hall) and
+    its ambient occlusion, so it does not read as the excavator plant. Pallets come from a pool reparented to slot empties every frame and are
     drawn from the plant's *true* tokens; the room and truck roofs are lifted off so a batch and
     a trailer's load order can be read. `plant.test.ts` rebuilds the GLB's node tree from its JSON chunk
     (no decoder, no GPU) and poses a real state against it, which is how a renamed slot or a

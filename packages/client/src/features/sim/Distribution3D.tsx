@@ -77,6 +77,8 @@ export function Distribution3D({
       shadowExtent={30}
       mood="coldStore"
       background="#232b33"
+      // Meters: about a pallet's gap to the floor and a rack beam's depth.
+      ao={{ radius: 1.2 }}
       interactive
     >
       <HubScene machine={machine} section={section} />

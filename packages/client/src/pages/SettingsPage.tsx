@@ -26,6 +26,7 @@ export function SettingsPage() {
   const [confirmSubmit, setConfirmSubmit] = useState(true);
   const [devUnlockAll, setDevUnlockAll] = useState(false);
   const [enableImportExport, setEnableImportExport] = useState(false);
+  const [realisticRendering, setRealisticRendering] = useState(true);
   const [saved, setSaved] = useState(false);
 
   const [displayName, setDisplayName] = useState(user?.displayName ?? '');
@@ -56,6 +57,7 @@ export function SettingsPage() {
       setConfirmSubmit(data.settings.confirmSubmit !== false);
       setDevUnlockAll(data.settings.devUnlockAll === true);
       setEnableImportExport(data.settings.enableImportExport === true);
+      setRealisticRendering(data.settings.realisticRendering !== false);
     }
   }, [data]);
 
@@ -158,6 +160,20 @@ export function SettingsPage() {
             onChange={(e) => setEnableImportExport(e.target.checked)}
           />
         </label>
+        <label className="setting-row toggle-row">
+          <div>
+            <strong>Realistic 3D rendering</strong>
+            <p className="muted sm">
+              Adds soft ambient shadows where objects meet the floor and each other in the 3D
+              views. Turn it off if the 3D views run slowly.
+            </p>
+          </div>
+          <input
+            type="checkbox"
+            checked={realisticRendering}
+            onChange={(e) => setRealisticRendering(e.target.checked)}
+          />
+        </label>
         {import.meta.env.DEV && (
           <label className="setting-row toggle-row">
             <div>
@@ -176,7 +192,7 @@ export function SettingsPage() {
           disabled={save.isPending}
           onClick={() =>
             save.mutate(
-              { ...data?.settings, confirmSubmit, devUnlockAll, enableImportExport },
+              { ...data?.settings, confirmSubmit, devUnlockAll, enableImportExport, realisticRendering },
               { onSuccess: () => setSaved(true) },
             )
           }
