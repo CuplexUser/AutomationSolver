@@ -51,9 +51,7 @@ import type { MachineState, ProcessModel, ProcessStepCtx, ProcessResult } from '
  *
  * ## I/O map
  *
- *   PLANT    X0  Start            X1  Stop (NC)       X2  E-Stop (NC)
- *            X3  Auto
- *            Y0  Plant Running    Y1  Line Held
+ *   PLANT    Y1  Line Held        (no run buttons: the line runs while the sim does)
  *
  *   WELD     X4  Frame Blank      X5  Boom Blank      X6  Fixture Clamped
  *            X7  Positioner At A  X8  Positioner At B X9  Torch Tip Worn
@@ -1416,6 +1414,7 @@ export const LINE_LIMITS = {
   COLORS,
   ORDER_COLORS,
   TRUCK_ARRIVE_MS,
+  TRUCK_CLEAR_MS,
   TRUCK_CAP,
   TRUCK_PART_LOAD,
   TRUCK_DWELL_MS,

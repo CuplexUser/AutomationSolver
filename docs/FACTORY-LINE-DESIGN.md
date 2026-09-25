@@ -698,6 +698,32 @@ shadow casters: props that were flat boxes are now shapes that cast shadows. Rep
 merged by `StaticBatch`, not instanced, because merging already makes each look one draw. The
 section preset `Weld bay` still frames a wall. That is the preset box in TODO.md, not the kit.
 
+### No plant start (2026-09-25)
+
+The line had START, STOP, EMERGENCY STOP and AUTO, and a supervisor that latched `PlantRun` from
+them for every station to read. They are gone. No real plant has one start and stop for the
+whole floor, and the seal-in they taught is taught by the puzzles before this one. The line runs
+while the simulation runs and stops when it stops. `PlantRun` was the only global, so the line now
+has none. Removing its contact from the 82 rungs that read it dropped the rung's first column,
+which is exact: the contact always led its rows, and any row that started empty was linked in
+after it. Every canonical solution ships the same machine counts it did before. The supervisor
+keeps one rung, LINE HELD. The scenarios lost their "auto and start" steps. The tutorial plant
+(puzzle 47) keeps its start and stop, because its supervisor is what that puzzle teaches.
+
+### Where the finished machines stand, and the lorry (2026-09-25)
+
+- **Zones Z10 to Z12 are placed for a machine's length, not spaced evenly** (`MACHINE_ZONE_X` in
+  `plant.ts`). Spaced evenly, Z10 sat on the test pad and Z11 past it, the test cell drew a
+  second copy of the queue, and dispatch drove east through both. Now Z10 and Z11 queue east of
+  the pad and Z12 is the apron west of it. Each machine is drawn once, at 0.75 scale, facing west
+  (its direction of travel), and dispatch drives it from the pad to Z12.
+- **The lorry never enters the plant.** It comes up to a load port on the building line
+  behind the dock (`DockDoor` in the kit). It reverses in from the road over the process's arrival
+  time, loads, and drives off over its clearing time, on an apron outside the slab. The platform
+  stands inside the port. Before, the scene tested for truck states the process never reports
+  (`arriving`, `at`) against the ones it does (`coming`, `docked`), so the lorry jumped between
+  placeholder offsets, through the yard and the test bay.
+
 ---
 
 ## 5a. The retiming pass, and what it found

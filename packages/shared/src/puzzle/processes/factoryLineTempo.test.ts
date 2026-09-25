@@ -103,7 +103,7 @@ function runLine(sections: Record<Section, Rung[]>, ms: number): Tempo {
   const engine = new SimEngine(lineProject(sections));
   engine.reset();
   let machine = factoryLine.init(LINE_DEVICES);
-  const inputs: Record<string, boolean> = { X0: true, X1: true, X2: true, X3: true };
+  const inputs: Record<string, boolean> = {};
   let derived: Record<string, boolean> = {};
   let derivedRegs: Record<string, number> = {};
   const busy: Record<string, number> = {};

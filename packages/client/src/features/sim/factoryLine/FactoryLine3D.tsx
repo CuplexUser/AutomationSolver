@@ -13,12 +13,14 @@ import {
 import {
   CONV,
   FINISH,
+  MACHINE_ON_LINE,
+  MACHINE_ZONE_X,
   SPINE,
   numOf,
   orderPaint,
   strOf,
 } from './plant';
-import { Conveyor, ConveyorTurns, Part, PhotoEye } from './props';
+import { Conveyor, ConveyorTurns, MachineBody, Part, PhotoEye } from './props';
 import { AssemblyCell, DockCell, TestCell, YardCell } from './rowB';
 import { BoothCell, OvenCell, PortalCell, StoreCell, WeldCell } from './rowA';
 import { Shell } from './Shell';
@@ -134,7 +136,7 @@ export function FactoryLineRig({
 
         {/* Row B: build, prove and ship. */}
         <AssemblyCell tex={tex} machine={machine} />
-        <TestCell tex={tex} machine={machine} queue={numOf(machine.bufAt)} />
+        <TestCell tex={tex} machine={machine} />
         <DockCell tex={tex} machine={machine} cap={LINE_LIMITS.TRUCK_CAP} />
         <YardCell tex={tex} count={numOf(machine.yard)} cap={LINE_LIMITS.YARD_CAP} />
       </StaticBatch>
@@ -163,7 +165,13 @@ function Spine({ machine }: { machine: MachineState }) {
         return (
           <group key={key}>
             <PhotoEye x={x} z={z + CONV.width / 2 + 0.14} on={held !== ''} />
-            {tokensOf(zone.key, held).map((token, k) => (
+            {kind === 'machine' && held !== '' && (
+              // A finished machine, driving west down the line boom first.
+              <group position={[x, CONV.deckY, z]} rotation={[0, Math.PI, 0]}>
+                <MachineBody mat={FINISH.painted} scale={MACHINE_ON_LINE} />
+              </group>
+            )}
+            {kind !== 'machine' && tokensOf(zone.key, held).map((token, k) => (
               <Part
                 key={k}
                 // A lane holds three, queued back from its discharge end.
@@ -218,7 +226,7 @@ const ZONE_SPOTS: Array<{
   key: string;
   x: number;
   z: number;
-  kind: 'zone' | 'lane';
+  kind: 'zone' | 'lane' | 'machine';
   rotY: number;
 }> = (() => {
   const spots: Array<{ x: number; z: number; rotY: number }> = [];
@@ -231,13 +239,17 @@ const ZONE_SPOTS: Array<{
       spots.push({ x: run.from[0] + t * dx, z: run.from[1] + t * dz, rotY });
     }
   }
-  return LINE_ZONES.map((z, i) => ({
-    key: z.key,
-    x: spots[i]?.x ?? 0,
-    z: spots[i]?.z ?? 0,
-    kind: z.cap > 1 ? ('lane' as const) : ('zone' as const),
-    rotY: spots[i]?.rotY ?? 0,
-  }));
+  return LINE_ZONES.map((z, i) => {
+    // The zones that carry finished machines are placed for a machine's length, not spaced evenly.
+    const machineX = MACHINE_ZONE_X[z.key];
+    return {
+      key: z.key,
+      x: machineX ?? spots[i]?.x ?? 0,
+      z: spots[i]?.z ?? 0,
+      kind: machineX !== undefined ? ('machine' as const) : z.cap > 1 ? ('lane' as const) : ('zone' as const),
+      rotY: spots[i]?.rotY ?? 0,
+    };
+  });
 })();
 
 export function FactoryLine3D({

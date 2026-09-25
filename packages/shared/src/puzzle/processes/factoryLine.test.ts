@@ -666,13 +666,13 @@ interface LineResult {
  */
 function runLine(sections: Record<string, Rung[]>, ms: number): LineResult {
   // Through `lineProject`, which resolves: the programs are written in names
-  // now, and an engine handed `PlantRun` where it wants `M0` runs a plant with
+  // now, and an engine handed a name where it wants an address runs a plant with
   // nothing wired to it. Sharing the one builder with the tempo harness and the
   // dev preview is also what stops the three drifting apart.
   const engine = new SimEngine(lineProject(sections));
   engine.reset();
   let machine = factoryLine.init(LINE_DEVICES);
-  const inputs: Record<string, boolean> = { X0: true, X1: true, X2: true, X3: true };
+  const inputs: Record<string, boolean> = {};
   let derived: Record<string, boolean> = {};
   let derivedRegs: Record<string, number> = {};
   const dt = 50;

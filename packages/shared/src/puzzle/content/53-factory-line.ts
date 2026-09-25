@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_SECTION_IDS, LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -79,7 +79,7 @@ export const factoryLineCapstone: PuzzleSpec = {
     '- SEC4_ASSEMBLY, the jig and the make-up bench.',
     '- SEC5_TEST, the test bay, the yard and the haulier.',
     '- SEC6_CONVEYOR, twelve zones of accumulating spine and one diverter.',
-    '- SUPERVISOR, the run latch every section reads.',
+    '- SUPERVISOR, the amber that says the line is backing up.',
     '',
     '## Sequence of operation',
     '1. Watch the plant run before you change anything. It works. The panel is live and every',
@@ -118,7 +118,7 @@ export const factoryLineCapstone: PuzzleSpec = {
     '  outside par on all three.',
   ].join('\n'),
   hints: [
-    'Do not start writing. Start the plant and watch D19 for a minute. It names the zone at ' +
+    'Do not start writing. Run the plant and watch D19 for a minute. It names the zone at ' +
       'the head of the queue, and the station on the end of that zone is the one costing you ' +
       'machines. Every other number on the panel is a symptom of it.',
     'The weld fixture gates its cycle on X10, which is the store infeed three zones and a ' +
@@ -139,7 +139,6 @@ export const factoryLineCapstone: PuzzleSpec = {
   ],
   devices: LINE_DEVICES,
   registers: [
-    { address: 'M0', label: 'Plant run', note: 'published by the supervisor; every section reads it' },
     { address: 'D18', label: 'Parts on spine', note: 'read only, a gauge for the whole line' },
     {
       address: 'D19',
@@ -161,21 +160,13 @@ export const factoryLineCapstone: PuzzleSpec = {
   // already made: the whole plant is handed over written in names, which is the
   // form the capstone is meant to be read in before it is improved.
   symbols: 'optional',
-  globals: LINE_GLOBALS,
   scenarios: [
     {
       name: 'A cold start',
       description: 'An empty plant, and the first machine out of the door.',
       steps: [
         {
-          label: 'Auto and start',
-          setInputs: { X3: true, X0: true },
-          holdMs: 1000,
-          expect: { Y0: true },
-        },
-        {
           label: 'The first excavator is welded, stored, painted, married up, tested and driven off',
-          setInputs: { X0: false },
           holdMs: 120_000,
           until: { machine: { shipped: 1 } },
           expectMachine: { jam: false, blocked: false, starved: false, scrapped: 0 },
@@ -192,14 +183,7 @@ export const factoryLineCapstone: PuzzleSpec = {
         'Twelve machines, back to back. This is the scenario the plant is actually judged on.',
       steps: [
         {
-          label: 'Auto and start',
-          setInputs: { X3: true, X0: true },
-          holdMs: 1000,
-          expect: { Y0: true },
-        },
-        {
           label: 'Twelve excavators are built and dispatched with nothing standing idle for long',
-          setInputs: { X0: false },
           holdMs: 300_000,
           until: { machine: { shipped: 12 } },
           expectMachine: { jam: false, blocked: false, starved: false, scrapped: 0 },
@@ -238,14 +222,11 @@ export const factoryLineCapstone: PuzzleSpec = {
       },
       steps: [
         {
-          label: 'Auto and start, with the yard full and the haulier just gone',
-          setInputs: { X3: true, X0: true },
+          label: 'With the yard full and the haulier just gone',
           holdMs: 1000,
-          expect: { Y0: true },
         },
         {
           label: 'The lorry comes, the yard empties and ten machines go out behind it',
-          setInputs: { X0: false },
           holdMs: 300_000,
           until: { machine: { shipped: 10 } },
           expectMachine: { jam: false, blocked: false, starved: false, scrapped: 0 },

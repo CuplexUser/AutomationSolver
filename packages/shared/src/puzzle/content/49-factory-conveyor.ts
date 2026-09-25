@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -139,7 +139,6 @@ export const factoryConveyor: PuzzleSpec = {
   ],
   devices: LINE_DEVICES,
   registers: [
-    { address: 'M0', label: 'Plant run', note: 'published by the supervisor; every section reads it' },
     { address: 'D18', label: 'Parts on spine', note: 'read only, a gauge for the whole line' },
     { address: 'D19', label: 'Blocked at zone', note: 'read only; 0 while the spine is flowing' },
   ],
@@ -149,7 +148,6 @@ export const factoryConveyor: PuzzleSpec = {
   tasks: LINE_TASKS,
   taskAssignment: 'fixed',
   symbols: 'optional',
-  globals: LINE_GLOBALS,
   // The pools are exactly the block SEC6_CONVEYOR owns. They have to be: `owns`
   // is still in force here, so a variable allocated outside it would be a
   // declaration the player is not allowed to write to, and the error would
@@ -170,16 +168,13 @@ export const factoryConveyor: PuzzleSpec = {
         'Run A end to end: the weld bay can let go, and the store can lift a part off a stopped belt.',
       steps: [
         {
-          label: 'Auto and start, and the weld bay rolls its first weldment onto Z1',
-          setInputs: { X3: true, X0: true },
+          label: 'The weld bay rolls its first weldment onto Z1',
           holdMs: 8000,
           until: { machine: { welded: 1 } },
-          expect: { Y0: true },
           expectMachine: { jam: false },
         },
         {
           label: 'It travels the run and the loader stacks it into the rack',
-          setInputs: { X0: false },
           holdMs: 10_000,
           until: { machine: { lane0: 'f' } },
           expectMachine: { jam: false, blocked: false },
@@ -200,14 +195,7 @@ export const factoryConveyor: PuzzleSpec = {
       description: 'Painted parts come off the oven mixed and have to leave the sort separated.',
       steps: [
         {
-          label: 'Auto and start',
-          setInputs: { X3: true, X0: true },
-          holdMs: 1000,
-          expect: { Y0: true },
-        },
-        {
           label: 'Three excavators are built, so six parts have been through the sort',
-          setInputs: { X0: false },
           holdMs: 140_000,
           until: { machine: { shipped: 3 } },
           expectMachine: { jam: false, blocked: false, starved: false, scrapped: 0 },
@@ -246,14 +234,11 @@ export const factoryConveyor: PuzzleSpec = {
       },
       steps: [
         {
-          label: 'Auto and start, with the yard already full and the rack backed up',
-          setInputs: { X3: true, X0: true },
+          label: 'With the yard already full and the rack backed up',
           holdMs: 1000,
-          expect: { Y0: true },
         },
         {
           label: 'The queue grows out onto the spine, seven parts standing on it, and nothing crashes',
-          setInputs: { X0: false },
           holdMs: 60_000,
           until: { analog: { D18: { min: 7 } } },
           expectMachine: { jam: false, blocked: false, starved: false },

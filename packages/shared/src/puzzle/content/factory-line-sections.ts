@@ -1,7 +1,7 @@
 import type { LadderProject, Pou, Rung, TaskDef } from '../../ladder/types.js';
 import type { PouSlot } from '../types.js';
 import { resolveProject } from '../symbols.js';
-import { LINE_DEVICES, LINE_GLOBALS, LINE_OWNS, SUP_PROGRAM } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_OWNS, SUP_PROGRAM } from './factory-line-plant.js';
 import {
   ASSEMBLY_PLAIN,
   ASSEMBLY_TUNED,
@@ -67,21 +67,16 @@ const SECTIONS: Record<LineSectionId, SectionDef> = {
     plain: SUP_PROGRAM,
     maxRungs: 8,
     brief: [
-      'The program above the plant. A run latch, a running lamp, and an amber that says the',
-      'line is backing up. PlantRun is a global: every section below reads it and none of them',
-      'write it.',
+      'The program above the plant: an amber that says the line is backing up.',
       '',
       '## Sequence of operation',
-      '1. PlantRun latches from X0 START, sealed in around itself, broken by X1 STOP or',
-      '   X2 EMERGENCY STOP, and held only while X3 AUTO is selected.',
-      '2. Y0 PLANT RUNNING follows PlantRun.',
-      '3. Y1 LINE HELD lights on X10 WELD OUTFEED OCCUPIED, X22 PAINTED LANE FULL, or the',
+      '1. Y1 LINE HELD lights on X10 WELD OUTFEED OCCUPIED, X22 PAINTED LANE FULL, or the',
       '   absence of X30 YARD SPACE.',
       '',
       '## Field notes',
-      '- With PlantRun off the plant does nothing at all, with one exception: the weld clamp holds',
-      '  on regardless, because a fixture that opened on an emergency stop would drop a half',
-      '  welded frame on the floor.',
+      '- There is no plant start. Every station runs while the simulation runs and stops when',
+      '  it stops, the way each cell on a real floor has its own controls rather than one',
+      '  button for the building.',
     ].join('\n'),
   },
 
@@ -323,7 +318,6 @@ export function lineProject(sections: Partial<Record<LineSectionId, Rung[]>>): L
   const project: LadderProject = {
     pous,
     tasks: LINE_TASKS.map((task) => ({ ...task })),
-    globals: LINE_GLOBALS.map((v) => ({ ...v })),
   };
   return resolveProject({ symbols: 'optional', devices: LINE_DEVICES }, project).project;
 }

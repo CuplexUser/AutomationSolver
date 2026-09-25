@@ -1,4 +1,4 @@
-import type { CompareOp, LadderElement, Rung, VarDecl, VLink } from '../../ladder/types.js';
+import type { CompareOp, LadderElement, Rung, VLink } from '../../ladder/types.js';
 import type { AnalogRange, PuzzleDevice } from '../types.js';
 
 /**
@@ -73,11 +73,9 @@ const YARD_RANGE = countRange(6, 'machines');
  */
 export const LINE_DEVICES: PuzzleDevice[] = [
   // --- Plant ---
-  { address: 'X0', label: 'Start', io: 'input', widget: 'momentary' },
-  { address: 'X1', label: 'Stop', io: 'input', widget: 'momentary', normallyClosed: true },
-  { address: 'X2', label: 'Emergency Stop', io: 'input', widget: 'estop', normallyClosed: true },
-  { address: 'X3', label: 'Auto', io: 'input', widget: 'selector' },
-  { address: 'Y0', label: 'Plant Running', io: 'output', widget: 'lamp', color: '#34d399' },
+  // No run buttons. A real plant has no one start and stop for the whole floor,
+  // and the seal-in they would teach is taught by the puzzles before this one:
+  // the line runs while the simulation runs, and stops when it stops.
   { address: 'Y1', label: 'Line Held', io: 'output', widget: 'lamp', color: '#fbbf24' },
 
   // --- Weld shop ---
@@ -391,7 +389,7 @@ export const LINE_INSTRUCTIONS = [
  * a section reads whatever it likes and drives only its own.
  */
 export const LINE_OWNS = {
-  SUP: ['M0-M9', 'T0-T4', 'C0-C4', 'D70-D79', 'Y0', 'Y1'],
+  SUP: ['M0-M9', 'T0-T4', 'C0-C4', 'D70-D79', 'Y1'],
   WELD: ['Y2-Y7', 'M10-M39', 'T10-T19', 'C10-C19', 'D20-D29'],
   STORE: ['Y8-Y13', 'D13', 'D14', 'M40-M69', 'T20-T29', 'C20-C29', 'D30-D39'],
   PAINT: ['Y14-Y16', 'D2', 'D3', 'D15', 'M70-M99', 'T30-T39', 'C30-C39', 'D40-D49'],
@@ -434,51 +432,16 @@ function rung(id: string, rows: (LadderElement | null)[][], vlinks: VLink[] = []
 
 export const build = { no, nc, re, out, set, rst, tmr, mov, cmp, rung };
 
-// --- The line's globals -------------------------------------------------------
-
-/**
- * The one name every section on this plant shares.
- *
- * A local would not do: `PlantRun` is written in the supervisor and read in all
- * six stations, and a name private to one POU is invisible in the others by
- * design. So it is a global, shipped by the puzzle rather than declared by the
- * player, and `fixed` because a submission that renamed or moved it would be
- * rewriting the supervisor's half of a handshake from the far end of it.
- *
- * It is deliberately the *only* one so far. The spine's published interface —
- * `SpineReady`, `WeldReleaseOk` and the rest — is new behaviour rather than a
- * rename, so it belongs with the puzzles that ask for it, not with a conversion
- * that has to ship the same machine counts it started with.
- */
-export const LINE_GLOBALS: VarDecl[] = [
-  {
-    name: 'PlantRun',
-    kind: 'bool',
-    address: 'M0',
-    fixed: true,
-    comment: 'Published by the supervisor. Every section reads it and none of them write it.',
-  },
-];
-
 // --- SUPERVISOR ---------------------------------------------------------------
 
 /**
- * The program above the plant, as the commissioning puzzle left it.
+ * The program above the plant: an amber that says the line is backing up.
  *
- * A run latch, a lamp that follows it, and an amber that says the line is
- * backing up. Every station below reads the one bit it publishes and none of
- * them write it.
+ * There is no run latch. Each station runs whenever the simulation does, the
+ * way each cell on a real floor is started at its own panel rather than from
+ * one button for the building.
  */
 export const SUP_PROGRAM: Rung[] = [
-  rung(
-    'sup-run',
-    [
-      [no('Start'), no('Stop'), no('EmergencyStop'), no('Auto'), out('PlantRun')],
-      [no('PlantRun')],
-    ],
-    [{ row: 0, col: 1 }],
-  ),
-  rung('sup-lamp', [[no('PlantRun'), out('PlantRunning')]]),
   // Three ways the line backs up, ORed into one amber lamp. YardSpace is on
   // while there IS room, so it is the one that inverts.
   rung(

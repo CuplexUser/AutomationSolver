@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -134,7 +134,6 @@ export const factoryPaint: PuzzleSpec = {
   ],
   devices: LINE_DEVICES,
   registers: [
-    { address: 'M0', label: 'Plant run', note: 'published by the supervisor; every section reads it' },
     { address: 'D40', label: 'Film target', note: 'suggested; you own D40 to D49' },
     { address: 'M70', label: 'Working relay', note: 'you own M70 to M99' },
   ],
@@ -144,23 +143,19 @@ export const factoryPaint: PuzzleSpec = {
   tasks: LINE_TASKS,
   taskAssignment: 'fixed',
   symbols: 'optional',
-  globals: LINE_GLOBALS,
   scenarios: [
     {
       name: 'The booth comes up and coats its first part',
       description: 'Nothing is sprayed at all until the band is held, and the band is a rung.',
       steps: [
         {
-          label: 'Auto and start, and the booth is brought up into the cure band',
-          setInputs: { X3: true, X0: true },
+          label: 'The booth is brought up into the cure band',
           holdMs: 20_000,
           until: { analog: { D0: { min: 1800 } } },
-          expect: { Y0: true },
           expectMachine: { jam: false },
         },
         {
           label: 'The first part is blasted, coated and sent through to a rack',
-          setInputs: { X0: false },
           holdMs: 30_000,
           until: { machine: { sprayed: 1 } },
           expectAnalog: { D0: { min: 1800, max: 2600 } },
@@ -184,14 +179,7 @@ export const factoryPaint: PuzzleSpec = {
         'Twelve parts, six machines. Every one inside its own window, and the booth charges twice for the paint a part did not need.',
       steps: [
         {
-          label: 'Auto and start',
-          setInputs: { X3: true, X0: true },
-          holdMs: 1000,
-          expect: { Y0: true },
-        },
-        {
           label: 'Six machines worth of parts are coated and baked, none of them scrap',
-          setInputs: { X0: false },
           holdMs: 200_000,
           until: { machine: { painted: 12 } },
           expectMachine: { jam: false, blocked: false, scrapped: 0 },
@@ -210,14 +198,7 @@ export const factoryPaint: PuzzleSpec = {
         'The fifth part is a different color from the fourth. Change it without stopping and without scrapping anything.',
       steps: [
         {
-          label: 'Auto and start',
-          setInputs: { X3: true, X0: true },
-          holdMs: 1000,
-          expect: { Y0: true },
-        },
-        {
           label: 'The line runs on to the changeover and the gun is flushed through for it',
-          setInputs: { X0: false },
           holdMs: 140_000,
           until: { machine: { purges: 1 } },
           expectMachine: { jam: false, scrapped: 0 },

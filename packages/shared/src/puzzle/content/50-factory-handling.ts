@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -136,7 +136,6 @@ export const factoryHandling: PuzzleSpec = {
   ],
   devices: LINE_DEVICES,
   registers: [
-    { address: 'M0', label: 'Plant run', note: 'published by the supervisor; every section reads it' },
     { address: 'M46', label: 'Next part out is a boom', note: 'suggested; flip it once per pick' },
     { address: 'M60', label: 'Portal step 1', note: 'suggested: fence the portal chain in M60 to M64' },
     { address: 'D30', label: 'Working register', note: 'you own D30 to D39' },
@@ -147,23 +146,19 @@ export const factoryHandling: PuzzleSpec = {
   tasks: LINE_TASKS,
   taskAssignment: 'fixed',
   symbols: 'optional',
-  globals: LINE_GLOBALS,
   scenarios: [
     {
       name: 'The first part reaches the booth',
       description: 'Rack in, rack out, and a gantry that has to obey both of its interlocks.',
       steps: [
         {
-          label: 'Auto and start, and the weld bay rolls its first weldment onto the spine',
-          setInputs: { X3: true, X0: true },
+          label: 'The weld bay rolls its first weldment onto the spine',
           holdMs: 8000,
           until: { machine: { welded: 1 } },
-          expect: { Y0: true },
           expectMachine: { jam: false },
         },
         {
           label: 'It travels the run and arrives on the store infeed',
-          setInputs: { X0: false },
           holdMs: 10_000,
           until: { bits: { X11: true } },
           expectMachine: { jam: false, blocked: false },
@@ -190,14 +185,7 @@ export const factoryHandling: PuzzleSpec = {
       description: 'The store feeds a plant. Three complete machines, nothing scrapped.',
       steps: [
         {
-          label: 'Auto and start',
-          setInputs: { X3: true, X0: true },
-          holdMs: 1000,
-          expect: { Y0: true },
-        },
-        {
           label: 'Three excavators are welded, stored, painted, married up and driven off',
-          setInputs: { X0: false },
           holdMs: 140_000,
           until: { machine: { shipped: 3 } },
           expectMachine: { jam: false, blocked: false, starved: false, scrapped: 0 },
@@ -223,14 +211,11 @@ export const factoryHandling: PuzzleSpec = {
       initialMachine: { lane0: 'ff' },
       steps: [
         {
-          label: 'Auto and start, with two frames already in the rack',
-          setInputs: { X3: true, X0: true },
+          label: 'With two frames already in the rack',
           holdMs: 1000,
-          expect: { Y0: true },
         },
         {
           label: 'Both of them go through the booth, and the jig is never handed two frames',
-          setInputs: { X0: false },
           holdMs: 140_000,
           until: { machine: { shipped: 2 } },
           expectMachine: { jam: false, blocked: false, starved: false, scrapped: 0 },

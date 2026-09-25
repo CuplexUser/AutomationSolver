@@ -445,7 +445,8 @@ units** and **tasks** over the existing model without touching it:
     only process model deep enough to need its own documents.
     - **It is the one plant written in symbols.** `factory-line-programs.ts` refers to every
       device by name; each section's working storage is `LINE_VARS[id]`, shipped `fixed` on the
-      slot, and `PlantRun` (`M0`) is the single global. Puzzles 48 to 53 set
+      slot, and there are no globals (the `PlantRun` latch went with the plant's run buttons,
+      2026-09-25: the line runs while the sim runs). Puzzles 48 to 53 set
       `symbols: 'optional'`, which is what makes those names resolve. **`lineProject(sections)`**
       in `factory-line-sections.ts` is the only way to build the plant outside a submission — the
       two soak harnesses and the client's `LinePreviewPage` all go through it, because it supplies

@@ -1355,8 +1355,8 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
           's-take-b2': null,
           's-have-f': null,
           's-have-b': null,
-          's-pick': R('s-pick', 1, 4, {
-            '0,0': no('M0'), '0,1': nc('X13'), '0,2': cmp('>', 'D4', 'K0'), '0,3': out('Y9'),
+          's-pick': R('s-pick', 1, 3, {
+            '0,0': nc('X13'), '0,1': cmp('>', 'D4', 'K0'), '0,2': out('Y9'),
           }),
           's-alt-arm': null,
           's-alt-clear': null,
@@ -1402,12 +1402,12 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
       getLadderPuzzle('factory-paint')!,
       paint(
         patch(PAINT_TUNED, {
-          'p-spray': R('p-spray', 1, 5, {
-            '0,0': no('M0'), '0,1': no('X19'), '0,2': cmp('<', 'D1', 'D40'),
-            '0,3': cmp('>=', 'D0', 'K1900'), '0,4': out('Y14'),
+          'p-spray': R('p-spray', 1, 4, {
+            '0,0': no('X19'), '0,1': cmp('<', 'D1', 'D40'),
+            '0,2': cmp('>=', 'D0', 'K1900'), '0,3': out('Y14'),
           }),
-          'p-purge': R('p-purge', 1, 3, {
-            '0,0': no('M0'), '0,1': cmp('<>', 'D9', 'D8'), '0,2': out('Y16'),
+          'p-purge': R('p-purge', 1, 2, {
+            '0,0': cmp('<>', 'D9', 'D8'), '0,1': out('Y16'),
           }),
         }),
       ),
@@ -1424,9 +1424,9 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
       getLadderPuzzle('factory-paint')!,
       paint(
         patch(PAINT_TUNED, {
-          'p-spray': R('p-spray', 1, 5, {
-            '0,0': no('M0'), '0,1': no('X19'), '0,2': cmp('<', 'D1', 'D40'),
-            '0,3': cmp('>=', 'D0', 'K1900'), '0,4': out('Y14'),
+          'p-spray': R('p-spray', 1, 4, {
+            '0,0': no('X19'), '0,1': cmp('<', 'D1', 'D40'),
+            '0,2': cmp('>=', 'D0', 'K1900'), '0,3': out('Y14'),
           }),
           'p-purge': null,
         }),
@@ -1450,9 +1450,9 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
       getLadderPuzzle('factory-assembly')!,
       build(
         patch(ASSEMBLY_TUNED, {
-          'a-pin': R('a-pin', 1, 5, {
-            '0,0': no('M0'), '0,1': no('X25'), '0,2': nc('X26'), '0,3': nc('M104'),
-            '0,4': out('Y22'),
+          'a-pin': R('a-pin', 1, 4, {
+            '0,0': no('X25'), '0,1': nc('X26'), '0,2': nc('M104'),
+            '0,3': out('Y22'),
           }),
         }),
         TEST_TUNED,
@@ -1470,9 +1470,9 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
       getLadderPuzzle('factory-assembly')!,
       build(
         patch(ASSEMBLY_TUNED, {
-          'a-prep': R('a-prep', 1, 6, {
-            '0,0': no('M0'), '0,1': no('M100'), '0,2': nc('X25'), '0,3': nc('X26'),
-            '0,4': nc('M104'), '0,5': out('Y21'),
+          'a-prep': R('a-prep', 1, 5, {
+            '0,0': no('M100'), '0,1': nc('X25'), '0,2': nc('X26'),
+            '0,3': nc('M104'), '0,4': out('Y21'),
           }),
         }),
         TEST_TUNED,
@@ -1488,8 +1488,8 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
       build(
         ASSEMBLY_TUNED,
         patch(TEST_TUNED, {
-          't-cycle': R('t-cycle', 1, 3, {
-            '0,0': no('M0'), '0,1': nc('X29'), '0,2': out('Y25'),
+          't-cycle': R('t-cycle', 1, 2, {
+            '0,0': nc('X29'), '0,1': out('Y25'),
           }),
         }),
       ),
@@ -1507,7 +1507,7 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
       build(
         ASSEMBLY_TUNED,
         patch(TEST_TUNED, {
-          't-pump': R('t-pump', 1, 3, { '0,0': no('M0'), '0,1': no('X28'), '0,2': out('Y24') }),
+          't-pump': R('t-pump', 1, 2, { '0,0': no('X28'), '0,1': out('Y24') }),
         }),
       ),
     );
@@ -1552,8 +1552,8 @@ describe('gradeProgram — the plausible wrong line sections are rejected', () =
           'WELD',
           'SEC1_WELD',
           patch(WELD_TUNED, {
-            'w-start': R('w-start', 1, 3, {
-              '0,0': no('M0'), '0,1': nc('M11'), '0,2': set('M11'),
+            'w-start': R('w-start', 1, 2, {
+              '0,0': nc('M11'), '0,1': set('M11'),
             }),
           }),
         ),

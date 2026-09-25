@@ -457,6 +457,7 @@ export const MachineBody = memo(function MachineBody({
   boom = 1,
   boomMat,
   swing = 0,
+  scale = 1,
 }: {
   mat: PartMat;
   engine?: number;
@@ -466,6 +467,7 @@ export const MachineBody = memo(function MachineBody({
   boomMat?: PartMat;
   /** Boom lift, 0 parked to 1 raised — the test bay's one moving picture. */
   swing?: number;
+  scale?: number;
 }) {
   return (
     <ExcavatorMachine
@@ -475,6 +477,7 @@ export const MachineBody = memo(function MachineBody({
       cab={cab}
       boom={boom}
       arm={{ lift: swing * 0.5, stick: -swing * 0.4 }}
+      scale={scale}
     />
   );
 });

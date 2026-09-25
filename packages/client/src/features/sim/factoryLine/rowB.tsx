@@ -1,6 +1,6 @@
 import { memo, useLayoutEffect } from 'react';
 import type * as THREE from 'three';
-import type { MachineState } from '@automationsolver/shared';
+import { LINE_LIMITS, type MachineState } from '@automationsolver/shared';
 import { meshesIn, node, ownMaterial } from '../plant/kit';
 import { SplitPiece, StaticPiece, PlantPiece, usePlantClone, usePlantSplit } from '../plant/PlantAsset';
 import {
@@ -9,6 +9,9 @@ import {
   CONV,
   DOCK,
   FINISH,
+  FLOOR,
+  MACHINE_ON_LINE,
+  MACHINE_ZONE_X,
   TEST,
   YARD,
   boolOf,
@@ -146,19 +149,17 @@ function ownPump(obj: THREE.Object3D): void {
  * The test pad: a hydraulic power pack, a pit and a machine working its boom.
  *
  * The only station on the line whose output is a *decision* rather than a part,
- * so it is drawn as a bay a machine is driven onto and driven off, with a queue
- * standing behind it — because a test bay that is never the constraint and a
- * test bay that always is look identical unless you can see the queue.
+ * so it is drawn as a bay a machine is driven onto and driven off. The queue
+ * standing behind it is Z10 and Z11, which the spine draws — because a test bay
+ * that is never the constraint and a test bay that always is look identical
+ * unless you can see the queue.
  */
 export const TestCell = memo(function TestCell({
   tex,
   machine: m,
-  queue,
 }: {
   tex: LineTextures;
   machine: MachineState;
-  /** How many machines are waiting on the approach. */
-  queue: number;
 }) {
   const [px, , pz] = ANCHOR.testPad;
   const onPad = boolOf(m.testPart);
@@ -188,22 +189,16 @@ export const TestCell = memo(function TestCell({
           to drive on and off it. */}
       <FloorMark tex={tex.hazard} x={px} z={pz} w={6.4} d={4.4} repeat={[11, 1]} opacity={0.55} />
       {onPad && (
-        // The dispatch run rides the spine, which passes straight through this
-        // bay, so a machine here stands on the deck rather than on the slab.
-        <group position={[px + away * 8, CONV.deckY, pz]}>
-          <MachineBody mat={FINISH.painted} swing={swing} />
+        // The spine passes straight through this bay, so a machine here stands on
+        // the deck, and dispatch drives it on west to Z12, where the spine takes
+        // it over. The queue behind it is the spine's to draw.
+        <group position={[px + away * (MACHINE_ZONE_X.z12 - px), CONV.deckY, pz]} rotation={[0, Math.PI, 0]}>
+          <MachineBody mat={FINISH.painted} swing={swing} scale={MACHINE_ON_LINE} />
         </group>
       )}
 
       {/* Power pack, its hoses running east toward the pad. */}
       <SplitPiece body={pack.body} live={pack.live} x={TEST.x0 + 1.4} z={pz - 2.6} />
-
-      {/* Approach queue: machines standing off the pad waiting their turn. */}
-      {Array.from({ length: Math.min(3, queue) }, (_, i) => (
-        <group key={i} position={[px + 5.4 + i * 4.2, CONV.deckY, pz]}>
-          <MachineBody mat={FINISH.painted} />
-        </group>
-      ))}
 
       <Figure x={px - 2.6} z={pz - 1.8} rotY={0.6} vest="#22d3ee" />
       <Cabinet x={TEST.x1 - 0.9} z={TEST.z0 + 1.2} />
@@ -219,19 +214,38 @@ export const TestCell = memo(function TestCell({
 
 // --- Dock ---------------------------------------------------------------------
 
+/** The load port on the building line behind the dock, and the platform inside it. */
+const PORT_Z = FLOOR.z1;
+const PLATFORM_Z = PORT_Z - 1.05;
+/** The south edge of the spine's run D, where the walkway to the platform starts. */
+const CONV_EDGE = ANCHOR.testPad[2] + CONV.width / 2 + 0.2;
 /**
- * Where the dock platform stands: its working edge against the docked lorry's
- * side, and not under it. The lorry is 2.68 m across its stake pockets.
+ * Where the lorry's deck middle stands when it is backed onto the port: its tail
+ * (4.5 m behind the middle) against the shelter, cab out toward the road.
  */
-const DOCK_FACE_Z = ANCHOR.truckBay[2] + 1.34 + 1.0;
+const PARKED_Z = PORT_Z + 0.35 + 4.5;
+/** How far out the lorry starts reversing in from, and how far it drives off. */
+const ROAD_IN = 18;
+const ROAD_OUT = 24;
+/** The apron outside the port: long enough for the lorry to arrive and leave on. */
+const APRON = { w: 10, d: 34 };
+const PORT_LIVE = ['Lamp Red', 'Lamp Green'] as const;
+
+function ownSignal(obj: THREE.Object3D): void {
+  for (const name of PORT_LIVE) ownMaterial(obj, name, (mat) => mat.clone());
+}
+
+const easeInOut = (t: number): number => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
 
 /**
- * The dock: a raised platform, and a lorry that is either there or is not.
+ * The dock: a raised platform inside a load port in the building line, and a
+ * lorry that backs up to the port from the road, loads, and drives off.
  *
  * Calling the lorry is a scheduling decision with a cost on both sides — send it
  * early and it stands at the dock doing nothing, send it late and the yard backs
- * up — so the truck has to be visibly *arriving* and *leaving* rather than
- * blinking into place, and `truckState` is drawn as a position on the approach.
+ * up — so the lorry is drawn *arriving* and *leaving*, on the process's own
+ * clocks, and never anywhere but the road and the port: it does not enter the
+ * plant. The port's signal shows red while it loads and green while it moves.
  */
 export const DockCell = memo(function DockCell({
   tex,
@@ -243,25 +257,50 @@ export const DockCell = memo(function DockCell({
   /** How many machines fill a lorry, so the deck can show how full it is. */
   cap: number;
 }) {
-  const [tx, , tz] = ANCHOR.truckBay;
+  const [tx] = ANCHOR.truckBay;
   const state = strOf(m.truckState, 'away');
+  const t = numOf(m.truckT);
   const load = numOf(m.truckLoad);
-  // Off to the west when away, at the bay when docked, sliding through between.
+  const here = state === 'coming' || state === 'docked' || state === 'leaving';
+  // Reversing in over the arrival time, then away forwards over the clearing time.
   const offset =
-    state === 'at' ? 0 : state === 'arriving' ? -6 : state === 'leaving' ? 9 : -16;
-  const here = state !== 'away';
+    state === 'coming'
+      ? (1 - easeInOut(clamp01(t / LINE_LIMITS.TRUCK_ARRIVE_MS))) * ROAD_IN
+      : state === 'leaving'
+        ? easeInOut(clamp01(t / LINE_LIMITS.TRUCK_CLEAR_MS)) * ROAD_OUT
+        : 0;
+
+  const port = usePlantSplit('DockDoor', PORT_LIVE, ownSignal);
+  useLayoutEffect(() => {
+    const lit = { 'Lamp Red': state === 'docked', 'Lamp Green': state === 'coming' || state === 'leaving' };
+    for (const name of PORT_LIVE) {
+      for (const mesh of meshesIn(port.live, name)) {
+        const mat = mesh.material as THREE.MeshStandardMaterial;
+        mat.emissive.copy(mat.color);
+        mat.emissiveIntensity = lit[name] ? 1.6 : 0;
+      }
+    }
+  }, [port, state]);
 
   return (
     <group>
       <BaySign tex={tex.signs.DOCK} x={cx(DOCK)} z={DOCK.z1 - 0.6} y={4.4} rotY={Math.PI} />
       <FloorText tex={tex.tags.DOCK} x={DOCK.x0 + 2.2} z={DOCK.z0 - 0.9} w={4.2} />
 
-      {/* The platform, its edge and bumpers toward the lorry, and the apron in front. */}
-      <StaticPiece name="DockFace" x={tx} z={DOCK_FACE_Z} rotY={Math.PI} />
-      <FloorMark tex={tex.walkway} x={tx} z={tz - 1.6} w={7.0} d={2.2} repeat={[3, 1]} />
+      {/* The platform against the port, and the walkway machines are driven up to it on. */}
+      <StaticPiece name="DockFace" x={tx} z={PLATFORM_Z} />
+      <FloorMark tex={tex.walkway} x={tx} z={(PLATFORM_Z - 1 + CONV_EDGE) / 2} w={7.0} d={PLATFORM_Z - 1 - CONV_EDGE} repeat={[3, 1]} />
+      <SplitPiece body={port.body} live={port.live} x={tx} z={PORT_Z} />
+
+      {/* The apron outside, which the lorry arrives and leaves on. */}
+      <mesh position={[tx, 0, PORT_Z + APRON.d / 2]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[APRON.w, APRON.d]} />
+        <meshStandardMaterial color="#2b2f35" roughness={0.95} metalness={0} />
+      </mesh>
 
       {here && (
-        <group position={[tx + offset, 0, tz]}>
+        // Built with its cab toward +x; turned so the cab faces the road and the tail the port.
+        <group position={[tx, 0, PARKED_Z + offset]} rotation={[0, -Math.PI / 2, 0]}>
           <PlantPiece name="Lorry" />
           {/* Crated machines on the deck, clear of it rather than on it. */}
           {Array.from({ length: Math.min(cap, Math.round(load)) }, (_, i) => (
@@ -273,12 +312,12 @@ export const DockCell = memo(function DockCell({
         </group>
       )}
 
-      {/* A loader up on the dock, and the bay's light beside it. */}
-      <Figure x={tx + 2.0} y={1.1} z={DOCK_FACE_Z + 0.3} rotY={Math.PI} vest="#f97316" />
+      {/* A loader up on the dock, and the bay's light beside the platform. */}
+      <Figure x={tx + 2.0} y={1.1} z={PLATFORM_Z - 0.3} rotY={0} vest="#f97316" />
       <StackLight
-        position={[DOCK.x1 - 0.6, 0, DOCK_FACE_Z]}
-        green={state === 'at'}
-        amber={state === 'arriving' || state === 'leaving'}
+        position={[tx + 4.1, 0, PLATFORM_Z]}
+        green={state === 'docked'}
+        amber={state === 'coming' || state === 'leaving'}
         red={false}
       />
     </group>

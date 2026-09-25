@@ -122,6 +122,16 @@ export interface ConveyorRun {
   stopShort?: number;
 }
 
+/**
+ * Where the three zones after the jig hold a finished machine, along run D at the
+ * test pad's z: Z10 and Z11 queue for the pad from the east, Z12 is the apron on
+ * its far side. Spaced for a machine at `MACHINE_ON_LINE`'s scale, so a queue of
+ * them, the one on the pad and the one driven off it never overlap.
+ */
+export const MACHINE_ZONE_X: Record<string, number> = { z10: 6.7, z11: 2.85, z12: -7.0 };
+/** Finished machines ride the spine and stand on the pad at this scale. */
+export const MACHINE_ON_LINE = 0.75;
+
 /** Half the assembly jig's length: the painted lanes are drawn up to its edge, not across its deck. */
 const JIG_HALF_LENGTH = 2.6;
 

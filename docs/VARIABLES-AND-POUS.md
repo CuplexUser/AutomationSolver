@@ -240,6 +240,7 @@ section reads them and writes none of them.
 
 > **Not built yet, and deliberately.** The conversion (step 6) shipped exactly one global,
 > `PlantRun` at `M0`, because that one already existed as a convention six sections were following.
+> It has since been removed with the line's run buttons (2026-09-25), so the line has no globals.
 > Everything in the table below is *new behaviour* — rungs that do not exist in `CONV_TUNED` today
 > — so it belongs to step 7, where the puzzles that ask for it are authored, and not to a rename
 > that had to ship the same machine counts it started with.

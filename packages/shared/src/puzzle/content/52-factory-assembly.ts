@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -136,7 +136,6 @@ export const factoryAssembly: PuzzleSpec = {
   ],
   devices: LINE_DEVICES,
   registers: [
-    { address: 'M0', label: 'Plant run', note: 'published by the supervisor; every section reads it' },
     { address: 'M100', label: 'Build in progress', note: 'suggested; assembly owns M100 to M129' },
     { address: 'T40', label: 'Step timer', note: 'assembly owns T40 to T49; reset them explicitly' },
     { address: 'M130', label: 'Truck called', note: 'suggested; the test bay owns M130 to M159' },
@@ -147,23 +146,19 @@ export const factoryAssembly: PuzzleSpec = {
   tasks: LINE_TASKS,
   taskAssignment: 'fixed',
   symbols: 'optional',
-  globals: LINE_GLOBALS,
   scenarios: [
     {
       name: 'The first machine is built and driven off',
       description: 'Frame, engine, cab, boom, pin, test, dispatch. Every step on the one before it.',
       steps: [
         {
-          label: 'Auto and start, and the first painted frame reaches the jig',
-          setInputs: { X3: true, X0: true },
+          label: 'The first painted frame reaches the jig',
           holdMs: 40_000,
           until: { analog: { D16: { min: 1 } } },
-          expect: { Y0: true },
           expectMachine: { jam: false },
         },
         {
           label: 'The engine goes in, the cab follows and the boom is pinned',
-          setInputs: { X0: false },
           holdMs: 30_000,
           until: { bits: { X26: true } },
           expectMachine: { jam: false, starved: false },
@@ -185,14 +180,7 @@ export const factoryAssembly: PuzzleSpec = {
         'Six machines. The bench needs a boom and nothing else, and every second it waits for the cab is a second off the line.',
       steps: [
         {
-          label: 'Auto and start',
-          setInputs: { X3: true, X0: true },
-          holdMs: 1000,
-          expect: { Y0: true },
-        },
-        {
           label: 'Six excavators are married up, tested and dispatched',
-          setInputs: { X0: false },
           holdMs: 200_000,
           until: { machine: { shipped: 6 } },
           expectMachine: { jam: false, blocked: false, starved: false, scrapped: 0 },
@@ -214,14 +202,11 @@ export const factoryAssembly: PuzzleSpec = {
       initialMachine: { yard: 4 },
       steps: [
         {
-          label: 'Auto and start, with four machines already standing in the yard',
-          setInputs: { X3: true, X0: true },
+          label: 'With four machines already standing in the yard',
           holdMs: 1000,
-          expect: { Y0: true },
         },
         {
           label: 'Four more are built and dispatched, and the line never stands waiting for a lorry',
-          setInputs: { X0: false },
           holdMs: 200_000,
           until: { machine: { shipped: 4 } },
           expectMachine: { jam: false, blocked: false, starved: false, scrapped: 0 },

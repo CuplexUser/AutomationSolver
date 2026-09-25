@@ -1,5 +1,5 @@
 import type { PuzzleSpec } from '../types.js';
-import { LINE_DEVICES, LINE_GLOBALS, LINE_INSTRUCTIONS } from './factory-line-plant.js';
+import { LINE_DEVICES, LINE_INSTRUCTIONS } from './factory-line-plant.js';
 import { LINE_TASKS, lineSections } from './factory-line-sections.js';
 
 /**
@@ -140,7 +140,6 @@ export const factoryWeld: PuzzleSpec = {
   ],
   devices: LINE_DEVICES,
   registers: [
-    { address: 'M0', label: 'Plant run', note: 'published by the supervisor; every section reads it' },
     { address: 'M10', label: 'Next blank is a boom', note: 'drives Y6; flip it once per release' },
     { address: 'M11', label: 'Cycle in progress', note: 'suggested; you own M10 to M39' },
     { address: 'T10', label: 'Seam timer', note: 'K=12 is 1.2 s; you own T10 to T19' },
@@ -155,23 +154,20 @@ export const factoryWeld: PuzzleSpec = {
   // rather than `required`: an address still resolves to itself, so nothing
   // saved against this puzzle before symbols existed has to be rewritten.
   symbols: 'optional',
-  globals: LINE_GLOBALS,
   scenarios: [
     {
       name: 'A frame, then a boom',
       description: 'The two parts are not the same job, and the tip is what keeps the score.',
       steps: [
         {
-          label: 'Auto and start, and the fixture clamps the first blank',
-          setInputs: { X3: true, X0: true },
+          label: 'The fixture clamps the first blank',
           holdMs: 3000,
           until: { bits: { X6: true } },
-          expect: { Y0: true, Y2: true },
+          expect: { Y2: true },
           expectMachine: { weldPart: 'f', jam: false },
         },
         {
           label: 'The frame is rolled over for its second pass',
-          setInputs: { X0: false },
           holdMs: 6000,
           until: { bits: { X8: true } },
           expectMachine: { jam: false },
@@ -204,14 +200,7 @@ export const factoryWeld: PuzzleSpec = {
       description: 'Eight passes, no gauge, and a bay that stops if you let it run out.',
       steps: [
         {
-          label: 'Auto and start',
-          setInputs: { X3: true, X0: true },
-          holdMs: 1000,
-          expect: { Y0: true },
-        },
-        {
           label: 'Run on until the first tip change, with the fixture empty for it',
-          setInputs: { X0: false },
           holdMs: 60_000,
           until: { machine: { tipChanges: 1 } },
           expectMachine: { jam: false, weldPart: '' },
@@ -230,14 +219,7 @@ export const factoryWeld: PuzzleSpec = {
       description: 'The bay feeds a plant. Three complete machines, nothing scrapped.',
       steps: [
         {
-          label: 'Auto and start',
-          setInputs: { X3: true, X0: true },
-          holdMs: 1000,
-          expect: { Y0: true },
-        },
-        {
           label: 'Three excavators are welded, painted, married up, tested and driven off',
-          setInputs: { X0: false },
           holdMs: 120_000,
           until: { machine: { shipped: 3 } },
           expectMachine: { jam: false, blocked: false, starved: false, scrapped: 0 },

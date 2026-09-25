@@ -72,7 +72,6 @@ import { dcHub } from './59-dc-hub.js';
  */
 export {
   LINE_DEVICES,
-  LINE_GLOBALS,
   LINE_INSTRUCTIONS,
   LINE_OWNS,
   SUP_PROGRAM,

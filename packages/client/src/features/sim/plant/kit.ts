@@ -72,6 +72,7 @@ export type PlantAssetName =
   | 'TestConsole'
   | 'TestPlatform'
   | 'DockFace'
+  | 'DockDoor'
   | 'Lorry'
   | 'ScrapSkip'
   | 'YardMast'

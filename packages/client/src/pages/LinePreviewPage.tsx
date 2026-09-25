@@ -53,8 +53,8 @@ const TUNED = {
 
 const OUT_DEVICES = LINE_DEVICES.filter((d) => d.io === 'output' && !isAnalog(d));
 const ANALOG_DEVICES = LINE_DEVICES.filter(isAnalog);
-/** Start, Stop (NC), E-Stop (NC) and Auto, all made — the line simply runs. */
-const PLANT_INPUTS: Record<string, boolean> = { X0: true, X1: true, X2: true, X3: true };
+/** The line has no operator inputs: it runs while the loop does. */
+const PLANT_INPUTS: Record<string, boolean> = {};
 
 /** Everything the loop carries between ticks but the picture never reads. */
 interface SimCarry {
