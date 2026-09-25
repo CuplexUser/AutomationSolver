@@ -118,7 +118,12 @@ export interface ConveyorRun {
   from: [number, number];
   to: [number, number];
   zones: number;
+  /** How far short of `to` the drawn run stops, where it feeds a machine standing over its end. */
+  stopShort?: number;
 }
+
+/** Half the assembly jig's length: the painted lanes are drawn up to its edge, not across its deck. */
+const JIG_HALF_LENGTH = 2.6;
 
 export const SPINE: ConveyorRun[] = [
   // Weld outfeed east to the store's loader. Z1 Z2 Z3.
@@ -129,8 +134,8 @@ export const SPINE: ConveyorRun[] = [
   { id: 'B', from: [24, -8], to: [26, -8], zones: 1 },
   { id: 'C', from: [26, -8], to: [26, 3], zones: 3 },
   // The two painted lanes, running west into the jig. Z8 Z9.
-  { id: 'F', from: [26, 5], to: [13, 5], zones: 1 },
-  { id: 'M', from: [26, 7.5], to: [13, 7.5], zones: 1 },
+  { id: 'F', from: [26, 5], to: [13, 5], zones: 1, stopShort: JIG_HALF_LENGTH },
+  { id: 'M', from: [26, 7.5], to: [13, 7.5], zones: 1, stopShort: JIG_HALF_LENGTH },
   // Assembly out, through test, on to the dock and the yard. Z10 Z11 Z12.
   { id: 'D', from: [7, 11], to: [-19, 11], zones: 3 },
 ];

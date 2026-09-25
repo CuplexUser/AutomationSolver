@@ -1,32 +1,26 @@
-import { memo } from 'react';
-import * as THREE from 'three';
+import { memo, useLayoutEffect } from 'react';
+import type * as THREE from 'three';
 import type { MachineState } from '@automationsolver/shared';
+import { meshesIn, node, ownMaterial } from '../plant/kit';
+import { SplitPiece, StaticPiece, PlantPiece, usePlantClone, usePlantSplit } from '../plant/PlantAsset';
 import {
   ANCHOR,
   ASSEMBLY,
   CONV,
-  DARK_STEEL,
   DOCK,
   FINISH,
-  GLASS,
-  MACHINE,
-  POWER,
-  RUBBER,
-  STEEL,
-  STRUCTURE,
   TEST,
   YARD,
   boolOf,
   bw,
   clamp01,
   cx,
-  cz,
   numOf,
   orderPaint,
   strOf,
 } from './plant';
-import { Cabinet, CellGuard, Figure, HmiPost, MachineBody, StackLight } from './props';
-import { BaySign, FloorMark, FloorText, HazardBand, type LineTextures } from './textures';
+import { Cabinet, CellGuard, FenceRun, Figure, HmiPost, MachineBody, StackLight } from './props';
+import { BaySign, FloorMark, FloorText, type LineTextures } from './textures';
 
 /**
  * Row B: assembly, test, dock, yard — everything that turns two parts into a
@@ -39,8 +33,23 @@ import { BaySign, FloorMark, FloorText, HazardBand, type LineTextures } from './
 
 // --- Final assembly -----------------------------------------------------------
 
+/** The jig's seat, where a machine's tracks stand. */
+const JIG_TOP = 0.6;
+/** The top of a machine's counterweight over its tracks' underside, fitted. */
+const HOUSE_TOP = 1.26;
+/** How far the house hangs above its seat per unit of fitting left (the kit's DROP). */
+const HOUSE_DROP = 2.6;
+/** The hook's slings reach this far below it, to the house. */
+const SLINGS = 0.9;
+/** The hook parked up, and the highest it can be pulled under the hoist. */
+const HOOK_PARKED = 3.9;
+const HOOK_TOP = 4.2;
+/** Where the kit's hoist chain hangs from, and the hook block's height over the hook. */
+const CHAIN_FROM = 4.47;
+const HOOK_BLOCK = 0.06;
+
 /**
- * The jig: a machine growing on a stand under an engine hoist.
+ * The jig: a machine growing on a stand under a portal hoist.
  *
  * The frame and the boom carry their own colors, and the jig draws them
  * separately on purpose — a machine wearing two colors is the mis-marry the
@@ -63,20 +72,27 @@ export const AssemblyCell = memo(function AssemblyCell({
   const prep = clamp01(numOf(m.assyPrep));
   const starving = numOf(m.assyStarveMs) > 3000;
 
+  // The hook carries the house down onto the frame, then goes back up.
+  const lowering = frame > 0 && engine > 0 && engine < 1;
+  const hookY = lowering
+    ? Math.min(HOOK_TOP, JIG_TOP + HOUSE_TOP + SLINGS + (1 - engine) * HOUSE_DROP)
+    : HOOK_PARKED;
+
+  const hoist = usePlantClone('EngineHoist');
+  useLayoutEffect(() => {
+    node(hoist, 'HoistHook').position.y = hookY;
+    node(hoist, 'HoistChain').scale.y = Math.max(0.05, CHAIN_FROM - hookY - HOOK_BLOCK);
+  }, [hoist, hookY]);
+
   return (
     <group>
       <CellGuard tex={tex.mesh} box={ASSEMBLY} open="north" />
       <BaySign tex={tex.signs.ASSEMBLY} x={cx(ASSEMBLY)} z={ASSEMBLY.z1 - 0.6} y={5.0} rotY={Math.PI} />
       <FloorText tex={tex.tags.ASSEMBLY} x={ASSEMBLY.x0 + 3} z={ASSEMBLY.z0 - 0.9} w={4.6} />
 
-      {/* Jig stand, taped, with the machine standing on it. */}
-      <mesh position={[jx, 0.3, jz]} castShadow receiveShadow>
-        <boxGeometry args={[5.2, 0.6, 3.4]} />
-        <meshStandardMaterial {...MACHINE} />
-      </mesh>
-      <HazardBand tex={tex.hazard} x={jx} z={jz} w={5.2} d={3.4} y={0.3} h={0.3} />
+      <StaticPiece name="AssemblyJig" x={jx} z={jz} />
       {frame > 0 && (
-        <group position={[jx, 0.6, jz]}>
+        <group position={[jx, JIG_TOP, jz]}>
           <MachineBody
             mat={orderPaint(frame)}
             engine={engine}
@@ -86,37 +102,12 @@ export const AssemblyCell = memo(function AssemblyCell({
           />
         </group>
       )}
-
-      {/* Engine hoist: a monorail over the jig with the block hanging where the
-          house is on its way down from. */}
-      {[-2.6, 2.6].map((dz) => (
-        <mesh key={dz} position={[jx + 1.2, 2.6, jz + dz]} castShadow>
-          <boxGeometry args={[0.28, 5.2, 0.28]} />
-          <meshStandardMaterial {...STRUCTURE} />
-        </mesh>
-      ))}
-      <mesh position={[jx + 1.2, 5.2, jz]} castShadow>
-        <boxGeometry args={[0.34, 0.34, 6.0]} />
-        <meshStandardMaterial {...STRUCTURE} />
-      </mesh>
-      <group position={[jx, 0, jz]}>
-        <mesh position={[0, 4.9, 0]} castShadow>
-          <boxGeometry args={[0.8, 0.4, 0.7]} />
-          <meshStandardMaterial {...POWER} />
-        </mesh>
-        <mesh position={[0, 3.9 + engine * 0.6, 0]}>
-          <cylinderGeometry args={[0.03, 0.03, 1.8, 6]} />
-          <meshStandardMaterial {...STEEL} />
-        </mesh>
-      </group>
+      <primitive object={hoist} position={[jx, 0, jz]} />
 
       {/* Boom make-up bench beside the jig: where a boom is pinned up before it
           goes on. Its own progress, because it can run while the engine drops. */}
       <group position={[jx - 4.6, 0, jz + 2.4]}>
-        <mesh position={[0, 0.45, 0]} castShadow receiveShadow>
-          <boxGeometry args={[3.4, 0.9, 1.5]} />
-          <meshStandardMaterial {...DARK_STEEL} />
-        </mesh>
+        <StaticPiece name="MakeUpBench" />
         {prep > 0 && (
           <mesh position={[0, 1.05, 0]} rotation={[0, 0, prep * 0.12]} castShadow>
             <boxGeometry args={[2.8, 0.3, 0.3]} />
@@ -124,10 +115,12 @@ export const AssemblyCell = memo(function AssemblyCell({
           </mesh>
         )}
       </group>
+      <StaticPiece name="PartsBin" x={jx - 2.0} z={jz + 3.2} />
+      <StaticPiece name="PartsBin" x={jx - 0.8} z={jz + 3.2} />
 
       {/* Two fitters, which is what a jig this size actually takes. */}
       <Figure x={jx - 3.2} z={jz - 0.4} rotY={1.3} />
-      <Figure x={jx + 0.6} z={jz + 2.6} rotY={-2.4} vest="#facc15" />
+      <Figure x={jx + 1.0} z={jz + 2.6} rotY={-2.4} vest="#facc15" />
 
       <Cabinet x={ASSEMBLY.x1 - 1.0} z={ASSEMBLY.z0 + 1.2} />
       <HmiPost tex={tex.hmi} x={ASSEMBLY.x1 - 2.4} z={ASSEMBLY.z0 + 1.2} />
@@ -142,6 +135,12 @@ export const AssemblyCell = memo(function AssemblyCell({
 });
 
 // --- Test bay -----------------------------------------------------------------
+
+const PUMP_LIVE = ['Pump Lamp'] as const;
+
+function ownPump(obj: THREE.Object3D): void {
+  ownMaterial(obj, 'Pump Lamp', (m) => m.clone());
+}
 
 /**
  * The test pad: a hydraulic power pack, a pit and a machine working its boom.
@@ -163,12 +162,22 @@ export const TestCell = memo(function TestCell({
 }) {
   const [px, , pz] = ANCHOR.testPad;
   const onPad = boolOf(m.testPart);
-  const pump = clamp01(numOf(m.testPump));
+  const pump = clamp01(numOf(m.testPump)) > 0;
   const cycle = clamp01(numOf(m.testCycle));
   const away = clamp01(numOf(m.testDispatch));
   // The boom sweeps once through the function test, which is the whole picture:
   // a machine that never lifts is a machine nobody proved.
   const swing = onPad ? Math.sin(cycle * Math.PI * 2) * 0.5 + 0.5 : 0;
+
+  const pack = usePlantSplit('PowerPack', PUMP_LIVE, ownPump);
+  useLayoutEffect(() => {
+    for (const mesh of meshesIn(pack.live, 'Pump Lamp')) {
+      const mat = mesh.material as THREE.MeshStandardMaterial;
+      mat.color.set(pump ? '#e8621a' : '#4a545f');
+      mat.emissive.set('#e8621a');
+      mat.emissiveIntensity = pump ? 0.9 : 0;
+    }
+  }, [pack, pump]);
 
   return (
     <group>
@@ -186,27 +195,8 @@ export const TestCell = memo(function TestCell({
         </group>
       )}
 
-      {/* Power pack, and the hose running from it to the pad. */}
-      <group position={[TEST.x0 + 1.4, 0, pz - 2.6]}>
-        <mesh position={[0, 0.75, 0]} castShadow receiveShadow>
-          <boxGeometry args={[1.9, 1.5, 1.2]} />
-          <meshStandardMaterial {...MACHINE} />
-        </mesh>
-        <mesh position={[0, 1.62, 0]} castShadow>
-          <cylinderGeometry args={[0.3, 0.3, 0.24, 14]} />
-          <meshStandardMaterial
-            color={pump > 0 ? '#e8621a' : '#4a545f'}
-            emissive="#e8621a"
-            emissiveIntensity={pump > 0 ? 0.9 : 0}
-            metalness={0.4}
-            roughness={0.5}
-          />
-        </mesh>
-        <mesh position={[1.4, 0.24, 1.0]} rotation={[0, -0.6, 0]}>
-          <boxGeometry args={[3.2, 0.12, 0.12]} />
-          <meshStandardMaterial {...RUBBER} />
-        </mesh>
-      </group>
+      {/* Power pack, its hoses running east toward the pad. */}
+      <SplitPiece body={pack.body} live={pack.live} x={TEST.x0 + 1.4} z={pz - 2.6} />
 
       {/* Approach queue: machines standing off the pad waiting their turn. */}
       {Array.from({ length: Math.min(3, queue) }, (_, i) => (
@@ -230,7 +220,13 @@ export const TestCell = memo(function TestCell({
 // --- Dock ---------------------------------------------------------------------
 
 /**
- * The dock: a levelled bay, and a lorry that is either there or is not.
+ * Where the dock platform stands: its working edge against the docked lorry's
+ * side, and not under it. The lorry is 2.68 m across its stake pockets.
+ */
+const DOCK_FACE_Z = ANCHOR.truckBay[2] + 1.34 + 1.0;
+
+/**
+ * The dock: a raised platform, and a lorry that is either there or is not.
  *
  * Calling the lorry is a scheduling decision with a cost on both sides — send it
  * early and it stands at the dock doing nothing, send it late and the yard backs
@@ -260,56 +256,27 @@ export const DockCell = memo(function DockCell({
       <BaySign tex={tex.signs.DOCK} x={cx(DOCK)} z={DOCK.z1 - 0.6} y={4.4} rotY={Math.PI} />
       <FloorText tex={tex.tags.DOCK} x={DOCK.x0 + 2.2} z={DOCK.z0 - 0.9} w={4.2} />
 
-      {/* The bay: a raised dock face with a hazard nose, and the apron in front. */}
-      <mesh position={[tx, 0.55, DOCK.z1 - 1.0]} castShadow receiveShadow>
-        <boxGeometry args={[7.0, 1.1, 2.0]} />
-        <meshStandardMaterial {...MACHINE} />
-      </mesh>
-      <HazardBand tex={tex.hazard} x={tx} z={DOCK.z1 - 1.0} w={7.0} d={2.0} y={0.92} h={0.3} />
+      {/* The platform, its edge and bumpers toward the lorry, and the apron in front. */}
+      <StaticPiece name="DockFace" x={tx} z={DOCK_FACE_Z} rotY={Math.PI} />
       <FloorMark tex={tex.walkway} x={tx} z={tz - 1.6} w={7.0} d={2.2} repeat={[3, 1]} />
 
       {here && (
         <group position={[tx + offset, 0, tz]}>
-          {/* Trailer deck and its load, then the cab in front of it. */}
-          <mesh position={[0, 1.24, 0]} castShadow receiveShadow>
-            <boxGeometry args={[9.0, 0.28, 2.7]} />
-            <meshStandardMaterial {...DARK_STEEL} />
-          </mesh>
+          <PlantPiece name="Lorry" />
+          {/* Crated machines on the deck, clear of it rather than on it. */}
           {Array.from({ length: Math.min(cap, Math.round(load)) }, (_, i) => (
-            // Clear of the deck rather than exactly on it: two faces at the same
-            // height flicker against each other as the camera moves.
             <mesh key={i} position={[-3.6 + i * 1.4, 1.75, 0]} castShadow>
               <boxGeometry args={[1.2, 0.68, 2.0]} />
               <meshStandardMaterial {...FINISH.painted} />
             </mesh>
           ))}
-          <mesh position={[5.4, 1.5, 0]} castShadow receiveShadow>
-            <boxGeometry args={[2.4, 2.2, 2.5]} />
-            <meshStandardMaterial color="#c8ccd1" metalness={0.4} roughness={0.4} />
-          </mesh>
-          <mesh position={[6.55, 2.1, 0]}>
-            <boxGeometry args={[0.08, 0.8, 2.0]} />
-            <meshStandardMaterial {...GLASS} />
-          </mesh>
-          {[-3.2, -1.8, 4.9].map((wx) =>
-            [-1.3, 1.3].map((wz) => (
-              <mesh
-                key={`${wx},${wz}`}
-                position={[wx, 0.52, wz]}
-                rotation={[Math.PI / 2, 0, 0]}
-                castShadow
-              >
-                <cylinderGeometry args={[0.52, 0.52, 0.34, 16]} />
-                <meshStandardMaterial {...RUBBER} />
-              </mesh>
-            )),
-          )}
         </group>
       )}
 
-      <Figure x={tx + 4.4} z={tz - 2.4} rotY={-0.9} vest="#f97316" />
+      {/* A loader up on the dock, and the bay's light beside it. */}
+      <Figure x={tx + 2.0} y={1.1} z={DOCK_FACE_Z + 0.3} rotY={Math.PI} vest="#f97316" />
       <StackLight
-        position={[DOCK.x1 - 0.6, 0, DOCK.z1 - 1.4]}
+        position={[DOCK.x1 - 0.6, 0, DOCK_FACE_Z]}
         green={state === 'at'}
         amber={state === 'arriving' || state === 'leaving'}
         red={false}
@@ -349,15 +316,7 @@ export const YardCell = memo(function YardCell({
         const bz = YARD.z0 + 1.8 + (row * (YARD.z1 - YARD.z0 - 3.6)) / Math.max(1, rows - 1);
         return (
           <group key={i}>
-            <FloorMark
-              tex={tex.hazard}
-              x={bx}
-              z={bz}
-              w={3.6}
-              d={2.6}
-              repeat={[7, 1]}
-              opacity={0.35}
-            />
+            <FloorMark tex={tex.hazard} x={bx} z={bz} w={3.6} d={2.6} repeat={[7, 1]} opacity={0.35} />
             <FloorText tex={tex.yardBays[i]} x={bx} z={bz + 1.6} w={2.2} />
             {i < count && (
               <group position={[bx, 0, bz]} rotation={[0, Math.PI / 2, 0]} scale={0.9}>
@@ -367,17 +326,9 @@ export const YardCell = memo(function YardCell({
           </group>
         );
       })}
-      {/* The yard is outside, so it gets a fence rather than a machine guard. */}
-      <mesh position={[YARD.x0 - 0.4, 1.4, cz(YARD)]} rotation={[0, Math.PI / 2, 0]}>
-        <planeGeometry args={[YARD.z1 - YARD.z0 + 2, 2.8]} />
-        <meshStandardMaterial
-          color="#5d6773"
-          transparent
-          opacity={0.35}
-          side={THREE.DoubleSide}
-          roughness={0.8}
-        />
-      </mesh>
+      {/* The yard is outside, so it gets a perimeter fence and a floodlight. */}
+      <FenceRun tex={tex.mesh} from={[YARD.x0 - 0.4, YARD.z0 - 1]} to={[YARD.x0 - 0.4, YARD.z1 + 1]} height={2.8} />
+      <StaticPiece name="YardMast" x={YARD.x0 + 0.4} z={YARD.z1 - 0.2} rotY={(3 * Math.PI) / 4} />
     </group>
   );
 });

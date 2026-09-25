@@ -24,6 +24,7 @@ import { TestBay, Yard } from './factory/TestBay';
 import { BaySign, buildTextures, disposeTextures, Lane } from './factory/textures';
 import { WeldBay } from './factory/WeldBay';
 import { MachineCanvas } from './MachineCanvas';
+import { StaticBatch } from './StaticBatch';
 
 /**
  * The excavator plant: four bays, two part streams, one floor.
@@ -112,6 +113,8 @@ export function FactoryRig({
           it stands directly in the weld bay's camera preset. */}
       <BaySign tex={tex.signs.YARD} x={YARD_COL_X[1]} z={YARD_ROW_Z[0] - 1.0} y={4.0} />
 
+      {/* Everything static below is baked into a few merged meshes. */}
+      <StaticBatch>
       <WeldBay machine={machine} torchOn={outputs.Y3 === true} />
       <WeldBuffer queue={strOf(machine.bufWp)} />
       <PaintBay machine={machine} spraying={outputs.Y8 === true} />
@@ -120,6 +123,7 @@ export function FactoryRig({
       <TestQueue count={numOf(machine.bufAt)} />
       <TestBay machine={machine} />
       <Yard count={numOf(machine.yard)} />
+      </StaticBatch>
     </group>
   );
 }

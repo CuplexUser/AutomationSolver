@@ -1,7 +1,9 @@
-import { memo, useRef } from 'react';
+import { memo, useLayoutEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { FACTORY_LIMITS, type MachineState } from '@automationsolver/shared';
+import { meshesIn, node, ownMaterial } from '../plant/kit';
+import { PlantPiece, SplitPiece, StaticPiece, usePlantSplit } from '../plant/PlantAsset';
 import { LoosePart } from './Excavator';
 import { BarGauge, StackLight } from './indicators';
 import {
@@ -9,115 +11,54 @@ import {
   boolOf,
   clamp01,
   COUNTS_FULL,
-  DARK_STEEL,
   FINISH,
-  MACHINE_PAINT,
   numOf,
   OVEN_X,
   ROW_A,
-  STEEL,
   strOf,
   type Finish,
 } from './plant';
 
-/** Booth enclosure and cure oven: two chambers on one heater duct. */
+/** Booth enclosure and cure oven: two chambers on one heater duct, with the extract stack over the booth. */
 const PaintShell = memo(function PaintShell() {
   return (
     <group>
-      {/* Spray booth: glazed so the part inside stays visible.
-
-          The glass is a box, and a box has a bottom. Sat flat on the slab that
-          face was coplanar with the floor and, being double-sided, drawn — so
-          the booth's whole floor area shimmered in bands wherever the depth
-          buffer could not separate the two. It starts a few centimetres up
-          instead, which is also where a real booth's glazing starts. */}
-      <group position={[BOOTH_X, 0, 0]}>
-        <mesh position={[0, 1.74, 0]}>
-          <boxGeometry args={[4.0, 3.32, 3.6]} />
-          <meshPhysicalMaterial
-            color="#cfe0ee"
-            transparent
-            opacity={0.15}
-            depthWrite={false}
-            roughness={0.1}
-            metalness={0}
-            side={THREE.DoubleSide}
-          />
-        </mesh>
-        {/* Frame members, so the glass reads as a booth and not as a haze. */}
-        {[-2.0, 2.0].map((x) =>
-          [-1.8, 1.8].map((z) => (
-            <mesh key={`${x},${z}`} position={[x, 1.7, z]} castShadow>
-              <boxGeometry args={[0.12, 3.4, 0.12]} />
-              <meshStandardMaterial {...MACHINE_PAINT} />
-            </mesh>
-          )),
-        )}
-        {/* Roof: a rail around the edge and a plenum along the back only. A
-            solid lid is what the first version had, and from the plant camera
-            it hid the entire booth interior — the one thing the booth is for. */}
-        {[-1.9, 1.9].map((z) => (
-          <mesh key={z} position={[0, 3.45, z]} castShadow>
-            <boxGeometry args={[4.3, 0.2, 0.24]} />
-            <meshStandardMaterial {...MACHINE_PAINT} />
-          </mesh>
-        ))}
-        {[-2.05, 2.05].map((x) => (
-          <mesh key={x} position={[x, 3.45, 0]} castShadow>
-            <boxGeometry args={[0.2, 0.2, 3.8]} />
-            <meshStandardMaterial {...MACHINE_PAINT} />
-          </mesh>
-        ))}
-        <mesh position={[0, 3.32, -1.3]} castShadow>
-          <boxGeometry args={[3.9, 0.5, 0.9]} />
-          <meshStandardMaterial color="#6b7684" metalness={0.45} roughness={0.6} />
-        </mesh>
-        {/* Filter cassettes in the plenum face, seen from the front. */}
-        {[-1.2, 0, 1.2].map((x) => (
-          <mesh key={x} position={[x, 3.32, -0.86]}>
-            <planeGeometry args={[1.1, 0.34]} />
-            <meshStandardMaterial color="#b9a06a" roughness={0.95} metalness={0} />
-          </mesh>
-        ))}
-      </group>
-
-      {/* Cure oven: solid, insulated, with a viewing slot. */}
-      <group position={[OVEN_X, 0, 0]}>
-        <mesh position={[0, 1.6, 0]} castShadow receiveShadow>
-          <boxGeometry args={[4.2, 3.2, 3.6]} />
-          <meshStandardMaterial color="#59636f" metalness={0.4} roughness={0.6} />
-        </mesh>
-        <mesh position={[0, 1.9, 1.82]}>
-          <planeGeometry args={[2.4, 0.5]} />
-          <meshStandardMaterial color="#1b2029" roughness={0.4} metalness={0.3} />
-        </mesh>
-      </group>
-
-      {/* Heater duct linking the two, and the extract stack above the booth. */}
-      <mesh position={[(BOOTH_X + OVEN_X) / 2, 2.9, -1.4]} rotation={[0, 0, Math.PI / 2]} castShadow>
-        <cylinderGeometry args={[0.3, 0.3, OVEN_X - BOOTH_X, 16]} />
-        <meshStandardMaterial {...STEEL} />
-      </mesh>
-      <mesh position={[BOOTH_X, 4.4, -1.4]} castShadow>
-        <cylinderGeometry args={[0.34, 0.34, 1.9, 16]} />
-        <meshStandardMaterial {...STEEL} />
-      </mesh>
-      {/* Cowl on the stack, so it does not read as a white disc from above. */}
-      <mesh position={[BOOTH_X, 5.42, -1.4]} castShadow>
-        <coneGeometry args={[0.55, 0.42, 16]} />
-        <meshStandardMaterial {...DARK_STEEL} />
-      </mesh>
+      <StaticPiece name="PaintBoothCompact" x={BOOTH_X} />
+      <StaticPiece name="HeaterDuct" x={(BOOTH_X + OVEN_X) / 2} y={2.9} z={-1.4} scale={[OVEN_X - BOOTH_X, 1, 1]} />
+      <StaticPiece name="ExtractStack" x={BOOTH_X} y={3.45} z={-1.4} />
+      <StaticPiece name="ScrapSkip" x={OVEN_X + 0.4} z={-3.2} />
     </group>
   );
 });
 
+/** The oven's viewing slot glows with its temperature; the reciprocator's carriage strokes. */
+const OVEN_LIVE = ['Oven Glow'] as const;
+const GUN_LIVE = ['GunCarriage'] as const;
+/** Where the reciprocator's mast stands in the booth, from its middle. */
+const MAST_X = -1.9;
+/** The kit gun's nozzle, from the mast; and the middle and half-height of its stroke. */
+const NOZZLE_X = 1.48;
+const STROKE_MID = 1.6;
+const STROKE = 0.6;
+/** The kit's reciprocator is built for the line's 4.6 m booth; this one is 3.4 m. */
+const RECIP_SCALE = 0.75;
+
+function ownGlow(obj: THREE.Object3D): void {
+  ownMaterial(obj, 'Oven Glow', (m) => {
+    const glow = m.clone();
+    glow.emissive.set('#f59e0b');
+    glow.emissiveIntensity = 0.2;
+    return glow;
+  });
+}
+
 interface PaintRefs {
   part: THREE.Group | null;
-  gun: THREE.Group | null;
   fan: THREE.Mesh | null;
   fanMat: THREE.MeshStandardMaterial | null;
   glow: THREE.PointLight | null;
   ovenMat: THREE.MeshStandardMaterial | null;
+  carriage?: THREE.Object3D;
 }
 
 export function PaintBay({
@@ -129,12 +70,18 @@ export function PaintBay({
 }) {
   const refs = useRef<PaintRefs>({
     part: null,
-    gun: null,
     fan: null,
     fanMat: null,
     glow: null,
     ovenMat: null,
   });
+
+  const oven = usePlantSplit('CureOvenCompact', OVEN_LIVE, ownGlow);
+  const gun = usePlantSplit('SprayReciprocator', GUN_LIVE);
+  useLayoutEffect(() => {
+    refs.current.ovenMat = (meshesIn(oven.live, 'Oven Glow')[0]?.material as THREE.MeshStandardMaterial) ?? null;
+    refs.current.carriage = node(gun.live, 'GunCarriage');
+  }, [oven, gun]);
 
   const stage = strOf(machine.paintStage, 'idle');
   const code = strOf(machine.paintPart);
@@ -167,14 +114,12 @@ export function PaintBay({
       r.part.position.x = cur + (targetX - cur) * Math.min(1, dt * 4);
       r.part.visible = stage !== 'idle';
     }
-    // The gun sweeps the part while it is actually spraying.
-    if (r.gun) {
-      r.gun.visible = stage === 'spray';
-      r.gun.position.z = Math.sin(t * 2.4) * 1.15;
-    }
+    // The gun strokes up and down the part while it is actually spraying, and parks mid-stroke otherwise.
+    const gunY = stage === 'spray' ? STROKE_MID + Math.sin(t * 2.4) * STROKE : STROKE_MID;
+    if (r.carriage) r.carriage.position.y = gunY / RECIP_SCALE;
     if (r.fan) {
       r.fan.visible = spraying && stage === 'spray';
-      r.fan.position.z = Math.sin(t * 2.4) * 1.15;
+      r.fan.position.y = gunY;
     }
     // Paint only sticks inside the cure band, so the fan is drawn thin and pale
     // when the booth is out of it: overspray that is not going to stay on.
@@ -197,18 +142,8 @@ export function PaintBay({
     <group position={[0, 0, ROW_A]}>
       <PaintShell />
 
-      {/* Viewing-slot glow: the oven's own temperature, straight off the model. */}
-      <mesh position={[OVEN_X, 1.9, 1.83]}>
-        <planeGeometry args={[2.2, 0.36]} />
-        <meshStandardMaterial
-          ref={(m) => {
-            refs.current.ovenMat = m;
-          }}
-          color="#2a2118"
-          emissive="#f59e0b"
-          emissiveIntensity={0.2}
-        />
-      </mesh>
+      {/* The oven, its viewing slot glowing with its own temperature, straight off the model. */}
+      <SplitPiece body={oven.body} live={oven.live} x={OVEN_X} />
       <pointLight
         ref={(l) => {
           refs.current.glow = l;
@@ -228,31 +163,18 @@ export function PaintBay({
         position={[BOOTH_X, 0.4, 0]}
       >
         {/* The skid the part rides through both chambers on. */}
-        <mesh position={[0, -0.14, 0]} castShadow receiveShadow>
-          <boxGeometry args={[3.4, 0.16, 2.2]} />
-          <meshStandardMaterial {...DARK_STEEL} />
-        </mesh>
+        <PlantPiece name="BoothSkid" y={-0.4} scale={[1.1, 0.4 / 0.6, 0.92]} />
         <LoosePart code={code} finish={finish} />
       </group>
 
-      {/* Spray gun on its reciprocator, and the fan it lays down. */}
-      <group
-        ref={(g) => {
-          refs.current.gun = g;
-        }}
-        position={[BOOTH_X - 1.5, 2.0, 0]}
-      >
-        <mesh castShadow>
-          <boxGeometry args={[0.3, 0.3, 0.5]} />
-          <meshStandardMaterial {...MACHINE_PAINT} />
-        </mesh>
-      </group>
+      {/* Spray gun on its reciprocator, and the fan it lays down: apex at the nozzle. */}
+      <SplitPiece body={gun.body} live={gun.live} x={BOOTH_X + MAST_X} scale={[1, RECIP_SCALE, 1]} />
       <mesh
         ref={(m) => {
           refs.current.fan = m;
         }}
-        position={[BOOTH_X - 0.85, 2.0, 0]}
-        rotation={[0, 0, -Math.PI / 2]}
+        position={[BOOTH_X + MAST_X + NOZZLE_X + 0.65, STROKE_MID, 0]}
+        rotation={[0, 0, Math.PI / 2]}
       >
         <coneGeometry args={[0.5, 1.3, 14, 1, true]} />
         <meshStandardMaterial
@@ -282,14 +204,10 @@ export function PaintBay({
         bandHi={FACTORY_LIMITS.FILM_MAX / COUNTS_FULL}
       />
 
-      {/* Scrap skip: the parts this station spoiled, where they can be counted. */}
+      {/* Scrap skip (in the shell): the parts this station spoiled, lying in it where they can be counted. */}
       <group position={[OVEN_X + 0.4, 0, -3.2]}>
-        <mesh position={[0, 0.5, 0]} castShadow receiveShadow>
-          <boxGeometry args={[2.2, 1.0, 1.6]} />
-          <meshStandardMaterial color="#7c2d12" metalness={0.3} roughness={0.7} />
-        </mesh>
         {Array.from({ length: Math.min(4, numOf(machine.scrapped)) }, (_, i) => (
-          <mesh key={i} position={[-0.7 + i * 0.45, 1.05 + (i % 2) * 0.12, 0]} castShadow>
+          <mesh key={i} position={[-0.6 + i * 0.4, 0.3 + (i % 2) * 0.12, 0]} castShadow>
             <boxGeometry args={[0.4, 0.22, 0.9]} />
             <meshStandardMaterial {...FINISH.defect} />
           </mesh>

@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
 import { LINE_LIMITS, LINE_ZONES, type MachineState } from '@automationsolver/shared';
 import { MachineCanvas } from '../MachineCanvas';
-import { Static, StaticBatch } from '../StaticBatch';
+import { StaticBatch } from '../StaticBatch';
 import {
   PLANT_FOCUS,
   PLANT_TARGET,
@@ -13,14 +13,12 @@ import {
 import {
   CONV,
   FINISH,
-  MACHINE,
   SPINE,
-  SPINE_TURNS,
   numOf,
   orderPaint,
   strOf,
 } from './plant';
-import { Conveyor, Part, PhotoEye } from './props';
+import { Conveyor, ConveyorTurns, Part, PhotoEye } from './props';
 import { AssemblyCell, DockCell, TestCell, YardCell } from './rowB';
 import { BoothCell, OvenCell, PortalCell, StoreCell, WeldCell } from './rowA';
 import { Shell } from './Shell';
@@ -118,20 +116,8 @@ export function FactoryLineRig({
         {SPINE.map((run) => (
           <Conveyor key={run.id} tex={tex} run={run} />
         ))}
-        {/* Corner decks, tucked just under the runs they join rather than level
-            with them: two decks at one height flicker where they overlap. */}
-        <Static>
-          {SPINE_TURNS.map((t) => (
-            <mesh
-              key={`${t.at[0]},${t.at[1]}`}
-              position={[t.at[0], CONV.deckY - 0.03, t.at[1]]}
-              receiveShadow
-            >
-              <boxGeometry args={[CONV.width, 0.05, CONV.width]} />
-              <meshStandardMaterial {...MACHINE} />
-            </mesh>
-          ))}
-        </Static>
+        {/* Right-angle transfers where the spine turns; the runs stop short of them. */}
+        <ConveyorTurns />
         <Spine machine={machine} />
 
         {/* Row A: make and finish. */}

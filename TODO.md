@@ -117,7 +117,7 @@ them. In order. Reference: [`docs/FACTORY-LINE-DESIGN.md`](docs/FACTORY-LINE-DES
 - [x] **Batch the static geometry.** `mergeMeshes` (`features/sim/batch.ts`) is shared with the
       hub, and `StaticBatch` bakes the line's static props in `factoryLine/`. The tutorial plant
       (`factory/`) was not batched: it is small, and the kit replaces its geometry.
-- [ ] **Start the kit: the excavator.** `D:\Code\Blender\Automation-excavator-plant-assets.blend`,
+- [x] **Start the kit: the excavator.** `D:\Code\Blender\Automation-excavator-plant-assets.blend`,
       rebuilt from nothing by `Automation-excavator-plant-assets.build.py` beside it, exporting
       `public/models/excavator-kit.glb` (Draco, base-relative URL). First root: the machine in its
       build stages (frame, boom, engine, cab, finished), used by both views. A test rebuilds the
@@ -126,7 +126,7 @@ them. In order. Reference: [`docs/FACTORY-LINE-DESIGN.md`](docs/FACTORY-LINE-DES
       than about `#d0d6dc`, and AO at the plant's scale behind the Settings toggle, checked
       against the frame time measured above. After the kit's first root, so the palette is set
       once, in the build script.
-- [ ] **Kit the cells, one at a time**, inside the footprints FACTORY-LINE-DESIGN §2 fixes: weld
+- [x] **Kit the cells, one at a time**, inside the footprints FACTORY-LINE-DESIGN §2 fixes: weld
       fixture and positioner, blank racks, rack store and portal, spray booth and cure oven,
       conveyor zone module with its eye, assembly jig, test bay, lorry, and the repeated props
       (fence panel, stack light, HMI post, cabinet, drum). Repeated parts are instanced.

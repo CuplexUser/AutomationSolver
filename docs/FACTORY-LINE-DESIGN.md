@@ -666,6 +666,38 @@ What the profile said, in order of cost:
   Blender kit replaces, so they were left.
 - A momentary press shorter than a scan was lost outright. `InputLatch` now holds it for one.
 
+### The kit (2026-09-25)
+
+Every cell and prop in both excavator views is now a Blender asset (`plant-kit.glb`, see
+FEATURE-MAP §8), set down inside the footprints of §2 with the layout still in code. Modelling
+the cells to real sizes showed that several of the old boxes had been overlapping things all
+along, and fixing those moved some parts of the layout:
+
+- **The portal's east frame stood inside the spray booth**, and at 5 m it came up through the
+  booth's 4.6 m roof. The frames now stand at x = -5.6 and x = 12.4, just outside the booth's
+  east wall, an 18 m span. The girders pass 12 cm over the booth roof. The booth's west wall is
+  slotted from 2.4 m up and its roof over the skid line, so the head and the carriage's Z housing
+  pass in. The rail and the head's travel (x from -4 to 7) are unchanged.
+- **The dock platform stood under the lorry.** The lorry parks at z = 13 and is 2.68 m across, and
+  the platform covered z 13 to 15. It now meets the lorry's side, centered at z = 15.34 and facing
+  north. The lorry cannot move further north, because the spine's guide rail is at z = 11.8.
+- **The dock's figure stood on the spine**, and its stack light stood where a docked lorry's cab
+  parks. The figure is now up on the dock and the light at the platform's east end.
+- **The painted lanes ran across the jig's deck.** Runs F and M are now drawn to the jig's edge
+  (`stopShort` in `plant.ts`). The zones and where their parts stand are unchanged.
+- **Runs met their corners by overlapping.** A run now stops half a conveyor width short of a
+  corner, and the corner is a right-angle transfer of its own.
+- **In the tutorial plant**, the rail gantry's legs and the weld screens stood on the fixture
+  table. The rail now runs 2.35 m behind the table's middle, clear of its edge, and the screens
+  stand outside it. The reciprocator built for the line's 4.6 m booth is scaled to the 3.4 m
+  one, and its gun strokes up and down instead of sliding sideways.
+
+Draws, idle, whole line (headless census): 204 meshes, 149 casting shadows, so about 353 calls a
+frame. After the speed pass it was 226 meshes and 85 casters, about 310 calls. The rise is
+shadow casters: props that were flat boxes are now shapes that cast shadows. Repeated parts are
+merged by `StaticBatch`, not instanced, because merging already makes each look one draw. The
+section preset `Weld bay` still frames a wall. That is the preset box in TODO.md, not the kit.
+
 ---
 
 ## 5a. The retiming pass, and what it found

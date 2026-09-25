@@ -2,45 +2,49 @@ import { memo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { type MachineState } from '@automationsolver/shared';
+import { meshesIn } from '../plant/kit';
+import { StaticPiece } from '../plant/PlantAsset';
 import { Excavator } from './Excavator';
 import { StackLight } from './indicators';
 import {
   boolOf,
   clamp01,
-  DARK_STEEL,
   FLOOR,
-  MACHINE_PAINT,
   numOf,
   ROW_B,
-  STEEL,
   TEST_X,
   YARD_COL_X,
   YARD_ROW_Z,
 } from './plant';
 
+/** The pad this plant tests on, and its power pack, from the plant kit. */
 const TestShell = memo(function TestShell() {
   return (
     <group>
-      <mesh position={[0, 0.09, 0]} receiveShadow>
-        <boxGeometry args={[6.0, 0.18, 4.6]} />
-        <meshStandardMaterial color="#333b46" roughness={0.92} metalness={0.05} />
-      </mesh>
-      {/* Hydraulic power pack and its accumulator bottles. */}
-      <group position={[-2.4, 0, -1.9]}>
-        <mesh position={[0, 0.6, 0]} castShadow receiveShadow>
-          <boxGeometry args={[1.4, 1.2, 1.0]} />
-          <meshStandardMaterial {...MACHINE_PAINT} />
-        </mesh>
-        {[-0.35, 0.35].map((z) => (
-          <mesh key={z} position={[0.55, 1.5, z]} castShadow>
-            <cylinderGeometry args={[0.17, 0.17, 0.7, 14]} />
-            <meshStandardMaterial {...STEEL} />
-          </mesh>
-        ))}
-      </group>
+      <StaticPiece name="TestPlatform" />
+      <StaticPiece name="PowerPack" x={-2.4} z={-1.9} scale={0.75} />
     </group>
   );
 });
+
+/** One see-through fence material, since this plant has no woven texture of its own. */
+let yardFence: THREE.MeshStandardMaterial | null = null;
+
+function ghostFence(obj: THREE.Object3D): void {
+  yardFence ??= new THREE.MeshStandardMaterial({
+    color: '#7d8794',
+    transparent: true,
+    opacity: 0.3,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    roughness: 0.8,
+    metalness: 0.3,
+  });
+  for (const mesh of meshesIn(obj, 'Fence Mesh')) {
+    mesh.material = yardFence;
+    mesh.castShadow = false;
+  }
+}
 
 interface TestRefs {
   needle: THREE.Group | null;
@@ -73,8 +77,8 @@ export function TestBay({ machine }: { machine: MachineState }) {
     <group position={[TEST_X, 0, ROW_B]}>
       <TestShell />
 
-      {/* Pressure gauge on the power pack: the interlock the bay is famous for. */}
-      <group position={[-2.4, 1.35, -1.35]}>
+      {/* Pressure gauge on the power pack's tank: the interlock the bay is famous for. */}
+      <group position={[-2.4, 0.45, -1.4]}>
         <mesh rotation={[Math.PI / 2, 0, 0]}>
           <cylinderGeometry args={[0.3, 0.3, 0.07, 22]} />
           <meshStandardMaterial color="#e7ecf2" roughness={0.5} metalness={0.2} />
@@ -141,35 +145,15 @@ export function Yard({ count }: { count: number }) {
           the plant's output accumulates, so it should look like somewhere a
           machine gets handed over rather than like more shop floor. */}
       <group position={[FLOOR.x0 + 1.1, 0, YARD_ROW_Z[1] - 1.4]} rotation={[0, Math.PI / 2, 0]}>
-        <mesh position={[0, 1.1, 0]}>
-          <planeGeometry args={[10.5, 2.2]} />
-          <meshStandardMaterial
-            color="#7d8794"
-            transparent
-            opacity={0.3}
-            side={THREE.DoubleSide}
-            roughness={0.8}
-            metalness={0.3}
-          />
-        </mesh>
-        {[-5.2, -2.6, 0, 2.6, 5.2].map((x) => (
-          <mesh key={x} position={[x, 1.1, 0]} castShadow>
-            <boxGeometry args={[0.11, 2.2, 0.11]} />
-            <meshStandardMaterial {...DARK_STEEL} />
-          </mesh>
+        {[-4.2, -2.1, 0, 2.1, 4.2].map((x) => (
+          <StaticPiece key={x} name="FencePanel" prepare={ghostFence} x={x} scale={[1.05, 1, 1]} />
+        ))}
+        {[-5.25, -3.15, -1.05, 1.05, 3.15, 5.25].map((x) => (
+          <StaticPiece key={x} name="FencePost" x={x} />
         ))}
       </group>
       {[YARD_COL_X[0] + 1.4, YARD_COL_X[2] - 1.2].map((x) => (
-        <group key={x} position={[x, 0, YARD_ROW_Z[1] + 2.2]}>
-          <mesh position={[0, 3.0, 0]} castShadow>
-            <cylinderGeometry args={[0.11, 0.16, 6.0, 10]} />
-            <meshStandardMaterial {...DARK_STEEL} />
-          </mesh>
-          <mesh position={[0, 6.02, 0.26]} rotation={[0.9, 0, 0]} castShadow={false}>
-            <boxGeometry args={[0.8, 0.12, 0.34]} />
-            <meshStandardMaterial color="#8f9aa6" emissive="#fde68a" emissiveIntensity={0.12} />
-          </mesh>
-        </group>
+        <StaticPiece key={x} name="YardMast" x={x} z={YARD_ROW_Z[1] + 2.2} rotY={Math.PI} />
       ))}
     </group>
   );

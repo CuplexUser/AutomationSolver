@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { clamp01, DARK_STEEL } from './plant';
+import { clamp01 } from './plant';
 
 /** Readable analog: a wall gauge with its acceptance band marked, and a stack light. */
 
@@ -69,42 +69,5 @@ export function BarGauge({
   );
 }
 
-/** A stack light, which is how a real bay says what it is doing from 30 m away. */
-export function StackLight({
-  position,
-  green,
-  amber,
-  red,
-}: {
-  position: [number, number, number];
-  green: boolean;
-  amber: boolean;
-  red: boolean;
-}) {
-  const lamps: Array<[string, boolean]> = [
-    ['#ef4444', red],
-    ['#f59e0b', amber],
-    ['#22c55e', green],
-  ];
-  return (
-    <group position={position}>
-      <mesh position={[0, 0.9, 0]} castShadow>
-        <cylinderGeometry args={[0.05, 0.05, 1.8, 10]} />
-        <meshStandardMaterial {...DARK_STEEL} />
-      </mesh>
-      {lamps.map(([color, on], i) => (
-        <mesh key={color} position={[0, 2.02 + i * 0.26, 0]}>
-          <cylinderGeometry args={[0.13, 0.13, 0.24, 14]} />
-          <meshStandardMaterial
-            color={color}
-            emissive={color}
-            emissiveIntensity={on ? 1.6 : 0.04}
-            roughness={0.4}
-            transparent
-            opacity={on ? 1 : 0.5}
-          />
-        </mesh>
-      ))}
-    </group>
-  );
-}
+/** A stack light, which is how a real bay says what it is doing from 30 m away: the plant kit's. */
+export { StackLight } from '../factoryLine/props';

@@ -1137,10 +1137,27 @@ a plant does not, so here the machine **is** the page.
 
 ### 8. The plant scene — `features/sim/Factory3D.tsx` + `features/sim/factory/`
 
-Procedural, not glTF, for a reason the other scenes do not have: the same excavator is visible
-at every stage of its own build, so the geometry has to turn parts on and off and recolor them
-as it moves down the line. That is a node-toggling chore in an imported model and a plain
-function of machine state in code.
+Two Blender kits, with the layout in code, the Cold Chain way. The same excavator is visible at
+every stage of its own build, so the machine kit is posed and repainted per state rather than
+imported as a scene; everything else on the floor is the plant kit, set down cell by cell inside
+the footprints FACTORY-LINE-DESIGN §2 fixes. Both are built by one script,
+`D:\Code\Blender\Automation-excavator-plant-assets.build.py` (its docstring is the contract),
+into `Automation-excavator-plant-assets.blend`, and exported per collection.
+
+- **`excavator-kit.glb`** (`features/sim/excavator/kit.ts`, `KitExcavator.tsx`): four roots
+  (frame, house, cab, boom) with anchor empties where one seats on another and three boom
+  pivots. Each pivot's parts are baked once into paint, trim (vertex colors), chrome and glass,
+  about a dozen draws a machine; `Paint` is the one material recolored per machine.
+- **`plant-kit.glb`** (`features/sim/plant/kit.ts`, `PlantAsset.tsx`): 45 roots, the line's cells
+  and the tutorial plant's compact versions of them, plus the props every cell is dressed in.
+  `plantTemplate` bakes each root once, per moving part and per material, keeping the named
+  pivots (`PLANT_PIVOTS`) as nodes. `StaticPiece` sets a copy down inside `StaticBatch`, which
+  merges every static copy in the scene by look, so a hundred fence panels are a handful of
+  draws (merging does the job instancing was planned for). `usePlantSplit` splits an asset into
+  a batched body and a live group (its pivots, and meshes in the materials named) for the lamps
+  and mechanisms a scene poses. Materials the client drives are named for the job (`Element`,
+  `Screen`, `Lamp Red`, `Fence Mesh`, `Drum Band`, ...) and `ownMaterial` gives a copy its own.
+  `plant/kit.test.ts` rebuilds the GLB's node tree and checks every name a scene looks up.
 
 - **`Factory3D.tsx` is the plan of the floor and nothing else** — where each bay stands, which
   lane runs between them, which sign hangs over what — plus `FactoryRig` (the bare scene) and
@@ -1159,9 +1176,10 @@ function of machine state in code.
   painted lanes running across the middle, then assembly -> test queue -> test -> yard back
   along the front. A straight line 40 units long frames badly and no real plant builds one
   either. Painted floor chevrons say which way each leg runs.
-- `ExcavatorFrame` / `ExcavatorHouse` / `ExcavatorCab` / `ExcavatorBoom` are the four pieces the
-  line actually builds with, and `Excavator` assembles them with 0..1 fittings so the jig's job
-  is watchable. The frame and the boom double as the two loose part types in every buffer.
+- The kit's frame, house, cab and boom are the four pieces the line actually builds with, and
+  `Excavator` (`factory/Excavator.tsx`, at the tutorial's 1.3 scale) assembles them with 0..1
+  fittings so the jig's job is watchable. The frame and the folded boom double as the two loose
+  part types in every buffer.
 - The scene takes the **coil image as well as the machine state**, because a snapshot cannot
   tell a torch that is striking from a seam that merely stopped.
 - `memo` with scalar props on everything static, following `Warehouse3D`'s discipline: the sim
@@ -1172,10 +1190,11 @@ function of machine state in code.
   asking for the next frame only while they move: the weld arc while arcing, the paint gun
   while spraying, a part while it eases between chambers. A stopped plant draws nothing.
 - **`StaticBatch` / `Static`** (`features/sim/StaticBatch.tsx`) bake the line's never-changing
-  props into a few merged meshes. A JSX scene builds a material per mesh, so the batch buckets
-  by `materialSignature` (look, shadow flags, render order) rather than by instance. The
-  wrapped components (`staticPart(...)`: fences, guards, conveyor frames, signs, floor text,
-  hazard bands, cabinets, HMI posts, drums, racks, the shell) keep their call sites; the
+  props into a few merged meshes, in both excavator views. A JSX scene builds a material per
+  mesh, so the batch buckets by `materialSignature` (look, shadow flags, render order) rather
+  than by instance. The wrapped components (`staticPart(...)` and every `StaticPiece`: fences,
+  guards, conveyor modules, signs, floor text, hazard bands, cabinets, HMI posts, drums, the
+  cells' static bodies, the shell) keep their call sites; the
   originals stay in the scene hidden, which is what the dev audit and click-to-identify read,
   and merged meshes carry `userData.batched` and never raycast. **Never wrap anything that
   changes after mount** (a lamp, a moving part): it would freeze in the batch.

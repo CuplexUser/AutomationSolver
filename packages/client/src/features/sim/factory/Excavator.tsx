@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { ExcavatorMachine, ExcavatorPart } from '../excavator/KitExcavator';
-import { DARK_STEEL, FINISH, GUARD, type Finish } from './plant';
+import { StaticPiece } from '../plant/PlantAsset';
+import { FINISH, type Finish } from './plant';
 
 /**
  * The excavator, from the kit (`excavator/kit.ts`), at the tutorial plant's scale.
@@ -60,35 +61,10 @@ export function LoosePart({ code, finish }: { code: string; finish: Finish }) {
   return <ExcavatorPart kind={code === 'b' ? 'b' : 'f'} paint={FINISH[finish]} scale={PLANT_SCALE} />;
 }
 
-/** The trestle a loose part sits on between stations. */
+/** The deck height a loose part stands at between this plant's stations. */
+const STAND_TOP = 0.34;
+
+/** The trestle a loose part sits on between stations: the plant kit's, sized to the queue it is in. */
 export const PartStand = memo(function PartStand({ w = 2.4, d = 1.9 }: { w?: number; d?: number }) {
-  return (
-    <group>
-      {/* Mid steel deck with yellow edge rails. An empty stand still has to read
-          as an empty *space in the queue* rather than as floor, but painting the
-          whole deck yellow put six bright slabs across the plant view and they
-          out-shouted the four bays. Trim carries it; area does not. */}
-      <mesh position={[0, 0.28, 0]} castShadow receiveShadow>
-        <boxGeometry args={[w, 0.12, d]} />
-        <meshStandardMaterial color="#5c6673" metalness={0.5} roughness={0.6} />
-      </mesh>
-      {[-d / 2 + 0.3, d / 2 - 0.3].map((z) => (
-        <mesh key={z} position={[0, 0.36, z]} castShadow>
-          <boxGeometry args={[w - 0.2, 0.1, 0.16]} />
-          <meshStandardMaterial {...GUARD} />
-        </mesh>
-      ))}
-      {[
-        [-w / 2 + 0.16, -d / 2 + 0.16],
-        [w / 2 - 0.16, -d / 2 + 0.16],
-        [-w / 2 + 0.16, d / 2 - 0.16],
-        [w / 2 - 0.16, d / 2 - 0.16],
-      ].map(([x, z]) => (
-        <mesh key={`${x},${z}`} position={[x, 0.11, z]} castShadow>
-          <boxGeometry args={[0.13, 0.22, 0.13]} />
-          <meshStandardMaterial {...DARK_STEEL} />
-        </mesh>
-      ))}
-    </group>
-  );
+  return <StaticPiece name="PartStand" scale={[w / 2.2, STAND_TOP / 0.6, d / 1.9]} />;
 });

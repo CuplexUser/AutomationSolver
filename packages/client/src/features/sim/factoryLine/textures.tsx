@@ -117,27 +117,6 @@ function walkwayTexture(): THREE.CanvasTexture {
   return finish(c);
 }
 
-/** A conveyor deck: rollers across the run, seen from above. */
-function rollerTexture(): THREE.CanvasTexture {
-  const w = 64;
-  const h = 64;
-  const [c, ctx] = canvas(w, h);
-  if (ctx) {
-    ctx.fillStyle = '#2a3038';
-    ctx.fillRect(0, 0, w, h);
-    for (let i = 0; i < 4; i += 1) {
-      const y = i * 16;
-      const g = ctx.createLinearGradient(0, y, 0, y + 14);
-      g.addColorStop(0, '#8d97a3');
-      g.addColorStop(0.45, '#b9c2cc');
-      g.addColorStop(1, '#6d7783');
-      ctx.fillStyle = g;
-      ctx.fillRect(0, y + 1, w, 13);
-    }
-  }
-  return finish(c);
-}
-
 /** Woven mesh, for the guard fencing. Transparent where the holes are. */
 function meshTexture(): THREE.CanvasTexture {
   const size = 64;
@@ -253,7 +232,6 @@ export interface LineTextures {
   concrete: THREE.CanvasTexture;
   hazard: THREE.CanvasTexture;
   walkway: THREE.CanvasTexture;
-  roller: THREE.CanvasTexture;
   mesh: THREE.CanvasTexture;
   hmi: THREE.CanvasTexture;
   signs: Record<string, THREE.CanvasTexture>;
@@ -267,7 +245,6 @@ export function buildLineTextures(): LineTextures {
     concrete: concreteTexture(),
     hazard: hazardTexture(),
     walkway: walkwayTexture(),
-    roller: rollerTexture(),
     mesh: meshTexture(),
     hmi: hmiTexture(),
     signs: Object.fromEntries(SIGN_TEXT.map((t) => [t, signTexture(t)])),
@@ -283,7 +260,6 @@ export function disposeLineTextures(t: LineTextures): void {
   t.concrete.dispose();
   t.hazard.dispose();
   t.walkway.dispose();
-  t.roller.dispose();
   t.mesh.dispose();
   t.hmi.dispose();
   for (const s of Object.values(t.signs)) s.dispose();
