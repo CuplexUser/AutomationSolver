@@ -553,14 +553,18 @@ export function storeProgram(opts: { lanes: readonly number[]; docks: readonly S
       ),
     ),
     rung('store-accepted', [[no('M313'), rst('M303')]]),
+    // One rung per lane rather than one rung of every row: the rows are independent resets, and
+    // a single rung would outgrow the editor's six branch rows and the server's save schema.
     rung('store-released', [
       [fall('X5'), rst('M501')],
       ...opts.docks.map((d, k) => [cmp('=', d.call, 'K0'), rst(dockRegs(d, k).booked)]),
-      ...lanes.flatMap((l) => [
+    ]),
+    ...lanes.map((l) =>
+      rung(`store-released-${l.code}`, [
         [cmp('>', count(l), prev(l)), rst(put(l))],
         [cmp('<', count(l), prev(l)), rst(pick(l))],
       ]),
-    ]),
+    ),
     rung('store-counts', lanes.map((l) => [mov(count(l), prev(l))])),
   );
   return rungs;
