@@ -724,6 +724,24 @@ keeps one rung, LINE HELD. The scenarios lost their "auto and start" steps. The 
   (`arriving`, `at`) against the ones it does (`coming`, `docked`), so the lorry jumped between
   placeholder offsets, through the yard and the test bay.
 
+### The fly-in (2026-09-25)
+
+The first time a player opens the line, the camera tours it running on the solved capstone
+(weld bay, rack store, paint shop, final assembly, test pad, and a full lorry pulling out of the
+load port) and settles on their section, as the Cold Chain Hub's does. The run is recorded, not
+staged: `scripts/record-line-intro.ts` traces "A shift" on every section tuned (`lineProject({})`)
+and keeps 38-68 s, where a machine leaves the pad every 7.25 s and the first lorry docks at
+57.5 s, loads by 61.5 s and is gone by 66.6 s. It plays at 1.5x, which puts the lorry leaving
+inside the dispatch shot. The scene reads three coils beside the machine image (the torch, the
+gun and the purge), so the recorder folds `Y3`, `Y14` and `Y16` into each frame.
+
+The station shots obey §6's rules for the presets: in the aisle at 3 to 4 m, under the services
+and the portal beam, each looking into its cell through the side it is open on. Unlike the hub,
+the line is drawn from React state rather than posed, so the replay hands the rig one recorded
+scan at a time and re-renders only when the time lands on a new one. Re-record whenever the
+plant, the capstone or its tuned sections change; `factoryLine/intro.test.ts` pins the lorry to
+the dispatch caption.
+
 ---
 
 ## 5a. The retiming pass, and what it found

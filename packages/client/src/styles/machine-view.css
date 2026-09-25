@@ -245,11 +245,11 @@
   min-height: 0;
 }
 
-/* --- The Cold Chain Hub fly-in -------------------------------------------------------------
+/* --- The fly-ins (Cold Chain Hub, excavator line) --------------------------------------------
    A cutscene over the 3D view: letterbox bars, a title card, a caption per shot and fades
    through black at both ends. Its colors are its own rather than the theme's, since it
    always sits on the dark scene, and nothing in it is pure white. */
-.dc-intro {
+.cine {
   --cine-black: #07090c;
   --cine-ink: #e2e9f0;
   --cine-dim: #a3b3c3;
@@ -262,7 +262,7 @@
   user-select: none;
 }
 /* A soft vignette while the camera flies: the eye stays in the middle of the frame. */
-.dc-intro::after {
+.cine::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -271,10 +271,10 @@
   opacity: 0;
   transition: opacity 1.2s ease;
 }
-.dc-intro--playing::after {
+.cine--playing::after {
   opacity: 1;
 }
-.dc-intro-bar {
+.cine-bar {
   position: absolute;
   left: 0;
   right: 0;
@@ -283,19 +283,19 @@
   background: var(--cine-black);
   transition: transform 0.9s cubic-bezier(0.7, 0, 0.2, 1);
 }
-.dc-intro-bar--top {
+.cine-bar--top {
   top: 0;
 }
-.dc-intro-bar--bottom {
+.cine-bar--bottom {
   bottom: 0;
 }
-.dc-intro--reveal .dc-intro-bar--top {
+.cine--reveal .cine-bar--top {
   transform: translateY(-100%);
 }
-.dc-intro--reveal .dc-intro-bar--bottom {
+.cine--reveal .cine-bar--bottom {
   transform: translateY(100%);
 }
-.dc-intro-progress {
+.cine-progress {
   position: absolute;
   top: 0;
   left: 0;
@@ -303,14 +303,14 @@
   width: 0;
   background: var(--cine-accent);
   opacity: 0.8;
-  animation: dc-intro-progress linear forwards;
+  animation: cine-progress linear forwards;
 }
-@keyframes dc-intro-progress {
+@keyframes cine-progress {
   to {
     width: 100%;
   }
 }
-.dc-intro-veil {
+.cine-veil {
   position: absolute;
   inset: 0;
   z-index: 2;
@@ -319,19 +319,19 @@
   opacity: 1;
   transition: opacity 1.4s ease;
 }
-.dc-intro--playing .dc-intro-veil {
+.cine--playing .cine-veil {
   opacity: 0;
 }
-.dc-intro--out .dc-intro-veil {
+.cine--out .cine-veil {
   opacity: 1;
   transition-duration: 0.7s;
 }
-.dc-intro--reveal .dc-intro-veil {
+.cine--reveal .cine-veil {
   opacity: 0;
   transition-duration: 0.9s;
 }
 
-.dc-intro-title {
+.cine-title {
   position: absolute;
   inset: 0;
   z-index: 4;
@@ -343,9 +343,9 @@
   padding: 0 16px;
   text-align: center;
   pointer-events: none;
-  animation: dc-intro-title 2.6s ease 0.35s both;
+  animation: cine-title 2.6s ease 0.35s both;
 }
-.dc-intro-title h2 {
+.cine-title h2 {
   margin: 0;
   font-family: var(--font-display);
   font-size: clamp(20px, 4.4vw, 46px);
@@ -353,9 +353,9 @@
   text-transform: uppercase;
   color: var(--cine-ink);
   text-shadow: 0 2px 24px rgba(0, 0, 0, 0.6);
-  animation: dc-intro-track 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
+  animation: cine-track 2.6s cubic-bezier(0.2, 0.7, 0.2, 1) 0.35s both;
 }
-.dc-intro-title p {
+.cine-title p {
   margin: 0;
   max-width: 40ch;
   font-family: var(--font-body);
@@ -363,15 +363,15 @@
   color: var(--cine-dim);
   text-shadow: 0 1px 12px rgba(0, 0, 0, 0.7);
 }
-.dc-intro-eyebrow,
-.dc-intro-index {
+.cine-eyebrow,
+.cine-index {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.28em;
   text-transform: uppercase;
   color: var(--cine-accent);
 }
-@keyframes dc-intro-title {
+@keyframes cine-title {
   0% {
     opacity: 0;
     filter: blur(6px);
@@ -387,7 +387,7 @@
   }
 }
 /* The title's letters close up as it arrives, the way a film card tracks in. */
-@keyframes dc-intro-track {
+@keyframes cine-track {
   from {
     letter-spacing: 0.6em;
   }
@@ -396,7 +396,7 @@
   }
 }
 
-.dc-intro-caption {
+.cine-caption {
   position: absolute;
   left: 4%;
   bottom: calc(11% + 16px);
@@ -409,9 +409,9 @@
   border-left: 2px solid var(--cine-accent);
   pointer-events: none;
   text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75);
-  animation: dc-intro-caption 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  animation: cine-caption 0.7s cubic-bezier(0.2, 0.7, 0.2, 1) both;
 }
-.dc-intro-caption strong {
+.cine-caption strong {
   font-family: var(--font-display);
   font-size: clamp(15px, 2.2vw, 22px);
   font-weight: 600;
@@ -419,12 +419,12 @@
   text-transform: uppercase;
   color: var(--cine-ink);
 }
-.dc-intro-line {
+.cine-line {
   font-family: var(--font-body);
   font-size: 12px;
   color: var(--cine-dim);
 }
-@keyframes dc-intro-caption {
+@keyframes cine-caption {
   from {
     opacity: 0;
     transform: translateX(-14px);
@@ -437,7 +437,7 @@
   }
 }
 
-.dc-intro-skip {
+.cine-skip {
   position: absolute;
   right: 14px;
   bottom: 5.5%;
@@ -457,18 +457,18 @@
   text-transform: uppercase;
   cursor: pointer;
 }
-.dc-intro-skip:hover,
-.dc-intro-skip:focus-visible {
+.cine-skip:hover,
+.cine-skip:focus-visible {
   border-color: var(--cine-accent);
   color: var(--cine-ink);
 }
-.dc-intro--out .dc-intro-skip,
-.dc-intro--reveal .dc-intro-skip {
+.cine--out .cine-skip,
+.cine--reveal .cine-skip {
   opacity: 0;
 }
 
 /* Replays the fly-in; shown on hover, like the zoom controls. */
-.dc-intro-replay {
+.cine-replay {
   position: absolute;
   left: 6px;
   bottom: 4px;
@@ -479,15 +479,15 @@
   opacity: 0;
   transition: opacity 0.15s ease;
 }
-.machine3d:hover .dc-intro-replay,
-.dc-intro-replay:focus-visible {
+.machine3d:hover .cine-replay,
+.cine-replay:focus-visible {
   opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .dc-intro-title,
-  .dc-intro-title h2,
-  .dc-intro-caption {
+  .cine-title,
+  .cine-title h2,
+  .cine-caption {
     animation-duration: 0.01s;
   }
 }

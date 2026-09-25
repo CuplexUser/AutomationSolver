@@ -323,7 +323,7 @@ export function resolveFocusEye(
  * design. `maxDistance` is then what keeps a designed close-up close on a wide
  * one, and `minEyeY` is what stops a low preset burying the lens in the slab.
  */
-export function SectionCamera({ focus }: { focus: Focus }) {
+export function SectionCamera({ focus, hold = false }: { focus: Focus; hold?: boolean }) {
   const camera = useThree((s) => s.camera);
   const invalidate = useThree((s) => s.invalidate);
   const controls = useThree((s) => s.controls) as
@@ -349,7 +349,10 @@ export function SectionCamera({ focus }: { focus: Focus }) {
   // Retargeting from wherever the camera currently is, rather than from a fixed
   // start, is what lets this re-run harmlessly: `controls` resolves a frame
   // after mount, and the repeat is then a fly from here to the same place.
+  // `hold` hands the camera to someone else (the fly-in); letting go re-runs
+  // this, so the flight starts from wherever they left it.
   useEffect(() => {
+    if (hold) return;
     const a = anim.current;
     a.fromPos.copy(camera.position);
     a.fromTgt.copy(controls?.target ?? new THREE.Vector3(...PLANT_TARGET));
@@ -358,11 +361,11 @@ export function SectionCamera({ focus }: { focus: Focus }) {
     a.t = 0;
     // The canvas renders on demand; the flight's first frame has to be asked for.
     invalidate();
-  }, [goal, camera, controls, invalidate]);
+  }, [goal, camera, controls, hold, invalidate]);
 
   useFrame((_state, dt) => {
     const a = anim.current;
-    if (a.t >= 1) return;
+    if (hold || a.t >= 1) return;
     // Clamped: on demand, the first frame after an idle spell carries the whole
     // spell as its dt, and the flight would be skipped.
     a.t = Math.min(1, a.t + (Math.min(dt, 0.05) * 1000) / FLY_MS);

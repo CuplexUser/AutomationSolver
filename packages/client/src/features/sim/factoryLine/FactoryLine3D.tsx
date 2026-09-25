@@ -1,5 +1,6 @@
-import { useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useThree } from '@react-three/fiber';
+import * as THREE from 'three';
 import { LINE_LIMITS, LINE_ZONES, type MachineState } from '@automationsolver/shared';
 import { MachineCanvas } from '../MachineCanvas';
 import { StaticBatch } from '../StaticBatch';
@@ -9,6 +10,8 @@ import {
   SECTION_FOCUS,
   SectionCamera,
   START_POS,
+  resolveFocusEye,
+  type Focus,
 } from './camera';
 import {
   CONV,
@@ -26,6 +29,11 @@ import { BoothCell, OvenCell, PortalCell, StoreCell, WeldCell } from './rowA';
 import { Shell } from './Shell';
 import { buildLineTextures, disposeLineTextures } from './textures';
 import { describeMesh, installSceneAudit } from './audit';
+import { introOutputs, LINE_INTRO } from './intro';
+import { shiftAt } from '../intro/cinema';
+import { IntroDirector, type IntroGoal } from '../intro/IntroDirector';
+import { IntroOverlay } from '../intro/IntroOverlay';
+import { useIntro, type IntroRun } from '../intro/useIntro';
 
 /**
  * The excavator line: eight cells, one spine, one floor.
@@ -42,6 +50,9 @@ import { describeMesh, installSceneAudit } from './audit';
  * what runs between them, and which camera each section gets. The cells are
  * `rowA.tsx` and `rowB.tsx`, the building is `Shell.tsx`, and everything they
  * share is `plant.ts` and its neighbours.
+ *
+ * The first time a player opens it, a fly-in shows the whole line running on
+ * the solved capstone before settling on their section (`intro.ts`).
  *
  * Perf follows `Warehouse3D`'s discipline: the sim re-renders this twenty times
  * a second, so everything static sits behind a `memo` with scalar props and only
@@ -61,11 +72,15 @@ function SceneProbe() {
   return null;
 }
 
+/** The preset a section's window frames, or the whole line. */
+const focusOf = (section?: string): Focus => (section && SECTION_FOCUS[section]) || PLANT_FOCUS;
+
 /** The bare plant, with no canvas around it. */
 export function FactoryLineRig({
   machine,
   outputs,
   section,
+  hold = false,
   onIdentify,
 }: {
   machine: MachineState;
@@ -73,6 +88,8 @@ export function FactoryLineRig({
       that is *striking* rather than a seam that merely stopped. */
   outputs: Record<string, boolean>;
   section?: string;
+  /** Someone else (the fly-in) owns the camera. */
+  hold?: boolean;
   /** Dev only: report whatever mesh was clicked. See `describeMesh`. */
   onIdentify?: (what: string) => void;
 }) {
@@ -85,7 +102,7 @@ export function FactoryLineRig({
   const invalidate = useThree((s) => s.invalidate);
   useEffect(() => invalidate(), [machine, outputs, section, invalidate]);
 
-  const focus = (section && SECTION_FOCUS[section]) || PLANT_FOCUS;
+  const focus = focusOf(section);
 
   return (
     <group
@@ -103,7 +120,7 @@ export function FactoryLineRig({
           : undefined
       }
     >
-      <SectionCamera focus={focus} />
+      <SectionCamera focus={focus} hold={hold} />
       {onIdentify && <SceneProbe />}
       {/* A plant floor is lit from a hundred fittings, not from one sun. Without
           the lift the shop reads as a night scene and the bare parts on the rack
@@ -252,6 +269,80 @@ const ZONE_SPOTS: Array<{
   });
 })();
 
+/**
+ * The plant, or while the fly-in runs, the recorded shift in its place.
+ *
+ * The line is drawn from React state rather than posed imperatively, so the
+ * replay hands the rig one recorded scan at a time: the director reports the
+ * time, and the rig re-renders only when that lands on a new scan (30 times a
+ * second at the fly-in's 1.5x, about what a live run costs at 20).
+ */
+function LineScene({
+  machine,
+  outputs,
+  section,
+  onIdentify,
+  intro,
+}: {
+  machine: MachineState;
+  outputs: Record<string, boolean>;
+  section?: string;
+  onIdentify?: (what: string) => void;
+  intro?: IntroRun;
+}) {
+  const [shown, setShown] = useState(0);
+  const last = useRef(-1);
+  const frames = intro?.frames;
+  const dtMs = intro?.dt ?? 50;
+  const onTick = useCallback(
+    (t: number) => {
+      if (!frames) return;
+      const { i } = shiftAt(frames, dtMs, t, LINE_INTRO.speed);
+      if (i !== last.current) {
+        last.current = i;
+        setShown(i);
+      }
+    },
+    [frames, dtMs],
+  );
+
+  const focus = focusOf(section);
+  const goal = useCallback<IntroGoal>(
+    (camera, w, h) => {
+      const eye = resolveFocusEye(focus, w / h, (camera as THREE.PerspectiveCamera).fov);
+      return { position: new THREE.Vector3(...eye.position), target: new THREE.Vector3(...eye.target) };
+    },
+    [focus],
+  );
+
+  const frame = frames?.[Math.min(shown, frames.length - 1)];
+  const frameOutputs = useMemo(() => (frame ? introOutputs(frame) : undefined), [frame]);
+
+  return (
+    <>
+      {intro && (
+        <IntroDirector
+          key={intro.run}
+          shots={LINE_INTRO.shots}
+          duration={LINE_INTRO.duration}
+          goal={goal}
+          onTick={onTick}
+          onStart={intro.onStart}
+          onCaption={intro.onCaption}
+          onFadeOut={intro.onFadeOut}
+        />
+      )}
+      <FactoryLineRig
+        machine={frame ?? machine}
+        outputs={frameOutputs ?? outputs}
+        section={section}
+        hold={!!intro}
+        onIdentify={onIdentify}
+      />
+    </>
+  );
+}
+
 export function FactoryLine3D({
   machine,
   outputs,
@@ -266,6 +357,8 @@ export function FactoryLine3D({
   /** Dev only: report whatever mesh was clicked. See `describeMesh`. */
   onIdentify?: (what: string) => void;
 }) {
+  const { phase, caption, intro, onSkip, onReplay } = useIntro(LINE_INTRO);
+
   return (
     <MachineCanvas
       height={height}
@@ -281,12 +374,14 @@ export function FactoryLine3D({
       shadowExtent={38}
       interactive
       frameloop="demand"
+      overlay={<IntroOverlay script={LINE_INTRO} phase={phase} caption={caption} onSkip={onSkip} onReplay={onReplay} />}
     >
-      <FactoryLineRig
+      <LineScene
         machine={machine}
         outputs={outputs}
         section={section}
         onIdentify={onIdentify}
+        intro={intro}
       />
     </MachineCanvas>
   );

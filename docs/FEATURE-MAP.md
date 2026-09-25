@@ -951,7 +951,9 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     calls off each of the frame's three passes (shadow map, AO normals, image). The merge itself
     is `features/sim/batch.ts`'s `mergeMeshes`, shared with `StaticBatch` (§8): the hub keys a
     bucket on the kit's shared material instance, a JSX scene on what the material looks like.
-    **The fly-in** (`distribution/intro.ts`, `IntroDirector.tsx`, `IntroOverlay.tsx`) plays the
+    **The fly-in** (the hub's script in `distribution/intro.ts`; the machinery, shared with the
+    excavator line's (§8), in `features/sim/intro/`: `cinema.ts`, `IntroDirector.tsx`,
+    `IntroOverlay.tsx`, `useIntro.ts`) plays the
     first time a viewer opens the view (a `localStorage` flag; never on its own under
     `prefers-reduced-motion`) and replays from a button: a 19.5 s camera path over the whole hub,
     running. What runs is real: `public/intro/dc-hub-shift.json` is 36 s of the capstone solved
@@ -1190,6 +1192,13 @@ into `Automation-excavator-plant-assets.blend`, and exported per collection.
   requests its own frames with a clamped `dt`. `Factory3D` keeps its clock-driven effects by
   asking for the next frame only while they move: the weld arc while arcing, the paint gun
   while spraying, a part while it eases between chambers. A stopped plant draws nothing.
+- **The line's fly-in** (`factoryLine/intro.ts`) is the Cold Chain Hub's (§5) with the line's
+  own script: seven shots from the weld bay to a lorry leaving the load port, over 30 s of the
+  capstone's "A shift" on its tuned sections, recorded by `scripts/record-line-intro.ts` into
+  `public/intro/line-shift.json` with the torch, gun and purge coils folded in. Its own
+  `localStorage` flag (`excavatorLine.introSeen`), so seeing one fly-in does not skip the other.
+  The rig is React-drawn, so `LineScene` swaps the recorded scan in as state; the director owns
+  the camera through `SectionCamera`'s `hold`. See FACTORY-LINE-DESIGN §8 "The fly-in".
 - **`StaticBatch` / `Static`** (`features/sim/StaticBatch.tsx`) bake the line's never-changing
   props into a few merged meshes, in both excavator views. A JSX scene builds a material per
   mesh, so the batch buckets by `materialSignature` (look, shadow flags, render order) rather

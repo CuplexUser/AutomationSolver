@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { captionAt, CAPTIONS_FROM_S, decodeShift, INTRO_S, pathParam, SHIFT_SPEED, SHOTS, shiftAt, type RecordedShift } from './intro';
+import { captionAt, CAPTIONS_FROM_S, decodeShift, pathParam, shiftAt, type RecordedShift } from '../intro/cinema';
+import { INTRO_S, SHIFT_SPEED, SHOTS } from './intro';
 import { buildHubPlant } from './plant';
 import { kitTree, stubCanvas } from './testKit';
 
@@ -30,9 +31,9 @@ describe('the fly-in path', () => {
   });
 
   it('keeps the captions off the title card, then shows each in turn', () => {
-    expect(captionAt(CAPTIONS_FROM_S - 0.01)).toBe(-1);
+    expect(captionAt(CAPTIONS_FROM_S - 0.01, SHOTS)).toBe(-1);
     const seen = new Set<number>();
-    for (let t = CAPTIONS_FROM_S; t <= INTRO_S; t += 0.05) seen.add(captionAt(t));
+    for (let t = CAPTIONS_FROM_S; t <= INTRO_S; t += 0.05) seen.add(captionAt(t, SHOTS));
     expect([...seen]).toEqual(SHOTS.flatMap((s, i) => (s.caption ? [i] : [])));
   });
 });
@@ -57,7 +58,7 @@ describe('the recorded shift', () => {
     const leaves = frames.findIndex((m, i) => i > 0 && m.t61 === 'away' && frames[i - 1].t61 !== 'away');
     expect(leaves).toBeGreaterThan(0);
     const t = (leaves * recording.dt) / 1000 / SHIFT_SPEED;
-    expect(captionAt(t)).toBe(outbound);
+    expect(captionAt(t, SHOTS)).toBe(outbound);
   });
 
   it('poses through the real scene, every vehicle on the floor and gliding between scans', () => {
@@ -68,7 +69,7 @@ describe('the recorded shift', () => {
     });
     expect(agvs).toHaveLength(3);
     for (let t = 0; t <= INTRO_S; t += 0.25) {
-      const { m, next, f } = shiftAt(frames, recording.dt, t);
+      const { m, next, f } = shiftAt(frames, recording.dt, t, SHIFT_SPEED);
       plant.pose(m, 1 / 60, { next, f });
       for (const a of agvs) {
         expect(a.visible).toBe(true);

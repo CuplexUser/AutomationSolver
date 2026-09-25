@@ -1,4 +1,4 @@
-import type { MachineState } from '@automationsolver/shared';
+import type { IntroScript, Shot } from '../intro/cinema';
 
 /**
  * The Cold Chain Hub fly-in: a camera path over the whole hub, running.
@@ -9,18 +9,9 @@ import type { MachineState } from '@automationsolver/shared';
  * The player sees the floor the category ends on, every station built and every
  * vehicle busy, before the view settles on the puzzle they are about to solve.
  *
- * Everything in this file is pure: the director (`IntroDirector.tsx`) asks it
- * where the camera is and which scan to draw at a given time into the intro.
+ * This file is the hub's script and nothing else; the path, the captions and the
+ * replay are the shared fly-in machinery in `../intro/`.
  */
-
-export interface Shot {
-  /** When the camera passes through this pose, in seconds into the intro. */
-  at: number;
-  pos: [number, number, number];
-  target: [number, number, number];
-  /** The caption shown while the camera is nearest this shot; none for the ends. */
-  caption?: { title: string; line: string };
-}
 
 /**
  * The replay's playback rate. At 1x a vehicle crossing the hall reads as slow
@@ -76,72 +67,16 @@ export const SHOTS: readonly Shot[] = [
   },
 ];
 
-/**
- * Where a time falls on the path: the index of the shot it is leaving and how far
- * it is toward the next, as one number `u` in 0..1 along a curve through every
- * shot and then `end`. The first leg eases in and the last eases out, each
- * meeting the legs beside it at full speed so the flight never lurches.
- */
-export function pathParam(t: number, times: readonly number[]): number {
-  const n = times.length;
-  if (t <= times[0]) return 0;
-  if (t >= times[n - 1]) return 1;
-  let k = 0;
-  while (k < n - 2 && t >= times[k + 1]) k++;
-  let s = (t - times[k]) / (times[k + 1] - times[k]);
-  // 2s^2 - s^3 leaves at rest and arrives at slope 1; its mirror does the reverse.
-  if (k === 0) s = 2 * s * s - s * s * s;
-  else if (k === n - 2) s = 1 - (2 * (1 - s) ** 2 - (1 - s) ** 3);
-  return (k + s) / (n - 1);
-}
-
-/** When the first caption may show: the title card (`machine-view.css`) is gone by then. */
-export const CAPTIONS_FROM_S = 3.0;
-
-/** The shot whose caption is showing at time `t`: the nearest one with a caption. */
-export function captionAt(t: number, shots: readonly Shot[] = SHOTS): number {
-  if (t < CAPTIONS_FROM_S) return -1;
-  let best = -1;
-  let bestD = Infinity;
-  shots.forEach((s, i) => {
-    if (!s.caption) return;
-    const d = Math.abs(t - s.at);
-    if (d < bestD) {
-      bestD = d;
-      best = i;
-    }
-  });
-  return best;
-}
-
-// --- the recorded shift ----------------------------------------------------------------
-
-export interface RecordedShift {
-  source: string;
-  dt: number;
-  first: MachineState;
-  deltas: MachineState[];
-}
-
-/** Every scan of the recording, each one whole. */
-export function decodeShift(rec: RecordedShift): MachineState[] {
-  const frames: MachineState[] = [rec.first];
-  for (const d of rec.deltas) frames.push({ ...frames[frames.length - 1], ...d });
-  return frames;
-}
-
-/**
- * The scan to draw `t` seconds into the intro, the one after it and how far
- * between them, for the scene to blend the vehicles across. Past the end of the
- * recording it holds the last scan.
- */
-export function shiftAt(
-  frames: readonly MachineState[],
-  dtMs: number,
-  t: number,
-): { m: MachineState; next: MachineState; f: number } {
-  const pos = Math.max(0, (t * SHIFT_SPEED * 1000) / dtMs);
-  const i = Math.min(frames.length - 1, Math.floor(pos));
-  const j = Math.min(frames.length - 1, i + 1);
-  return { m: frames[i], next: frames[j], f: i === j ? 0 : pos - i };
-}
+export const HUB_INTRO: IntroScript = {
+  shots: SHOTS,
+  duration: INTRO_S,
+  speed: SHIFT_SPEED,
+  // Base-relative, so the deployed build finds it under whatever path it is served from.
+  url: `${import.meta.env.BASE_URL}intro/dc-hub-shift.json`,
+  seenKey: 'coldChain.introSeen',
+  title: {
+    eyebrow: 'Where this category ends',
+    name: 'Cold Chain Hub',
+    blurb: 'The whole hub on a solved program: every station built, every vehicle busy.',
+  },
+};
