@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { isOutput, type RungEvalResult, type Rung } from '@automationsolver/shared';
 import { CellView, CELL_H, CELL_W, WIRE_Y } from './CellView';
 
@@ -43,7 +44,7 @@ interface Props {
   onDelete: () => void;
 }
 
-export function RungView({
+function RungViewImpl({
   rung,
   index,
   pouId,
@@ -218,3 +219,43 @@ export function RungView({
     </div>
   );
 }
+
+function sameSet(a?: ReadonlySet<string | number>, b?: ReadonlySet<string | number>): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.size !== b.size) return false;
+  for (const k of a) if (!b.has(k)) return false;
+  return true;
+}
+
+/** Same highlighting, whatever object it arrived in: the engine hands out a fresh result every scan. */
+function sameEval(a?: RungEvalResult, b?: RungEvalResult): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.outputs.length !== b.outputs.length) return false;
+  for (let i = 0; i < a.outputs.length; i++) {
+    const x = a.outputs[i];
+    const y = b.outputs[i];
+    if (x.row !== y.row || x.col !== y.col || x.energized !== y.energized) return false;
+  }
+  return sameSet(a.energizedNodes, b.energizedNodes) && sameSet(a.liveCells, b.liveCells);
+}
+
+/**
+ * A rung redraws only when something it draws changed. While the sim runs, the
+ * editor re-renders every scan, and redrawing every rung of seven open sections
+ * each time was the heaviest thing on the page. The handlers are stable (the
+ * editor routes them through a ref), so comparing everything else is enough.
+ */
+export const RungView = memo(RungViewImpl, (a, b) => {
+  for (const key of Object.keys(b) as (keyof Props)[]) {
+    if (key === 'evalResult' || key === 'marked' || key === 'selected' || key === 'drag') continue;
+    if (a[key] !== b[key]) return false;
+  }
+  return (
+    sameEval(a.evalResult, b.evalResult) &&
+    sameSet(a.marked, b.marked) &&
+    a.selected?.row === b.selected?.row &&
+    a.selected?.col === b.selected?.col &&
+    a.drag === b.drag
+  );
+});

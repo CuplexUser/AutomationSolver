@@ -940,13 +940,16 @@ Categories: 1–3 `basics`, 4–7 `timers-counters`, 8 + 10 `stations`, 11–14 
     (no decoder, no GPU) and poses a real state against it, which is how a renamed slot or a
     pallet on the wrong anchor fails a test instead of a demo (`testKit.ts` holds that tree for
     every test in the folder). The model URL is base-relative.
-    It is the one scene that renders **on demand** (`MachineCanvas`'s `frameloop="demand"`): the
+    It was the first scene to render **on demand** (`MachineCanvas`'s `frameloop="demand"`; the
+    two excavator views followed, see §8): the
     plant is a pure function of `machine`, so a frame is drawn only for a new scan, a camera move
     or a running flight, and an idle view costs nothing while the player edits. Anything that
     animates in it has to keep calling `invalidate()`, and clamp its `dt`, since the first frame
     after an idle spell carries the whole spell. The hall's paint, walls and columns are baked
     into one mesh per material at build (`mergeByMaterial`), which took about half the draw
-    calls off each of the frame's three passes (shadow map, AO normals, image).
+    calls off each of the frame's three passes (shadow map, AO normals, image). The merge itself
+    is `features/sim/batch.ts`'s `mergeMeshes`, shared with `StaticBatch` (§8): the hub keys a
+    bucket on the kit's shared material instance, a JSX scene on what the material looks like.
     **The fly-in** (`distribution/intro.ts`, `IntroDirector.tsx`, `IntroOverlay.tsx`) plays the
     first time a viewer opens the view (a `localStorage` flag; never on its own under
     `prefers-reduced-motion`) and replays from a button: a 19.5 s camera path over the whole hub,
@@ -1163,6 +1166,28 @@ function of machine state in code.
   tell a torch that is striking from a seam that merely stopped.
 - `memo` with scalar props on everything static, following `Warehouse3D`'s discipline: the sim
   re-renders this tree twenty times a second.
+- **Both excavator views render on demand** (`Factory3D`, `factoryLine/FactoryLine3D.tsx`): each
+  rig invalidates on a new `machine`, `outputs` or section, and each `SectionCamera` flight
+  requests its own frames with a clamped `dt`. `Factory3D` keeps its clock-driven effects by
+  asking for the next frame only while they move: the weld arc while arcing, the paint gun
+  while spraying, a part while it eases between chambers. A stopped plant draws nothing.
+- **`StaticBatch` / `Static`** (`features/sim/StaticBatch.tsx`) bake the line's never-changing
+  props into a few merged meshes. A JSX scene builds a material per mesh, so the batch buckets
+  by `materialSignature` (look, shadow flags, render order) rather than by instance. The
+  wrapped components (`staticPart(...)`: fences, guards, conveyor frames, signs, floor text,
+  hazard bands, cabinets, HMI posts, drums, racks, the shell) keep their call sites; the
+  originals stay in the scene hidden, which is what the dev audit and click-to-identify read,
+  and merged meshes carry `userData.batched` and never raycast. **Never wrap anything that
+  changes after mount** (a lamp, a moving part): it would freeze in the batch.
+- **The page around a plant must not redraw per scan either.** Measured in FACTORY-LINE-DESIGN
+  §8, the Work Order column, the ladder windows and the operator panel cost more than the 3D
+  did. `BriefColumn`'s briefing and terminal rows, `RungView` (a content comparison of its
+  `RungEvalResult`, with stable per-rung handlers routed through a latest-actions ref in
+  `LadderEditor`), the editor's device-chip strip and the HMI widgets are all memoized on the
+  values they draw.
+- **`InputLatch`** (`features/sim/inputLatch.ts`) holds any operator input state until one scan
+  has read it, while the sim runs. A press released between two scans used to vanish, which is
+  how a lagging page "ignored" START.
 
 ### 9. Constraints that shape everything
 - **Zero native dependencies.** `npm install` must work with no C++ toolchain. No

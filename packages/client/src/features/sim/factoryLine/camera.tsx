@@ -325,6 +325,7 @@ export function resolveFocusEye(
  */
 export function SectionCamera({ focus }: { focus: Focus }) {
   const camera = useThree((s) => s.camera);
+  const invalidate = useThree((s) => s.invalidate);
   const controls = useThree((s) => s.controls) as
     | { target: THREE.Vector3; update: () => void }
     | null;
@@ -355,12 +356,16 @@ export function SectionCamera({ focus }: { focus: Focus }) {
     a.toPos.copy(goal.position);
     a.toTgt.copy(goal.target);
     a.t = 0;
-  }, [goal, camera, controls]);
+    // The canvas renders on demand; the flight's first frame has to be asked for.
+    invalidate();
+  }, [goal, camera, controls, invalidate]);
 
   useFrame((_state, dt) => {
     const a = anim.current;
     if (a.t >= 1) return;
-    a.t = Math.min(1, a.t + (dt * 1000) / FLY_MS);
+    // Clamped: on demand, the first frame after an idle spell carries the whole
+    // spell as its dt, and the flight would be skipped.
+    a.t = Math.min(1, a.t + (Math.min(dt, 0.05) * 1000) / FLY_MS);
     // Smoothstep, so the move eases out of the old frame and into the new one
     // instead of jerking to a halt on arrival.
     const e = a.t * a.t * (3 - 2 * a.t);
@@ -370,6 +375,7 @@ export function SectionCamera({ focus }: { focus: Focus }) {
     } else {
       camera.lookAt(a.toTgt);
     }
+    if (a.t < 1) invalidate();
   });
 
   return null;

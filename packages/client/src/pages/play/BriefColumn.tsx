@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import {
   CORRECTNESS_WEIGHT,
@@ -85,29 +85,15 @@ export function BriefColumn({
         <span className="eyebrow">Terminal Assignment</span>
         <table className="io-table">
           <tbody>
-            {spec.devices.map((d) => {
-              const on = runner?.bits[d.address] === true;
-              return (
-                <tr key={d.address}>
-                  <td>
-                    <span className={`dev-chip dev-${d.address[0]}${on ? ' on' : ''}`}>{d.address}</span>
-                  </td>
-                  <td className="io-name">{d.label}</td>
-                  {/* A word device has no lamp to light, so the number *is* its
-                      state — without it the row says nothing while the sim runs.
-                      The column only exists on puzzles that have one, so boolean
-                      puzzles keep their full width for the device name. */}
-                  {hasAnalog && (
-                    <td className="io-value io-value-word">
-                      {isAnalog(d) && runner && (
-                        <WordValue value={runner.registers?.[d.address] ?? 0} device={d} />
-                      )}
-                    </td>
-                  )}
-                  <td className="io-kind">{d.io === 'input' ? 'IN' : 'OUT'}</td>
-                </tr>
-              );
-            })}
+            {spec.devices.map((d) => (
+              <DeviceRow
+                key={d.address}
+                device={d}
+                on={runner?.bits[d.address] === true}
+                hasAnalog={hasAnalog}
+                word={isAnalog(d) && runner ? (runner.registers?.[d.address] ?? 0) : undefined}
+              />
+            ))}
           </tbody>
         </table>
 
@@ -116,9 +102,24 @@ export function BriefColumn({
             <span className="eyebrow io-subhead">Working Registers</span>
             <table className="io-table">
               <tbody>
-                {registers.map((r) => (
-                  <RegisterRow key={r.address} register={r} runner={runner} />
-                ))}
+                {registers.map((r) => {
+                  const kind = r.address[0];
+                  const t = kind === 'T' ? runner?.timers?.[r.address] : undefined;
+                  const c = kind === 'C' ? runner?.counters?.[r.address] : undefined;
+                  return (
+                    <RegisterRow
+                      key={r.address}
+                      register={r}
+                      on={runner?.bits[r.address] === true}
+                      // A working D register is scratch space the player chose the meaning of, so
+                      // there is no range to scale it by — show the raw word, which is exactly what
+                      // the program is reading.
+                      word={(kind === 'D' || kind === 'Z') && runner ? (runner.registers?.[r.address] ?? 0) : undefined}
+                      timer={t ? { value: t.elapsed, max: t.preset * TIMER_BASE_MS, done: t.done } : undefined}
+                      counter={c ? { value: c.count, max: c.preset, done: c.done } : undefined}
+                    />
+                  );
+                })}
               </tbody>
             </table>
           </>
@@ -231,7 +232,10 @@ function hintText(text: string): string {
   return keepTogether(text.replace(/\. (?=Row \d+:)/g, '.\n'));
 }
 
-function Briefing({ text }: { text: string }) {
+// Memoized, as are the rows below: the column re-renders on every scan while the
+// sim runs, and on a plant-sized puzzle re-parsing the manual and redrawing every
+// terminal each time cost more than the 3D view did.
+const Briefing = memo(function Briefing({ text }: { text: string }) {
   const blocks = parseBriefingBlocks(text);
   return (
     <div className="briefing">
@@ -243,7 +247,7 @@ function Briefing({ text }: { text: string }) {
       ))}
     </div>
   );
-}
+});
 
 function BriefingBodyView({ body }: { body: BriefingBody }) {
   if (body.type === 'p') return <p>{keepTogether(body.text)}</p>;
@@ -273,46 +277,92 @@ function BriefingBodyView({ body }: { body: BriefingBody }) {
   );
 }
 
-function RegisterRow({
-  register: r,
-  runner,
+/** One terminal. Primitive props, so a row redraws only when its own point changes. */
+const DeviceRow = memo(function DeviceRow({
+  device: d,
+  on,
+  hasAnalog,
+  word,
 }: {
-  register: { address: string; label: string; note?: string };
-  runner?: LiveRegisterState;
+  device: PuzzleDevice;
+  on: boolean;
+  hasAnalog: boolean;
+  word?: number;
 }) {
-  const kind = r.address[0];
-  const on = runner?.bits[r.address] === true;
-  const t = kind === 'T' ? runner?.timers?.[r.address] : undefined;
-  const c = kind === 'C' ? runner?.counters?.[r.address] : undefined;
-  // A working D register is scratch space the player chose the meaning of, so
-  // there is no range to scale it by — show the raw word, which is exactly what
-  // the program is reading.
-  const word = (kind === 'D' || kind === 'Z') && runner ? (runner.registers?.[r.address] ?? 0) : undefined;
   return (
-    <tr key={r.address}>
+    <tr>
       <td>
-        <span className={`dev-chip dev-${kind}${on ? ' on' : ''}`}>{r.address}</span>
+        <span className={`dev-chip dev-${d.address[0]}${on ? ' on' : ''}`}>{d.address}</span>
       </td>
-      <td className="io-name">
-        {r.label}
-        {r.note && <span className="io-note"> · {r.note}</span>}
-      </td>
-      <td className="io-value">
-        {word !== undefined && (
-          <span className={`word-value${word !== 0 ? ' on' : ''}`}>{word}</span>
-        )}
-        {t && (
-          <MiniProgress
-            value={t.elapsed}
-            max={t.preset * TIMER_BASE_MS}
-            done={t.done}
-            text={`${(t.elapsed / 1000).toFixed(1)}s / ${((t.preset * TIMER_BASE_MS) / 1000).toFixed(1)}s`}
-          />
-        )}
-        {c && <MiniProgress value={c.count} max={c.preset} done={c.done} text={`${c.count} / ${c.preset}`} />}
-      </td>
+      <td className="io-name">{d.label}</td>
+      {/* A word device has no lamp to light, so the number *is* its
+          state — without it the row says nothing while the sim runs.
+          The column only exists on puzzles that have one, so boolean
+          puzzles keep their full width for the device name. */}
+      {hasAnalog && (
+        <td className="io-value io-value-word">{word !== undefined && <WordValue value={word} device={d} />}</td>
+      )}
+      <td className="io-kind">{d.io === 'input' ? 'IN' : 'OUT'}</td>
     </tr>
   );
+});
+
+interface Progress {
+  value: number;
+  max: number;
+  done: boolean;
+}
+
+const RegisterRow = memo(
+  function RegisterRow({
+    register: r,
+    on,
+    word,
+    timer: t,
+    counter: c,
+  }: {
+    register: { address: string; label: string; note?: string };
+    on: boolean;
+    word?: number;
+    timer?: Progress;
+    counter?: Progress;
+  }) {
+    const kind = r.address[0];
+    return (
+      <tr>
+        <td>
+          <span className={`dev-chip dev-${kind}${on ? ' on' : ''}`}>{r.address}</span>
+        </td>
+        <td className="io-name">
+          {r.label}
+          {r.note && <span className="io-note"> · {r.note}</span>}
+        </td>
+        <td className="io-value">
+          {word !== undefined && <span className={`word-value${word !== 0 ? ' on' : ''}`}>{word}</span>}
+          {t && (
+            <MiniProgress
+              value={t.value}
+              max={t.max}
+              done={t.done}
+              text={`${(t.value / 1000).toFixed(1)}s / ${(t.max / 1000).toFixed(1)}s`}
+            />
+          )}
+          {c && <MiniProgress value={c.value} max={c.max} done={c.done} text={`${c.value} / ${c.max}`} />}
+        </td>
+      </tr>
+    );
+  },
+  (a, b) =>
+    a.register === b.register &&
+    a.on === b.on &&
+    a.word === b.word &&
+    sameProgress(a.timer, b.timer) &&
+    sameProgress(a.counter, b.counter),
+);
+
+function sameProgress(a?: Progress, b?: Progress): boolean {
+  if (!a || !b) return a === b;
+  return a.value === b.value && a.max === b.max && a.done === b.done;
 }
 
 /**
@@ -381,7 +431,7 @@ function NextPuzzleNav({ slug, onlyIfSolved }: { slug: string; onlyIfSolved?: bo
 }
 
 /** Reveals hints one at a time; the reveal count is remembered per puzzle. */
-function HintsPanel({ slug, hints }: { slug: string; hints: string[] }) {
+const HintsPanel = memo(function HintsPanel({ slug, hints }: { slug: string; hints: string[] }) {
   const key = `hints.${slug}`;
   const [revealed, setRevealed] = useState(() => {
     const v = typeof localStorage !== 'undefined' ? localStorage.getItem(key) : null;
@@ -411,7 +461,7 @@ function HintsPanel({ slug, hints }: { slug: string; hints: string[] }) {
       )}
     </div>
   );
-}
+});
 
 /** Simulated ms as a short "12.4 s" for the throughput readout. */
 function secs(ms: number): string {

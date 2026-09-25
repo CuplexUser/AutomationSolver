@@ -130,6 +130,8 @@ export function WeldBay({ machine, torchOn }: { machine: MachineState; torchOn: 
         });
       }
     }
+    // The canvas renders on demand; the arc keeps flickering by asking for the next frame.
+    if (arcing) state.invalidate();
   });
 
   return (

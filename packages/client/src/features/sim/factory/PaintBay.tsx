@@ -188,6 +188,9 @@ export function PaintBay({
         inBand ? '#f59e0b' : temp > FACTORY_LIMITS.CURE_MAX ? '#ef4444' : '#3b82f6',
       );
     }
+    // On demand: keep drawing while the gun sweeps or the part is still travelling.
+    const easing = r.part !== null && r.part !== undefined && Math.abs(targetX - r.part.position.x) > 0.002;
+    if (stage === 'spray' || easing) state.invalidate();
   });
 
   return (

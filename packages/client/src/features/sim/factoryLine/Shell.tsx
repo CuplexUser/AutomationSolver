@@ -1,4 +1,5 @@
 import { memo } from 'react';
+import { staticPart } from '../StaticBatch';
 import * as THREE from 'three';
 import { AISLE, FLOOR, GLASS, SERVICE_Y, WALL_H } from './plant';
 import { FloorMark, type LineTextures } from './textures';
@@ -21,117 +22,119 @@ import { ServiceRun } from './props';
  * real time *outside* them, and a one-sided plane is not a wall from out there,
  * it is a hole — see the north wall's comment for what that looked like.
  */
-export const Shell = memo(function Shell({ tex }: { tex: LineTextures }) {
-  const w = FLOOR.x1 - FLOOR.x0;
-  const d = FLOOR.z1 - FLOOR.z0;
-  const mx = (FLOOR.x0 + FLOOR.x1) / 2;
-  const mz = (FLOOR.z0 + FLOOR.z1) / 2;
-  const aisleZ = (AISLE.z0 + AISLE.z1) / 2;
-  const aisleD = AISLE.z1 - AISLE.z0;
+export const Shell = memo(
+  staticPart(function Shell({ tex }: { tex: LineTextures }) {
+    const w = FLOOR.x1 - FLOOR.x0;
+    const d = FLOOR.z1 - FLOOR.z0;
+    const mx = (FLOOR.x0 + FLOOR.x1) / 2;
+    const mz = (FLOOR.z0 + FLOOR.z1) / 2;
+    const aisleZ = (AISLE.z0 + AISLE.z1) / 2;
+    const aisleD = AISLE.z1 - AISLE.z0;
 
-  return (
-    <group>
-      {/* Slab */}
-      <mesh position={[mx, 0, mz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[w, d]} />
-        <meshStandardMaterial map={tex.concrete} roughness={0.96} metalness={0} />
-      </mesh>
+    return (
+      <group>
+        {/* Slab */}
+        <mesh position={[mx, 0, mz]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[w, d]} />
+          <meshStandardMaterial map={tex.concrete} roughness={0.96} metalness={0} />
+        </mesh>
 
-      {/* The walkway: the one place you can see both halves of the line at once,
-          and therefore the most useful camera position in the building. */}
-      <FloorMark
-        tex={tex.walkway}
-        x={mx}
-        z={aisleZ}
-        w={w - 2}
-        d={aisleD}
-        repeat={[Math.round((w - 2) / 3.2), 1]}
-      />
-
-      {/* North wall, behind row A.
-
-          Both walls are double-sided, and that is not a detail. A `planeGeometry`
-          faces one way, so from outside the shed the wall simply is not drawn —
-          and orbit allows outside: the wall vanished while its stanchions, its
-          eaves beam and the props standing against it did not, leaving a row of
-          8.4 m poles apparently floating in the dark beyond the building. Every
-          "that is outside the plant" sighting on the north and west edges was
-          this, and nothing was ever actually out there. */}
-      <mesh position={[mx, WALL_H / 2, FLOOR.z0]} receiveShadow>
-        <planeGeometry args={[w, WALL_H]} />
-        <meshStandardMaterial
-          color="#2c343f"
-          roughness={0.9}
-          metalness={0.05}
-          side={THREE.DoubleSide}
+        {/* The walkway: the one place you can see both halves of the line at once,
+            and therefore the most useful camera position in the building. */}
+        <FloorMark
+          tex={tex.walkway}
+          x={mx}
+          z={aisleZ}
+          w={w - 2}
+          d={aisleD}
+          repeat={[Math.round((w - 2) / 3.2), 1]}
         />
-      </mesh>
-      {/* West wall, behind the yard */}
-      <mesh
-        position={[FLOOR.x0, WALL_H / 2, mz]}
-        rotation={[0, Math.PI / 2, 0]}
-        receiveShadow
-      >
-        <planeGeometry args={[d, WALL_H]} />
-        <meshStandardMaterial
-          color="#262d37"
-          roughness={0.9}
-          metalness={0.05}
-          side={THREE.DoubleSide}
+
+        {/* North wall, behind row A.
+
+            Both walls are double-sided, and that is not a detail. A `planeGeometry`
+            faces one way, so from outside the shed the wall simply is not drawn —
+            and orbit allows outside: the wall vanished while its stanchions, its
+            eaves beam and the props standing against it did not, leaving a row of
+            8.4 m poles apparently floating in the dark beyond the building. Every
+            "that is outside the plant" sighting on the north and west edges was
+            this, and nothing was ever actually out there. */}
+        <mesh position={[mx, WALL_H / 2, FLOOR.z0]} receiveShadow>
+          <planeGeometry args={[w, WALL_H]} />
+          <meshStandardMaterial
+            color="#2c343f"
+            roughness={0.9}
+            metalness={0.05}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        {/* West wall, behind the yard */}
+        <mesh
+          position={[FLOOR.x0, WALL_H / 2, mz]}
+          rotation={[0, Math.PI / 2, 0]}
+          receiveShadow
+        >
+          <planeGeometry args={[d, WALL_H]} />
+          <meshStandardMaterial
+            color="#262d37"
+            roughness={0.9}
+            metalness={0.05}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+
+        {/* Clerestory glazing and the eaves beam under it. The two together are
+            what make a flat plane read as the wall of a shed rather than as the
+            edge of the world. */}
+        <mesh position={[mx, WALL_H - 1.2, FLOOR.z0 + 0.05]}>
+          <planeGeometry args={[w - 1.5, 1.7]} />
+          <meshStandardMaterial
+            {...GLASS}
+            emissive="#7ba0bd"
+            emissiveIntensity={0.6}
+            side={THREE.DoubleSide}
+          />
+        </mesh>
+        <mesh position={[mx, WALL_H - 2.3, FLOOR.z0 + 0.12]} castShadow={false}>
+          <boxGeometry args={[w, 0.36, 0.26]} />
+          <meshStandardMaterial color="#46525f" metalness={0.4} roughness={0.7} />
+        </mesh>
+
+        {/* Stanchions flat against the wall, so they cast nothing onto the floor
+            the player is trying to read. */}
+        {Array.from({ length: 11 }, (_, i) => {
+          const x = FLOOR.x0 + 2.5 + (i * (w - 5)) / 10;
+          return (
+            <mesh key={x} position={[x, WALL_H / 2, FLOOR.z0 + 0.15]} castShadow={false}>
+              <boxGeometry args={[0.28, WALL_H, 0.28]} />
+              <meshStandardMaterial color="#3a4550" metalness={0.35} roughness={0.75} />
+            </mesh>
+          );
+        })}
+
+        {/* Services: one run the length of the aisle, dropping to each cell. */}
+        <ServiceRun
+          from={[FLOOR.x0 + 2, aisleZ - 1.4]}
+          to={[FLOOR.x1 - 2, aisleZ - 1.4]}
+          y={SERVICE_Y}
+          drops={[
+            [-21, aisleZ - 1.4],
+            [-6, aisleZ - 1.4],
+            [7.5, aisleZ - 1.4],
+            [19, aisleZ - 1.4],
+          ]}
         />
-      </mesh>
-
-      {/* Clerestory glazing and the eaves beam under it. The two together are
-          what make a flat plane read as the wall of a shed rather than as the
-          edge of the world. */}
-      <mesh position={[mx, WALL_H - 1.2, FLOOR.z0 + 0.05]}>
-        <planeGeometry args={[w - 1.5, 1.7]} />
-        <meshStandardMaterial
-          {...GLASS}
-          emissive="#7ba0bd"
-          emissiveIntensity={0.6}
-          side={THREE.DoubleSide}
+        <ServiceRun
+          from={[FLOOR.x0 + 2, aisleZ + 1.4]}
+          to={[FLOOR.x1 - 2, aisleZ + 1.4]}
+          y={SERVICE_Y}
+          drops={[
+            [-12, aisleZ + 1.4],
+            [-1, aisleZ + 1.4],
+            [15, aisleZ + 1.4],
+          ]}
         />
-      </mesh>
-      <mesh position={[mx, WALL_H - 2.3, FLOOR.z0 + 0.12]} castShadow={false}>
-        <boxGeometry args={[w, 0.36, 0.26]} />
-        <meshStandardMaterial color="#46525f" metalness={0.4} roughness={0.7} />
-      </mesh>
-
-      {/* Stanchions flat against the wall, so they cast nothing onto the floor
-          the player is trying to read. */}
-      {Array.from({ length: 11 }, (_, i) => {
-        const x = FLOOR.x0 + 2.5 + (i * (w - 5)) / 10;
-        return (
-          <mesh key={x} position={[x, WALL_H / 2, FLOOR.z0 + 0.15]} castShadow={false}>
-            <boxGeometry args={[0.28, WALL_H, 0.28]} />
-            <meshStandardMaterial color="#3a4550" metalness={0.35} roughness={0.75} />
-          </mesh>
-        );
-      })}
-
-      {/* Services: one run the length of the aisle, dropping to each cell. */}
-      <ServiceRun
-        from={[FLOOR.x0 + 2, aisleZ - 1.4]}
-        to={[FLOOR.x1 - 2, aisleZ - 1.4]}
-        y={SERVICE_Y}
-        drops={[
-          [-21, aisleZ - 1.4],
-          [-6, aisleZ - 1.4],
-          [7.5, aisleZ - 1.4],
-          [19, aisleZ - 1.4],
-        ]}
-      />
-      <ServiceRun
-        from={[FLOOR.x0 + 2, aisleZ + 1.4]}
-        to={[FLOOR.x1 - 2, aisleZ + 1.4]}
-        y={SERVICE_Y}
-        drops={[
-          [-12, aisleZ + 1.4],
-          [-1, aisleZ + 1.4],
-          [15, aisleZ + 1.4],
-        ]}
-      />
-    </group>
-  );
-});
+      </group>
+    );
+  }),
+);

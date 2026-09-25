@@ -1,4 +1,4 @@
-import { useEffect, useMemo, type ReactNode } from 'react';
+import { memo, useEffect, useMemo, type ReactNode } from 'react';
 import {
   DEFAULT_POU_ID,
   describeOperationError,
@@ -156,7 +156,14 @@ export function HmiPanel({
           <span className="eyebrow io-title">Inputs</span>
           <div className="widget-grid">
             {inputs.map((d) => (
-              <InputWidget key={d.address} device={d} runner={runner} hotkey={hotkeys.get(d.address)} />
+              <InputWidget
+                key={d.address}
+                device={d}
+                bit={runner.bits[d.address] === true}
+                input={runner.inputs[d.address] === true}
+                setInput={runner.setInput}
+                hotkey={hotkeys.get(d.address)}
+              />
             ))}
           </div>
         </section>
@@ -276,18 +283,26 @@ function Trend({
   );
 }
 
-function InputWidget({
+// The widgets take only their own point, so a scan that changed nothing on a
+// widget does not redraw it: a plant panel has dozens of them.
+const InputWidget = memo(function InputWidget({
   device,
-  runner,
+  bit,
+  input,
+  setInput,
   hotkey,
 }: {
   device: PuzzleDevice;
-  runner: HmiRunner;
+  /** The bit the program reads, which for a sensor the plant drives. */
+  bit: boolean;
+  /** What the operator has set on this input. */
+  input: boolean;
+  setInput: HmiRunner['setInput'];
   hotkey?: string;
 }) {
   const addr = device.address;
   if (device.widget === 'sensor') {
-    const on = runner.bits[addr] === true;
+    const on = bit;
     return (
       <div className="widget">
         <div className={`lamp small${on ? ' on' : ''}`} style={lampStyle('#4aa3ff', on)} />
@@ -299,12 +314,12 @@ function InputWidget({
   if (device.widget === 'estop') {
     // Maintained: the mushroom head stays where it was left until it is twisted
     // out again.
-    const pressed = isPressed(device, runner.inputs);
+    const pressed = input !== (device.normallyClosed === true);
     return (
       <div className="widget">
         <button
           className={`estop${pressed ? ' pressed' : ''}`}
-          onClick={() => runner.setInput(addr, bitFor(device, !pressed))}
+          onClick={() => setInput(addr, bitFor(device, !pressed))}
           aria-pressed={pressed}
           aria-label={`${device.label} ${pressed ? 'pressed' : 'healthy'}`}
         >
@@ -316,12 +331,12 @@ function InputWidget({
   }
 
   if (device.widget === 'toggle' || device.widget === 'selector') {
-    const on = runner.inputs[addr] === true;
+    const on = input;
     return (
       <div className="widget">
         <button
           className={`toggle${on ? ' on' : ''}`}
-          onClick={() => runner.setInput(addr, !on)}
+          onClick={() => setInput(addr, !on)}
           aria-pressed={on}
           aria-label={device.label}
         >
@@ -333,8 +348,8 @@ function InputWidget({
   }
 
   // momentary push button (spring return)
-  const held = isPressed(device, runner.inputs);
-  const press = (v: boolean) => runner.setInput(addr, bitFor(device, v));
+  const held = input !== (device.normallyClosed === true);
+  const press = (v: boolean) => setInput(addr, bitFor(device, v));
   return (
     <div className="widget">
       <button
@@ -350,9 +365,9 @@ function InputWidget({
       <WidgetLabel device={device} hotkey={hotkey} />
     </div>
   );
-}
+});
 
-function OutputWidget({ device, on }: { device: PuzzleDevice; on: boolean }) {
+const OutputWidget = memo(function OutputWidget({ device, on }: { device: PuzzleDevice; on: boolean }) {
   const color = device.color ?? '#37d67a';
   if (device.widget === 'motor') {
     return (
@@ -371,7 +386,7 @@ function OutputWidget({ device, on }: { device: PuzzleDevice; on: boolean }) {
       <WidgetLabel device={device} state={on ? 'ON' : 'OFF'} />
     </div>
   );
-}
+});
 
 function WidgetLabel({ device, state, hotkey }: { device: PuzzleDevice; state?: string; hotkey?: string }) {
   return (

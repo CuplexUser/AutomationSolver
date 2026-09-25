@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo } from 'react';
+import { staticPart } from '../StaticBatch';
 import * as THREE from 'three';
 
 /**
@@ -306,37 +307,39 @@ export function disposeLineTextures(t: LineTextures): void {
  */
 const SKIN = 0.012;
 
-export const HazardBand = memo(function HazardBand({
-  tex,
-  x,
-  z,
-  w,
-  d,
-  y = 0.18,
-  h = 0.36,
-}: {
-  tex: THREE.CanvasTexture;
-  x: number;
-  z: number;
-  w: number;
-  d: number;
-  y?: number;
-  h?: number;
-}) {
-  const faces: Array<{ pos: [number, number, number]; rot: number; len: number }> = [
-    { pos: [x, y, z + d / 2 + SKIN], rot: 0, len: w },
-    { pos: [x, y, z - d / 2 - SKIN], rot: Math.PI, len: w },
-    { pos: [x + w / 2 + SKIN, y, z], rot: Math.PI / 2, len: d },
-    { pos: [x - w / 2 - SKIN, y, z], rot: -Math.PI / 2, len: d },
-  ];
-  return (
-    <group>
-      {faces.map((f, i) => (
-        <HazardFace key={i} tex={tex} pos={f.pos} rot={f.rot} len={f.len} h={h} />
-      ))}
-    </group>
-  );
-});
+export const HazardBand = memo(
+  staticPart(function HazardBand({
+    tex,
+    x,
+    z,
+    w,
+    d,
+    y = 0.18,
+    h = 0.36,
+  }: {
+    tex: THREE.CanvasTexture;
+    x: number;
+    z: number;
+    w: number;
+    d: number;
+    y?: number;
+    h?: number;
+  }) {
+    const faces: Array<{ pos: [number, number, number]; rot: number; len: number }> = [
+      { pos: [x, y, z + d / 2 + SKIN], rot: 0, len: w },
+      { pos: [x, y, z - d / 2 - SKIN], rot: Math.PI, len: w },
+      { pos: [x + w / 2 + SKIN, y, z], rot: Math.PI / 2, len: d },
+      { pos: [x - w / 2 - SKIN, y, z], rot: -Math.PI / 2, len: d },
+    ];
+    return (
+      <group>
+        {faces.map((f, i) => (
+          <HazardFace key={i} tex={tex} pos={f.pos} rot={f.rot} len={f.len} h={h} />
+        ))}
+      </group>
+    );
+  }),
+);
 
 function HazardFace({
   tex,
@@ -409,26 +412,28 @@ export const FloorMark = memo(function FloorMark({
 });
 
 /** Stencilled text lying on the floor, e.g. a cell's tag beside its door. */
-export const FloorText = memo(function FloorText({
-  tex,
-  x,
-  z,
-  w = 3.6,
-  rotY = 0,
-}: {
-  tex: THREE.CanvasTexture;
-  x: number;
-  z: number;
-  w?: number;
-  rotY?: number;
-}) {
-  return (
-    <mesh position={[x, 0.02, z]} rotation={[-Math.PI / 2, 0, rotY]}>
-      <planeGeometry args={[w, w / 4]} />
-      <meshStandardMaterial map={tex} transparent roughness={0.95} metalness={0} />
-    </mesh>
-  );
-});
+export const FloorText = memo(
+  staticPart(function FloorText({
+    tex,
+    x,
+    z,
+    w = 3.6,
+    rotY = 0,
+  }: {
+    tex: THREE.CanvasTexture;
+    x: number;
+    z: number;
+    w?: number;
+    rotY?: number;
+  }) {
+    return (
+      <mesh position={[x, 0.02, z]} rotation={[-Math.PI / 2, 0, rotY]}>
+        <planeGeometry args={[w, w / 4]} />
+        <meshStandardMaterial map={tex} transparent roughness={0.95} metalness={0} />
+      </mesh>
+    );
+  }),
+);
 
 /**
  * A bay sign on two posts, so a cell names itself from across the floor.
@@ -440,38 +445,40 @@ export const FloorText = memo(function FloorText({
  * side its own plate, turned to face that way, makes every sign legible from
  * either side, which is also what a real double-faced sign is.
  */
-export const BaySign = memo(function BaySign({
-  tex,
-  x,
-  z,
-  y = 4.6,
-  rotY = 0,
-}: {
-  tex: THREE.CanvasTexture;
-  x: number;
-  z: number;
-  y?: number;
-  rotY?: number;
-}) {
-  return (
-    <group position={[x, 0, z]} rotation={[0, rotY, 0]}>
-      {[-1.7, 1.7].map((dx) => (
-        <mesh key={dx} position={[dx, y / 2, 0]} castShadow>
-          <boxGeometry args={[0.09, y, 0.09]} />
-          <meshStandardMaterial color="#3f4a57" metalness={0.6} roughness={0.55} />
-        </mesh>
-      ))}
-      {[0, Math.PI].map((face) => (
-        <mesh key={face} position={[0, y, face === 0 ? 0.02 : -0.02]} rotation={[0, face, 0]}>
-          <planeGeometry args={[3.6, 0.9]} />
-          <meshStandardMaterial
-            map={tex}
-            side={THREE.FrontSide}
-            roughness={0.7}
-            metalness={0.1}
-          />
-        </mesh>
-      ))}
-    </group>
-  );
-});
+export const BaySign = memo(
+  staticPart(function BaySign({
+    tex,
+    x,
+    z,
+    y = 4.6,
+    rotY = 0,
+  }: {
+    tex: THREE.CanvasTexture;
+    x: number;
+    z: number;
+    y?: number;
+    rotY?: number;
+  }) {
+    return (
+      <group position={[x, 0, z]} rotation={[0, rotY, 0]}>
+        {[-1.7, 1.7].map((dx) => (
+          <mesh key={dx} position={[dx, y / 2, 0]} castShadow>
+            <boxGeometry args={[0.09, y, 0.09]} />
+            <meshStandardMaterial color="#3f4a57" metalness={0.6} roughness={0.55} />
+          </mesh>
+        ))}
+        {[0, Math.PI].map((face) => (
+          <mesh key={face} position={[0, y, face === 0 ? 0.02 : -0.02]} rotation={[0, face, 0]}>
+            <planeGeometry args={[3.6, 0.9]} />
+            <meshStandardMaterial
+              map={tex}
+              side={THREE.FrontSide}
+              roughness={0.7}
+              metalness={0.1}
+            />
+          </mesh>
+        ))}
+      </group>
+    );
+  }),
+);

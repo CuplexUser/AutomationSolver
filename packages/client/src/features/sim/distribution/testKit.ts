@@ -10,8 +10,8 @@ import * as THREE from 'three';
  * exact hierarchy it gets in the browser, so these tests catch a renamed slot, a
  * wrong parent or a pallet in the wrong place without a GPU or a decoder.
  */
-export function kitTree(): THREE.Group {
-  const buf = readFileSync(new URL('../../../../public/models/dc-kit.glb', import.meta.url));
+export function kitTree(model = 'dc-kit.glb'): THREE.Group {
+  const buf = readFileSync(new URL(`../../../../public/models/${model}`, import.meta.url));
   const len = buf.readUInt32LE(12);
   const gltf = JSON.parse(buf.subarray(20, 20 + len).toString('utf8')) as {
     nodes: {

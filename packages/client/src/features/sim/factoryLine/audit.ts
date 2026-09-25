@@ -56,7 +56,8 @@ export function dumpMeshBoxes(scene: THREE.Scene): MeshBox[] {
   const out: MeshBox[] = [];
   const box = new THREE.Box3();
   scene.traverse((o) => {
-    if (!(o as THREE.Mesh).isMesh) return;
+    // A merged static batch spans half the plant; its hidden originals are what the checks measure.
+    if (!(o as THREE.Mesh).isMesh || o.userData.batched) return;
     box.setFromObject(o);
     if (box.isEmpty()) return;
     out.push({

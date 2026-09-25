@@ -1,4 +1,5 @@
 import { useEffect, useMemo } from 'react';
+import { useThree } from '@react-three/fiber';
 import { type MachineState } from '@automationsolver/shared';
 import { AssemblyBay } from './factory/AssemblyBay';
 import { Building } from './factory/Building';
@@ -71,6 +72,12 @@ export function FactoryRig({
   const tex = useMemo(() => buildTextures(), []);
   useEffect(() => () => disposeTextures(tex), [tex]);
 
+  // Drawn on demand: a frame is owed when a scan changed the plant, and the few
+  // clock-driven effects (the weld arc, the paint gun, a part easing between
+  // chambers) ask for their own frames only while they are moving.
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => invalidate(), [machine, outputs, section, invalidate]);
+
   const focus = (section && SECTION_FOCUS[section]) || PLANT_FOCUS;
 
   return (
@@ -142,6 +149,7 @@ export function Factory3D({
       // the plant out of the shadow map and stop its shadows at a line.
       shadowExtent={22}
       interactive
+      frameloop="demand"
     >
       <FactoryRig machine={machine} outputs={outputs} section={section} />
     </MachineCanvas>

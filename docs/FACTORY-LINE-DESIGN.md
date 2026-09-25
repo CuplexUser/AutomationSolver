@@ -638,6 +638,34 @@ is what `factory/` already is, so nothing has to be unwound to get here.
 
 Steps 1 to 3 change no simulation behaviour at all and can land before any of the process work.
 
+### The speed pass (2026-09-25)
+
+Played at full page, puzzle 53 ran so slowly that a click on START was lost. Measured with a
+throwaway Playwright driver in Edge (real GPU), counting WebGL draw calls, animation frames, the
+sim's 50 ms interval callbacks and long tasks, with a CPU profile per layout. The plant was run
+from AUTO and START, on the seeded programs.
+
+| Running, full page | Before (dev) | After (dev) | After (production) |
+|---|---|---|---|
+| Plant only | 16 fps, 9.4 scans/s | 46 fps, 18.4 scans/s | 60 fps, 20 scans/s |
+| Operator panel open | 15 fps, 8.4 scans/s | 31 fps, 16.8 scans/s | 41 fps, 17.3 scans/s |
+| All seven section windows open | 12.6 fps, 6.5 scans/s | 23 fps, 11.5 scans/s | 58 fps, 20 scans/s |
+
+What the profile said, in order of cost:
+
+- **The page, not the scene.** Every scan re-rendered the Work Order column (the whole briefing
+  re-parsed, a row per terminal), every rung of every open ladder window, each window's strip of
+  device chips (hundreds of buttons) and every HMI widget. Memoizing each on the values it draws
+  is what brought the scan rate back. React's development build adds per-element bookkeeping
+  that production does not, which is why dev with seven windows open is still slow: each window's
+  editor still re-renders as a whole every scan for its highlighting.
+- **The scene drew 675 calls a frame whether anything moved or not**: 455 meshes, 220 of them
+  casting shadows and so drawn twice. 427 of the 455 never moved in 15 s of running. On-demand
+  rendering took a stopped plant to zero; `StaticBatch` took the frame to about 310 calls
+  (226 meshes, 85 casters). The rest of the static meshes are inline in the cells, which the
+  Blender kit replaces, so they were left.
+- A momentary press shorter than a scan was lost outright. `InputLatch` now holds it for one.
+
 ---
 
 ## 5a. The retiming pass, and what it found

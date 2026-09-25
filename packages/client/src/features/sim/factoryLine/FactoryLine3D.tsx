@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react';
 import { useThree } from '@react-three/fiber';
 import { LINE_LIMITS, LINE_ZONES, type MachineState } from '@automationsolver/shared';
 import { MachineCanvas } from '../MachineCanvas';
+import { Static, StaticBatch } from '../StaticBatch';
 import {
   PLANT_FOCUS,
   PLANT_TARGET,
@@ -78,6 +79,12 @@ export function FactoryLineRig({
   const tex = useMemo(() => buildLineTextures(), []);
   useEffect(() => () => disposeLineTextures(tex), [tex]);
 
+  // The scene is drawn on demand: it is a pure function of the plant state, so
+  // a frame is only owed when a scan produced a new one. The camera flight asks
+  // for its own frames while it moves.
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => invalidate(), [machine, outputs, section, invalidate]);
+
   const focus = (section && SECTION_FOCUS[section]) || PLANT_FOCUS;
 
   return (
@@ -102,44 +109,49 @@ export function FactoryLineRig({
           the lift the shop reads as a night scene and the bare parts on the rack
           disappear into the slab. */}
       <ambientLight intensity={0.55} />
-      <Shell tex={tex} />
+      {/* Everything marked static below is baked into a few merged meshes. */}
+      <StaticBatch>
+        <Shell tex={tex} />
 
-      {/* The spine. Zone boundaries are drawn on it, and the parts queueing
-          against them are drawn by the stations that own them. */}
-      {SPINE.map((run) => (
-        <Conveyor key={run.id} tex={tex} run={run} />
-      ))}
-      {/* Corner decks, tucked just under the runs they join rather than level
-          with them: two decks at one height flicker where they overlap. */}
-      {SPINE_TURNS.map((t) => (
-        <mesh
-          key={`${t.at[0]},${t.at[1]}`}
-          position={[t.at[0], CONV.deckY - 0.03, t.at[1]]}
-          receiveShadow
-        >
-          <boxGeometry args={[CONV.width, 0.05, CONV.width]} />
-          <meshStandardMaterial {...MACHINE} />
-        </mesh>
-      ))}
-      <Spine machine={machine} />
+        {/* The spine. Zone boundaries are drawn on it, and the parts queueing
+            against them are drawn by the stations that own them. */}
+        {SPINE.map((run) => (
+          <Conveyor key={run.id} tex={tex} run={run} />
+        ))}
+        {/* Corner decks, tucked just under the runs they join rather than level
+            with them: two decks at one height flicker where they overlap. */}
+        <Static>
+          {SPINE_TURNS.map((t) => (
+            <mesh
+              key={`${t.at[0]},${t.at[1]}`}
+              position={[t.at[0], CONV.deckY - 0.03, t.at[1]]}
+              receiveShadow
+            >
+              <boxGeometry args={[CONV.width, 0.05, CONV.width]} />
+              <meshStandardMaterial {...MACHINE} />
+            </mesh>
+          ))}
+        </Static>
+        <Spine machine={machine} />
 
-      {/* Row A: make and finish. */}
-      <WeldCell tex={tex} machine={machine} torch={outputs.Y3 === true} />
-      <StoreCell tex={tex} machine={machine} />
-      <PortalCell machine={machine} />
-      <BoothCell
-        tex={tex}
-        machine={machine}
-        spraying={outputs.Y14 === true}
-        purging={outputs.Y16 === true}
-      />
-      <OvenCell tex={tex} machine={machine} racks={LINE_LIMITS.OVEN_RACKS} />
+        {/* Row A: make and finish. */}
+        <WeldCell tex={tex} machine={machine} torch={outputs.Y3 === true} />
+        <StoreCell tex={tex} machine={machine} />
+        <PortalCell machine={machine} />
+        <BoothCell
+          tex={tex}
+          machine={machine}
+          spraying={outputs.Y14 === true}
+          purging={outputs.Y16 === true}
+        />
+        <OvenCell tex={tex} machine={machine} racks={LINE_LIMITS.OVEN_RACKS} />
 
-      {/* Row B: build, prove and ship. */}
-      <AssemblyCell tex={tex} machine={machine} />
-      <TestCell tex={tex} machine={machine} queue={numOf(machine.bufAt)} />
-      <DockCell tex={tex} machine={machine} cap={LINE_LIMITS.TRUCK_CAP} />
-      <YardCell tex={tex} count={numOf(machine.yard)} cap={LINE_LIMITS.YARD_CAP} />
+        {/* Row B: build, prove and ship. */}
+        <AssemblyCell tex={tex} machine={machine} />
+        <TestCell tex={tex} machine={machine} queue={numOf(machine.bufAt)} />
+        <DockCell tex={tex} machine={machine} cap={LINE_LIMITS.TRUCK_CAP} />
+        <YardCell tex={tex} count={numOf(machine.yard)} cap={LINE_LIMITS.YARD_CAP} />
+      </StaticBatch>
     </group>
   );
 }
@@ -270,6 +282,7 @@ export function FactoryLine3D({
       // cover barely a third of it and every shadow would stop at a line.
       shadowExtent={38}
       interactive
+      frameloop="demand"
     >
       <FactoryLineRig
         machine={machine}

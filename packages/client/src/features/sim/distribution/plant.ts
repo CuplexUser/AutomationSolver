@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { mergeMeshes, type BatchPiece } from '../batch';
 import {
   DEPOT_BAYS,
   DOOR_MS,
@@ -122,41 +122,24 @@ function light(l: Lamp | undefined, color: string | null): void {
  * `parts` must not be parented yet: their own transforms are the placement.
  */
 function mergeByMaterial(parts: THREE.Object3D[], cast: boolean): THREE.Object3D[] {
-  const buckets = new Map<THREE.Material, { geo: THREE.BufferGeometry; src: THREE.Mesh }[]>();
+  const pieces: BatchPiece[] = [];
   for (const part of parts) {
     part.updateMatrixWorld(true);
     part.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh || !mesh.visible || Array.isArray(mesh.material)) return;
-      const geo = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
-      const list = buckets.get(mesh.material) ?? [];
-      list.push({ geo, src: mesh });
-      buckets.set(mesh.material, list);
+      pieces.push({ mesh, matrix: mesh.matrixWorld });
     });
   }
-  const out: THREE.Object3D[] = [];
-  for (const [material, items] of buckets) {
-    // Only the attributes every piece has, all indexed or none, or the merge refuses.
-    const names = Object.keys(items[0].geo.attributes).filter((n) => items.every((i) => i.geo.getAttribute(n)));
-    const indexed = items.every((i) => i.geo.index);
-    const geos = items.map(({ geo }) => {
-      const g = indexed || !geo.index ? geo : geo.toNonIndexed();
-      for (const n of Object.keys(g.attributes)) if (!names.includes(n)) g.deleteAttribute(n);
-      return g;
-    });
-    const merged = geos.length > 1 ? mergeGeometries(geos) : geos[0];
-    if (merged && geos.length > 1) for (const g of geos) g.dispose();
-    // Already in place, so a bucket that would not merge is drawn piece by piece.
-    for (const geo of merged ? [merged] : geos) {
-      const mesh = new THREE.Mesh(geo, material);
-      mesh.castShadow = cast;
-      mesh.receiveShadow = true;
-      mesh.userData.own = true;
-      out.push(mesh);
-    }
-    // The plant's own source pieces are spent; the kit's are shared with the cached model.
-    for (const { src } of items) if (src.userData.own) src.geometry.dispose();
+  // The kit's clones share material instances, so the instance is the bucket.
+  const out = mergeMeshes(pieces, (mesh) => mesh.material);
+  for (const mesh of out) {
+    mesh.castShadow = cast;
+    mesh.receiveShadow = true;
+    mesh.userData.own = true;
   }
+  // The plant's own source pieces are spent; the kit's are shared with the cached model.
+  for (const { mesh } of pieces) if (mesh.userData.own) mesh.geometry.dispose();
   return out;
 }
 

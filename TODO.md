@@ -86,12 +86,50 @@ open" and [`docs/FACTORY-LINE-DESIGN.md`](docs/FACTORY-LINE-DESIGN.md) §5a and 
       only fix, and it moves an address and `stepPortal`'s place rule that all six line puzzles
       are written against. **Do it together with the P1 reauthor or not at all** — one pass
       through those specs, not two. → FACTORY-LINE-DESIGN §5a option 1
-- [ ] **Re-model the cells**, one at a time, inside the footprints §2 fixes. The scene draws all
-      eight cells, the spine and every zone's live contents; what is missing is detail inside the
-      boxes. → FACTORY-LINE-DESIGN §8 step 6
-- [ ] **Blender per cell**, replacing procedural geometry where a GLB earns its download. The
-      fixed footprints and named anchors are what make this a swap rather than a redesign.
-      → FACTORY-LINE-DESIGN §8 step 7
+
+The scene detail (FACTORY-LINE-DESIGN §8 steps 6 and 7) moved into the section below, as the
+Blender kit.
+
+---
+
+## P2b — Excavator plant: speed, then the Blender kit
+
+The user tested "The Whole Plant" and it ran so slowly that a click on START was lost: the page
+never ran a scan while the button was down. Speed comes first, the kit second, and the kit is
+built the Cold Chain way (a scripted blend of named roots and slot empties, the layout staying in
+code) rather than as a whole-hall model. These boxes own the two excavator views (`Factory3D`,
+puzzle 47, and `FactoryLine3D`, 48 to 53); the general 3D-views section below no longer lists
+them. In order. Reference: [`docs/FACTORY-LINE-DESIGN.md`](docs/FACTORY-LINE-DESIGN.md) §8, and
+[`docs/COLD-CHAIN.md`](docs/COLD-CHAIN.md) §"The 3D view" for the kit conventions.
+
+- [x] **Measure the plant workspace.** Frame time, draw calls and React commit time per scan in
+      the full-page view of puzzle 53, three ways: 3D hidden, 3D shown, 3D shown with the section
+      windows open. Decides how much of what follows is the scene and how much the page. Record
+      the numbers in FACTORY-LINE-DESIGN §8.
+- [x] **Never lose a momentary press.** A button pressed and released between two scans must still
+      be seen by at least one scan, or a lagging page eats START. → `useSimRunner.ts`
+- [x] **Stop re-rendering the page on every scan.** Every scan re-renders `FactoryPlay`, all seven
+      ladder windows and every cell that takes `machine`; only what a scan changed should redraw.
+      → FEATURE-MAP §5
+- [x] **Render the line on demand.** `FactoryLine3D` is a pure function of `machine` (the only
+      `useFrame` is the camera): invalidate on each scan and through camera flights. Decide the
+      same for `Factory3D`, whose weld arc and paint bay run on `clock.elapsedTime`.
+- [x] **Batch the static geometry.** `mergeMeshes` (`features/sim/batch.ts`) is shared with the
+      hub, and `StaticBatch` bakes the line's static props in `factoryLine/`. The tutorial plant
+      (`factory/`) was not batched: it is small, and the kit replaces its geometry.
+- [ ] **Start the kit: the excavator.** `D:\Code\Blender\Automation-excavator-plant-assets.blend`,
+      rebuilt from nothing by `Automation-excavator-plant-assets.build.py` beside it, exporting
+      `public/models/excavator-kit.glb` (Draco, base-relative URL). First root: the machine in its
+      build stages (frame, boom, engine, cab, finished), used by both views. A test rebuilds the
+      GLB's node tree and poses a state against it, as `distribution/plant.test.ts` does.
+- [ ] **The Cold Chain look.** One dominant shadow-casting key, little bounce, no surface lighter
+      than about `#d0d6dc`, and AO at the plant's scale behind the Settings toggle, checked
+      against the frame time measured above. After the kit's first root, so the palette is set
+      once, in the build script.
+- [ ] **Kit the cells, one at a time**, inside the footprints FACTORY-LINE-DESIGN §2 fixes: weld
+      fixture and positioner, blank racks, rack store and portal, spray booth and cure oven,
+      conveyor zone module with its eye, assembly jig, test bay, lorry, and the repeated props
+      (fence panel, stack light, HMI post, cabinet, drum). Repeated parts are instanced.
 
 ---
 
@@ -137,6 +175,11 @@ measurement found.
       `camera.tsx` gained `resolveFocusEye` so the test and `SectionCamera` share one calculation.
       Floating geometry and coplanar faces stay manual — both cried wolf on legitimate wall/ceiling
       fixtures against the real dump. → FACTORY-LINE-DESIGN §6 "How this was found"
+- [ ] **Re-aim the section presets that look through a wall.** Reported from play (2026-09-25):
+      "Weld bay" in the full-page view of puzzle 53 opens on a dark frame with a sliver of floor,
+      looking through the building's wall; the audit's eye checks pass, so whatever it misses is
+      the thing to find first. Reproduce at the full-page stage's aspect (about 1.2), not only the
+      audit's 1.1 to 2.6 spread. → FACTORY-LINE-DESIGN §6
 - [ ] **Sweep `rowB.tsx` with the same three checks.** Row A has now been through outside-the-box,
       floating and coplanar; the south row has only been through them incidentally, as part of the
       whole-plant dump. Nothing has looked at whether its props sit inside their own footprints.
@@ -304,28 +347,26 @@ for why the first cold-store look washed out.
       Per view: one dominant shadow-casting key, little bounce, and no surface lighter than about
       `#d0d6dc`. Kit views fix their colors in the Blender build script and the GLB together, as
       the hub's panels were. Views: drill station, pick-and-place arm, elevator shaft, pack
-      machine, transfer carriage (`AxisRig3D`), tank vessel, warehouse, excavator plant
-      (`Factory3D`), excavator line (`FactoryLine3D`).
+      machine, transfer carriage (`AxisRig3D`), tank vessel, warehouse. (The two excavator views
+      are P2b's.)
 - [ ] **Ambient occlusion for the single-machine views.** Opt each into `ao={{ radius }}` at its
       own scale (the drill station's GLB is exported at x10; the transfer carriage is real
       scale), so it follows the Settings toggle: drill station, pick-and-place arm, elevator
       shaft, pack machine, transfer carriage, tank vessel.
-- [ ] **Ambient occlusion for the plant-scale views**: warehouse, excavator plant, excavator line.
+- [ ] **Ambient occlusion for the plant-scale view**: warehouse.
       Tune the radius per view, and check the frame time in the full-page plant workspace before
       turning it on, since those floors are the heaviest scenes.
 - [ ] **Render on demand where the view is a pure function of `machine`.** No clock of their own
-      in the top-level scene: elevator shaft, pack machine, tank vessel, warehouse, excavator line
-      (check the row components too). Invalidate on each new scan and keep invalidating through
-      any camera flight (`factoryLine/camera.tsx` has its own `SectionCamera`).
+      in the top-level scene: elevator shaft, pack machine, tank vessel, warehouse. Invalidate on
+      each new scan and keep invalidating through any camera flight.
 - [ ] **Decide on-demand rendering for the views with a clock of their own**: drill station (the
-      ejected part's stage machine), pick-and-place arm (the conveyor glide), transfer carriage,
-      and the excavator plant (weld-arc flicker and paint-bay motion on `clock.elapsedTime`).
+      ejected part's stage machine), pick-and-place arm (the conveyor glide), transfer carriage.
       Either keep invalidating while an animation runs, or stay on `always`; write down which in
       FEATURE-MAP.
 - [ ] **Batch the static geometry in the procedural plant scenes.** Measure the draw calls first,
       the way the hub was measured (about 390 per pass before, half of it static). Move
-      `mergeByMaterial` out of `distribution/plant.ts` into a shared module, then apply it to the
-      buildings, fences, racking and floor paint in `factory/`, `factoryLine/` and `Warehouse3D`.
+      `mergeByMaterial` out of `distribution/plant.ts` into a shared module (P2b does the move),
+      then apply it to `Warehouse3D`.
 
 ---
 

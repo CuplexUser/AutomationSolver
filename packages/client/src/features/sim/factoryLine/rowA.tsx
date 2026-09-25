@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo } from 'react';
+import { staticPart } from '../StaticBatch';
 import * as THREE from 'three';
 import type { MachineState } from '@automationsolver/shared';
 import {
@@ -179,24 +180,26 @@ export const WeldCell = memo(function WeldCell({
 });
 
 /** The steel the cell is fed from: plate on trestles, in the order it is used. */
-const BlankRack = memo(function BlankRack({ x, z }: { x: number; z: number }) {
-  return (
-    <group position={[x, 0, z]}>
-      {[-2.2, 0, 2.2].map((dz) => (
-        <group key={dz} position={[0, 0, dz]}>
-          <mesh position={[0, 0.42, 0]} castShadow receiveShadow>
-            <boxGeometry args={[1.6, 0.14, 1.5]} />
-            <meshStandardMaterial {...DARK_STEEL} />
-          </mesh>
-          <mesh position={[0, 0.62, 0]} castShadow>
-            <boxGeometry args={[1.3, 0.26, 1.2]} />
-            <meshStandardMaterial color="#6b7482" metalness={0.7} roughness={0.5} />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-});
+const BlankRack = memo(
+  staticPart(function BlankRack({ x, z }: { x: number; z: number }) {
+    return (
+      <group position={[x, 0, z]}>
+        {[-2.2, 0, 2.2].map((dz) => (
+          <group key={dz} position={[0, 0, dz]}>
+            <mesh position={[0, 0.42, 0]} castShadow receiveShadow>
+              <boxGeometry args={[1.6, 0.14, 1.5]} />
+              <meshStandardMaterial {...DARK_STEEL} />
+            </mesh>
+            <mesh position={[0, 0.62, 0]} castShadow>
+              <boxGeometry args={[1.3, 0.26, 1.2]} />
+              <meshStandardMaterial color="#6b7482" metalness={0.7} roughness={0.5} />
+            </mesh>
+          </group>
+        ))}
+      </group>
+    );
+  }),
+);
 
 // --- Rack store ---------------------------------------------------------------
 
@@ -234,60 +237,62 @@ const laneDeckY = (z: number): number =>
  * the one mechanism on this floor that moves parts without a motor. The tilt is
  * the point; it has to look deliberate.
  */
-const GravityLane = memo(function GravityLane({ tex, x }: { tex: LineTextures; x: number }) {
-  const len = Math.hypot(LANE_RUN, LANE_DROP);
-  const deck = useMemo(() => {
-    const t = tex.roller.clone();
-    t.needsUpdate = true;
-    t.rotation = Math.PI / 2;
-    t.center.set(0.5, 0.5);
-    t.repeat.set(1, Math.max(1, Math.round(len / 0.9)));
-    return t;
-  }, [tex.roller, len]);
-  useEffect(() => () => deck.dispose(), [deck]);
+const GravityLane = memo(
+  staticPart(function GravityLane({ tex, x }: { tex: LineTextures; x: number }) {
+    const len = Math.hypot(LANE_RUN, LANE_DROP);
+    const deck = useMemo(() => {
+      const t = tex.roller.clone();
+      t.needsUpdate = true;
+      t.rotation = Math.PI / 2;
+      t.center.set(0.5, 0.5);
+      t.repeat.set(1, Math.max(1, Math.round(len / 0.9)));
+      return t;
+    }, [tex.roller, len]);
+    useEffect(() => () => deck.dispose(), [deck]);
 
-  const tilt = Math.atan2(LANE_DROP, LANE_RUN);
-  const midZ = (STORE_LANE_Z.back + STORE_LANE_Z.front) / 2;
+    const tilt = Math.atan2(LANE_DROP, LANE_RUN);
+    const midZ = (STORE_LANE_Z.back + STORE_LANE_Z.front) / 2;
 
-  return (
-    <group>
-      {/* The two uprights the bed is slung between: tall at the back, short at
-          the front, which is what the fall is measured against. */}
-      {[
-        [STORE_LANE_Z.back, LANE_HIGH],
-        [STORE_LANE_Z.front, LANE_LOW],
-      ].map(([lz, h]) => (
-        <mesh key={lz} position={[x, h / 2, lz]} castShadow>
-          <boxGeometry args={[0.14, h, 0.14]} />
-          <meshStandardMaterial {...STRUCTURE} />
-        </mesh>
-      ))}
-      <group position={[x, (LANE_HIGH + LANE_LOW) / 2, midZ]} rotation={[tilt, 0, 0]}>
-        {/* Roller deck. Everything below it is set *clear* of it rather than
-            level with it: two surfaces at one height z-fight, which is the rule
-            `PartStand`'s height and the spine's corner decks already follow, and
-            which the first cut of this lane broke by putting the frame's top
-            face on exactly the deck plane. */}
-        <mesh position={[0, LANE_DECK, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-          <planeGeometry args={[LANE_WIDTH, len]} />
-          <meshStandardMaterial map={deck} roughness={0.5} metalness={0.55} />
-        </mesh>
-        <mesh position={[0, LANE_DECK - 0.16, 0]} castShadow>
-          <boxGeometry args={[LANE_WIDTH - 0.04, 0.16, len]} />
-          <meshStandardMaterial {...DARK_STEEL} />
-        </mesh>
-        {/* Kerbs, so a part reads as running *in* the lane rather than on it.
-            Their base sits above the deck for the same reason. */}
-        {[-1, 1].map((s) => (
-          <mesh key={s} position={[(s * LANE_WIDTH) / 2, LANE_DECK + 0.13, 0]} castShadow>
-            <boxGeometry args={[0.09, 0.2, len]} />
+    return (
+      <group>
+        {/* The two uprights the bed is slung between: tall at the back, short at
+            the front, which is what the fall is measured against. */}
+        {[
+          [STORE_LANE_Z.back, LANE_HIGH],
+          [STORE_LANE_Z.front, LANE_LOW],
+        ].map(([lz, h]) => (
+          <mesh key={lz} position={[x, h / 2, lz]} castShadow>
+            <boxGeometry args={[0.14, h, 0.14]} />
             <meshStandardMaterial {...STRUCTURE} />
           </mesh>
         ))}
+        <group position={[x, (LANE_HIGH + LANE_LOW) / 2, midZ]} rotation={[tilt, 0, 0]}>
+          {/* Roller deck. Everything below it is set *clear* of it rather than
+              level with it: two surfaces at one height z-fight, which is the rule
+              `PartStand`'s height and the spine's corner decks already follow, and
+              which the first cut of this lane broke by putting the frame's top
+              face on exactly the deck plane. */}
+          <mesh position={[0, LANE_DECK, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+            <planeGeometry args={[LANE_WIDTH, len]} />
+            <meshStandardMaterial map={deck} roughness={0.5} metalness={0.55} />
+          </mesh>
+          <mesh position={[0, LANE_DECK - 0.16, 0]} castShadow>
+            <boxGeometry args={[LANE_WIDTH - 0.04, 0.16, len]} />
+            <meshStandardMaterial {...DARK_STEEL} />
+          </mesh>
+          {/* Kerbs, so a part reads as running *in* the lane rather than on it.
+              Their base sits above the deck for the same reason. */}
+          {[-1, 1].map((s) => (
+            <mesh key={s} position={[(s * LANE_WIDTH) / 2, LANE_DECK + 0.13, 0]} castShadow>
+              <boxGeometry args={[0.09, 0.2, len]} />
+              <meshStandardMaterial {...STRUCTURE} />
+            </mesh>
+          ))}
+        </group>
       </group>
-    </group>
-  );
-});
+    );
+  }),
+);
 
 export const StoreCell = memo(function StoreCell({
   tex,
@@ -360,16 +365,18 @@ export const StoreCell = memo(function StoreCell({
  */
 const STAND_H = CONV.deckY - 0.02;
 
-const PartStand = memo(function PartStand({ x, z }: { x: number; z: number }) {
-  return (
-    <group position={[x, 0, z]}>
-      <mesh position={[0, STAND_H / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[2.2, STAND_H, 1.9]} />
-        <meshStandardMaterial {...MACHINE} />
-      </mesh>
-    </group>
-  );
-});
+const PartStand = memo(
+  staticPart(function PartStand({ x, z }: { x: number; z: number }) {
+    return (
+      <group position={[x, 0, z]}>
+        <mesh position={[0, STAND_H / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[2.2, STAND_H, 1.9]} />
+          <meshStandardMaterial {...MACHINE} />
+        </mesh>
+      </group>
+    );
+  }),
+);
 
 // --- Portal robot -------------------------------------------------------------
 

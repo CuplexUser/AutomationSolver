@@ -15,6 +15,7 @@ import {
   type SimSnapshot,
 } from '@automationsolver/shared';
 import { trimDevMeasures } from './devMeasures';
+import { InputLatch } from './inputLatch';
 
 /**
  * Scan interval / dt in ms. Deliberately *the grader's* dt: booleans survived a
@@ -89,6 +90,8 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
   const derivedRef = useRef<Record<string, boolean>>({});
   const derivedRegsRef = useRef<Record<string, number>>({});
   const inputsRef = useRef<Record<string, boolean>>(defaultInputs(spec.devices));
+  const latchRef = useRef(new InputLatch());
+  const runningRef = useRef(false);
   const historyRef = useRef<TraceHistorySample[]>([]);
   const tMsRef = useRef(0);
 
@@ -108,6 +111,7 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
       engineRef.current = engineFor(spec, nextProgram);
       processRef.current = getProcess(spec.processId);
       machineRef.current = plantAtStart(spec, processRef.current);
+      latchRef.current = new InputLatch();
       inputsRef.current = defaultInputs(spec.devices);
       // Same priming the grader does, for the same reason and at the same
       // point: the panel has to show the machine that is standing there before
@@ -164,6 +168,12 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
       devices: spec.devices,
       dtMs: DT,
     });
+    // A press released before this scan was held for it; now it may go.
+    const released = latchRef.current.scanned(inputsRef.current);
+    if (released !== inputsRef.current) {
+      inputsRef.current = released;
+      setInputsState(released);
+    }
     machineRef.current = res.machine;
     derivedRef.current = res.derivedInputs ?? {};
     derivedRegsRef.current = res.derivedRegisters ?? {};
@@ -192,7 +202,15 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
   }, [spec.devices]);
 
   useEffect(() => {
-    if (!running) return;
+    runningRef.current = running;
+    if (!running) {
+      const flushed = latchRef.current.flush(inputsRef.current);
+      if (flushed !== inputsRef.current) {
+        inputsRef.current = flushed;
+        setInputsState(flushed);
+      }
+      return;
+    }
     const id = setInterval(stepOnce, DT);
     const stopTrim = trimDevMeasures();
     return () => {
@@ -202,8 +220,10 @@ export function useSimRunner(program: ProgramDoc, spec: LadderPuzzleSpec): SimRu
   }, [running, stepOnce]);
 
   const setInput = useCallback((address: string, value: boolean) => {
-    inputsRef.current = { ...inputsRef.current, [address]: value };
-    setInputsState(inputsRef.current);
+    const next = latchRef.current.set(inputsRef.current, address, value, runningRef.current);
+    if (next === inputsRef.current) return;
+    inputsRef.current = next;
+    setInputsState(next);
   }, []);
 
   return {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   COMPARE_OPS,
   DEFAULT_POU_ID,
@@ -978,6 +978,39 @@ export function LadderEditor({
 
   // The toolbar as one value, because a floating window renders it *inside*
   // the ladder scroller rather than above it — see the return below.
+  // The per-rung handlers are stable across renders and call whatever the
+  // latest actions are through this ref. That is what lets `RungView` skip a
+  // render when only another rung's highlighting changed, without a skipped rung
+  // holding on to a click handler that closed over stale editor state.
+  const actions: RungActions = {
+    clickCell,
+    dblClickCell,
+    openCellMenu,
+    toggleVlink,
+    addRow,
+    addCol,
+    removeRow,
+    removeCol,
+    moveRung,
+    insertRung,
+    removeRung,
+    gestures,
+    rungs: program.rungs,
+    pouId,
+    applyChip,
+  };
+  const actionsRef = useRef(actions);
+  useLayoutEffect(() => {
+    actionsRef.current = actions;
+  });
+  const latestActions = useCallback(() => actionsRef.current, []);
+  const onChip = useCallback((addr: string) => latestActions().applyChip(addr), [latestActions]);
+  const rungCount = program.rungs.length;
+  const handlerList = useMemo(
+    () => Array.from({ length: rungCount }, (_, i) => makeRungHandlers(latestActions, i)),
+    [rungCount, latestActions],
+  );
+
   const toolbar = (
     <div ref={paletteRef} className={`palette panel${stickyPalette ? ' palette-pinned' : ''}`}>
       {/* One row, not four: fields, chips, prefs and zoom share it and wrap
@@ -1006,19 +1039,7 @@ export function LadderEditor({
             symbols={symbols}
           />
           {/* Chips fill whichever field can take the address they carry. */}
-          <div className="dev-quick">
-            {chips.map((d) => (
-              <button
-                key={d.address}
-                className={`dev-chip dev-${d.address[0]}`}
-                onClick={() => applyChip(d.address)}
-                disabled={!editable || !d.slot}
-                title={d.slot ? `${d.label} → ${d.into}` : `${d.label} — no field here takes a ${d.address[0]} address`}
-              >
-                {d.address}
-              </button>
-            ))}
-          </div>
+          <DeviceChips chips={chips} editable={editable} onChip={onChip} />
           <div className="palette-controls">
             {/* Undo has to be visible, not only bound: it is what makes the
                 structural edits — insert a column, delete one, move a block —
@@ -1192,39 +1213,40 @@ export function LadderEditor({
         {/* Scaling the canvas (rather than the scroller) keeps the scrollable area
             correct at any zoom — the compensating width undoes the transform. */}
         <div className="ladder-canvas" style={{ transform: `scale(${zoom})`, width: `${100 / zoom}%` }}>
-          {program.rungs.map((rung, i) => (
-            <RungView
-              key={rung.id}
-              rung={rung}
-              index={i}
-              running={running}
-              editable={editable}
-              evalResult={evalResults[i]}
-              pouId={pouId}
-              selected={selected?.rung === i ? { row: selected.row, col: selected.col } : null}
-              marked={markedIn(i)}
-              drag={gestures.dragFor(i)}
-              onSelectCell={(row, col, e) => clickCell(i, row, col, e)}
-              onCellPointerDown={(row, col, e) =>
-                gestures.onCellPointerDown(i, row, col, !!rung.cells[row]?.[col], e)
-              }
-              onCellDoubleClick={(row, col) => dblClickCell(i, row, col)}
-              onCellContextMenu={(row, col, e) => openCellMenu(i, row, col, e)}
-              onToggleVlink={(row, col) => toggleVlink(pouId, i, row, col)}
-              onAddRow={() => addRow(i)}
-              onAddCol={() => addCol(i)}
-              onRemoveRow={() => removeRow(i, program.rungs[i].rows - 1)}
-              onRemoveCol={() => removeCol(i, program.rungs[i].cols - 1)}
-              canAddRow={program.rungs[i].rows < MAX_ROWS}
-              canAddCol={program.rungs[i].cols < MAX_COLS}
-              onMoveUp={() => moveRung(i, -1)}
-              onMoveDown={() => moveRung(i, 1)}
-              canMoveUp={i > 0}
-              canMoveDown={i < program.rungs.length - 1}
-              onInsertBelow={() => insertRung(i + 1)}
-              onDelete={() => removeRung(i)}
-            />
-          ))}
+          {program.rungs.map((rung, i) => {
+            const h = handlerList[i];
+            return (
+              <RungView
+                key={rung.id}
+                rung={rung}
+                index={i}
+                running={running}
+                editable={editable}
+                evalResult={evalResults[i]}
+                pouId={pouId}
+                selected={selected?.rung === i ? { row: selected.row, col: selected.col } : null}
+                marked={markedIn(i)}
+                drag={gestures.dragFor(i)}
+                onSelectCell={h.onSelectCell}
+                onCellPointerDown={h.onCellPointerDown}
+                onCellDoubleClick={h.onCellDoubleClick}
+                onCellContextMenu={h.onCellContextMenu}
+                onToggleVlink={h.onToggleVlink}
+                onAddRow={h.onAddRow}
+                onAddCol={h.onAddCol}
+                onRemoveRow={h.onRemoveRow}
+                onRemoveCol={h.onRemoveCol}
+                canAddRow={rung.rows < MAX_ROWS}
+                canAddCol={rung.cols < MAX_COLS}
+                onMoveUp={h.onMoveUp}
+                onMoveDown={h.onMoveDown}
+                canMoveUp={i > 0}
+                canMoveDown={i < program.rungs.length - 1}
+                onInsertBelow={h.onInsertBelow}
+                onDelete={h.onDelete}
+              />
+            );
+          })}
           {editable && (
             <button className="btn btn-ghost add-rung" onClick={addRung}>
               + Add Rung <span className="instr-key">A</span>
@@ -1306,4 +1328,92 @@ export function LadderEditor({
       )}
     </div>
   );
+}
+
+interface RungActions {
+  clickCell: (rung: number, row: number, col: number, e: React.MouseEvent) => void;
+  dblClickCell: (rung: number, row: number, col: number) => void;
+  openCellMenu: (rung: number, row: number, col: number, e: React.MouseEvent) => void;
+  toggleVlink: (pou: string, rung: number, row: number, col: number) => void;
+  addRow: (rung: number) => void;
+  addCol: (rung: number) => void;
+  removeRow: (rung: number, row: number) => void;
+  removeCol: (rung: number, col: number) => void;
+  moveRung: (rung: number, by: -1 | 1) => void;
+  insertRung: (at: number) => void;
+  removeRung: (rung: number) => void;
+  gestures: {
+    onCellPointerDown: (rung: number, row: number, col: number, occupied: boolean, e: React.PointerEvent) => void;
+  };
+  rungs: LadderProgram['rungs'];
+  pouId: string;
+  applyChip: (addr: string) => void;
+}
+
+interface Chip {
+  address: string;
+  label: string;
+  slot: FieldSlot | null;
+  into: string | null | undefined;
+}
+
+/**
+ * The quick-pick strip: one chip per device and register, which on a plant is
+ * hundreds of buttons per open window. It redraws only when a chip's target
+ * changed, not on every scan the editor re-renders for.
+ */
+const DeviceChips = memo(
+  function DeviceChips({
+    chips,
+    editable,
+    onChip,
+  }: {
+    chips: Chip[];
+    editable: boolean;
+    onChip: (addr: string) => void;
+  }) {
+    return (
+      <div className="dev-quick">
+        {chips.map((d) => (
+          <button
+            key={d.address}
+            className={`dev-chip dev-${d.address[0]}`}
+            onClick={() => onChip(d.address)}
+            disabled={!editable || !d.slot}
+            title={d.slot ? `${d.label} → ${d.into}` : `${d.label} — no field here takes a ${d.address[0]} address`}
+          >
+            {d.address}
+          </button>
+        ))}
+      </div>
+    );
+  },
+  (a, b) =>
+    a.editable === b.editable &&
+    a.onChip === b.onChip &&
+    a.chips.length === b.chips.length &&
+    a.chips.every((c, i) => {
+      const d = b.chips[i];
+      return c.address === d.address && c.label === d.label && c.slot === d.slot && c.into === d.into;
+    }),
+);
+
+/** Rung `i`'s handlers, each reading the editor's latest actions at call time. */
+function makeRungHandlers(a: () => RungActions, i: number) {
+  return {
+    onSelectCell: (row: number, col: number, e: React.MouseEvent) => a().clickCell(i, row, col, e),
+    onCellPointerDown: (row: number, col: number, e: React.PointerEvent) =>
+      a().gestures.onCellPointerDown(i, row, col, !!a().rungs[i]?.cells[row]?.[col], e),
+    onCellDoubleClick: (row: number, col: number) => a().dblClickCell(i, row, col),
+    onCellContextMenu: (row: number, col: number, e: React.MouseEvent) => a().openCellMenu(i, row, col, e),
+    onToggleVlink: (row: number, col: number) => a().toggleVlink(a().pouId, i, row, col),
+    onAddRow: () => a().addRow(i),
+    onAddCol: () => a().addCol(i),
+    onRemoveRow: () => a().removeRow(i, a().rungs[i].rows - 1),
+    onRemoveCol: () => a().removeCol(i, a().rungs[i].cols - 1),
+    onMoveUp: () => a().moveRung(i, -1),
+    onMoveDown: () => a().moveRung(i, 1),
+    onInsertBelow: () => a().insertRung(i + 1),
+    onDelete: () => a().removeRung(i),
+  };
 }
