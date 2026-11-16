@@ -13,6 +13,6 @@
     "@automationsolver/shared": "*"
   },
   "devDependencies": {
-    "vite": "^6.0.5"
+    "vite": "^8.3.8"
   }
 }

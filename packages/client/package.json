@@ -14,21 +14,21 @@
   },
   "dependencies": {
     "@automationsolver/shared": "*",
-    "@react-three/drei": "^10.7.7",
-    "@react-three/fiber": "^9.6.1",
-    "@tanstack/react-query": "^5.62.7",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
-    "react-router": "^8.3.0",
-    "three": "^0.185.1",
-    "zustand": "^5.0.2"
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
+    "@tanstack/react-query": "^5.107.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^8.5.1",
+    "three": "^0.187.0",
+    "zustand": "^5.1.0"
   },
   "devDependencies": {
-    "@playwright/test": "^1.61.1",
-    "@types/react": "^19.2.8",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.0.5",
-    "vitest": "^4.1.10"
+    "@playwright/test": "^1.65.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.0"
   }
 }

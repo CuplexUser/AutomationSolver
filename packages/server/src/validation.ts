@@ -151,7 +151,7 @@ export const changePasswordSchema = z.object({
 });
 
 export const settingsSchema = z.object({
-  settings: z.record(z.unknown()),
+  settings: z.record(z.string(), z.unknown()),
 });
 
 export type ProgramInput = z.infer<typeof programSchema>;

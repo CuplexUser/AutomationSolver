@@ -58,6 +58,10 @@ function parseProgramBody(spec: PuzzleSpec, body: unknown): ParsedProgram {
 
 export const puzzlesRouter = Router();
 
+// Spelled out because Express can't infer route params through asyncHandler.
+type SlugParams = { slug: string };
+type SlotParams = { slug: string; id: string };
+
 async function progressMap(userId: number | undefined): Promise<Map<string, { status: string; score: number }>> {
   const map = new Map<string, { status: string; score: number }>();
   if (userId == null) return map;
@@ -134,7 +138,7 @@ puzzlesRouter.get(
 
 puzzlesRouter.get(
   '/puzzles/:slug',
-  asyncHandler(async (req, res) => {
+  asyncHandler<SlugParams>(async (req, res) => {
     const spec = getPuzzle(req.params.slug);
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
     const lock = (await lockInfo(req.user?.id)).get(spec.slug);
@@ -158,7 +162,7 @@ puzzlesRouter.get(
 puzzlesRouter.get(
   '/puzzles/:slug/slots',
   requireAuth,
-  asyncHandler(async (req, res) => {
+  asyncHandler<SlugParams>(async (req, res) => {
     const spec = getPuzzle(req.params.slug);
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
     const slots = await listSlots(req.user!.id, spec.slug);
@@ -169,7 +173,7 @@ puzzlesRouter.get(
 puzzlesRouter.post(
   '/puzzles/:slug/slots',
   requireAuth,
-  asyncHandler(async (req, res) => {
+  asyncHandler<SlugParams>(async (req, res) => {
     const spec = getPuzzle(req.params.slug);
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
     const parsed = parseProgramBody(spec, req.body?.program);
@@ -188,7 +192,7 @@ puzzlesRouter.post(
 puzzlesRouter.get(
   '/puzzles/:slug/slots/:id',
   requireAuth,
-  asyncHandler(async (req, res) => {
+  asyncHandler<SlotParams>(async (req, res) => {
     const spec = getPuzzle(req.params.slug);
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
     const slot = await getSlot(req.user!.id, spec.slug, Number(req.params.id));
@@ -203,7 +207,7 @@ puzzlesRouter.get(
 puzzlesRouter.put(
   '/puzzles/:slug/slots/:id',
   requireAuth,
-  asyncHandler(async (req, res) => {
+  asyncHandler<SlotParams>(async (req, res) => {
     const spec = getPuzzle(req.params.slug);
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
     let programJson: string | undefined;
@@ -230,7 +234,7 @@ puzzlesRouter.put(
 puzzlesRouter.delete(
   '/puzzles/:slug/slots/:id',
   requireAuth,
-  asyncHandler(async (req, res) => {
+  asyncHandler<SlotParams>(async (req, res) => {
     const spec = getPuzzle(req.params.slug);
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
     const ok = await deleteSlot(req.user!.id, spec.slug, Number(req.params.id));
@@ -268,7 +272,7 @@ async function saveToActiveSlot(
 puzzlesRouter.post(
   '/puzzles/:slug/submit',
   requireAuth,
-  asyncHandler(async (req, res) => {
+  asyncHandler<SlugParams>(async (req, res) => {
     const spec = getPuzzle(req.params.slug);
     if (!spec) return res.status(404).json({ error: 'Puzzle not found' });
     const userId = req.user!.id;

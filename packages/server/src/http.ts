@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from 'express';
+import type { ParamsDictionary } from 'express-serve-static-core';
 import { getOAuthProviders, type UserRow } from './db/repo.js';
 
 export interface PublicUser {
@@ -27,11 +28,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
   res.status(401).json({ error: 'Authentication required' });
 }
 
-/** Wrap an async handler so thrown errors reach the error middleware. */
-export function asyncHandler(
-  fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown> | unknown,
+/**
+ * Wrap an async handler so thrown errors reach the error middleware.
+ *
+ * Generic over the route params so Express can still infer `{ slug: string }`
+ * from a path like `/puzzles/:slug` through the wrapper. Without that, Express
+ * 5's types fall back to `string | string[]` for every param.
+ */
+export function asyncHandler<P = ParamsDictionary>(
+  fn: (req: Request<P>, res: Response, next: NextFunction) => Promise<unknown> | unknown,
 ) {
-  return (req: Request, res: Response, next: NextFunction): void => {
+  return (req: Request<P>, res: Response, next: NextFunction): void => {
     Promise.resolve(fn(req, res, next)).catch(next);
   };
 }

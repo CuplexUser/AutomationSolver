@@ -38,11 +38,11 @@ test('drill station 3D view renders with new camera + geometry', async ({ page }
   await page.waitForTimeout(500);
   const token = findVerifyToken(email);
   await page.goto(`/verify-email?token=${token}`);
-  for (let i = 0; i < 20 && !/\/puzzles$/.test(page.url()); i++) {
+  for (let i = 0; i < 20 && !page.url().endsWith('/puzzles'); i++) {
     await page.waitForTimeout(500);
   }
   console.log('URL after verify wait:', page.url());
-  if (!/\/puzzles$/.test(page.url())) {
+  if (!page.url().endsWith('/puzzles')) {
     await page.reload();
     await page.waitForTimeout(1000);
   }
